@@ -52,7 +52,7 @@ CRTube supports **multiple concurrent downloads** and intelligently handles YouT
 
 1. Clone the repository:  
 ```bash
-git clone https://github.com/yourusername/crtube.git
+git clone https://github.com/SlyHammad18/crtube.git
 cd crtube
 ```
 2. Create and activate a virtual environment (optional but recommended):
