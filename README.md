@@ -34,15 +34,7 @@ CRTube supports **multiple concurrent downloads** and intelligently handles YouT
 - Multiple download windows for concurrent downloads  
 - Frameless and modern GUI  
 - Configurable default download folder  
-- Automatic updates for `yt-dlp`  
-
----
-
-## 3. Screenshots
-
-![Main Window](screenshots/mainwindow.png)  
-![Settings Window](screenshots/settingswindow.png)  
-![Download Progress](screenshots/downloadwindow.png)  
+- Automatic updates for `yt-dlp`   
 
 ---
 
