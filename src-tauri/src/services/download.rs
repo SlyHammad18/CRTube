@@ -52,21 +52,40 @@ pub fn spawn_ytdlp(bin_dir: &Path, args: &[String]) -> std::io::Result<Child> {
         .spawn()
 }
 
-pub fn find_final_file(dir: &Path, video_id: &str, ext: &str) -> Option<PathBuf> {
+pub fn find_final_file(
+    dir: &Path,
+    video_id: &str,
+    ext: &str,
+    after: std::time::SystemTime,
+) -> Option<PathBuf> {
     let marker = format!("[{video_id}]");
-    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    let mut marker_best: Option<(std::time::SystemTime, PathBuf)> = None;
+    let mut fallback_best: Option<(std::time::SystemTime, PathBuf)> = None;
     for entry in std::fs::read_dir(dir).ok()?.flatten() {
         let path = entry.path();
         let name = path.file_name()?.to_string_lossy().to_string();
-        if !name.contains(&marker) || !name.ends_with(ext) {
-            continue;
-        }
         let modified = entry.metadata().and_then(|m| m.modified()).ok()?;
-        if best.as_ref().map(|(t, _)| modified > *t).unwrap_or(true) {
-            best = Some((modified, path));
+        let marker_hit = !video_id.is_empty() && name.contains(&marker) && name.ends_with(ext);
+        let fallback_hit = name.ends_with(ext) && modified >= after;
+        if marker_hit
+            && marker_best
+                .as_ref()
+                .map(|(t, _)| modified > *t)
+                .unwrap_or(true)
+        {
+            marker_best = Some((modified, path));
+        } else if fallback_hit
+            && fallback_best
+                .as_ref()
+                .map(|(t, _)| modified > *t)
+                .unwrap_or(true)
+        {
+            fallback_best = Some((modified, path));
         }
     }
-    best.map(|(_, p)| p)
+    marker_best
+        .or(fallback_best)
+        .map(|(_, p)| p)
 }
 
 pub fn cleanup_partials(dir: &Path, video_id: &str) -> usize {
@@ -144,19 +163,21 @@ pub async fn run_download_job(
     };
 
     match status {
-        Ok(s) if s.success() => match find_final_file(&entry.dir, &entry.video_id, &entry.ext) {
-            Some(path) => on_event(DlEvent::Done(DlDone {
-                id,
-                path: path.to_string_lossy().to_string(),
-            })),
-            None => {
-                cleanup_partials(&entry.dir, &entry.video_id);
-                on_event(DlEvent::Failed(DlError {
+        Ok(s) if s.success() => {
+            match find_final_file(&entry.dir, &entry.video_id, &entry.ext, entry.started) {
+                Some(path) => on_event(DlEvent::Done(DlDone {
                     id,
-                    message: "download finished but output file is missing".into(),
-                }));
+                    path: path.to_string_lossy().to_string(),
+                })),
+                None => {
+                    cleanup_partials(&entry.dir, &entry.video_id);
+                    on_event(DlEvent::Failed(DlError {
+                        id,
+                        message: "download finished but output file is missing".into(),
+                    }));
+                }
             }
-        },
+        }
         _ => {
             cleanup_partials(&entry.dir, &entry.video_id);
             let tail: Vec<&str> = stderr.lines().rev().take(4).collect();

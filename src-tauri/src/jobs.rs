@@ -11,6 +11,7 @@ pub struct JobEntry {
     pub video_id: String,
     pub ext: String,
     pub dir: PathBuf,
+    pub started: std::time::SystemTime,
 }
 
 #[derive(Default)]

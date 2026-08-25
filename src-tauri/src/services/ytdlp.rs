@@ -123,6 +123,7 @@ pub struct DownloadPlan {
     pub download_dir: PathBuf,
     pub title: String,
     pub video_id: String,
+    pub template: Option<String>,
 }
 
 impl DownloadPlan {
@@ -134,7 +135,13 @@ impl DownloadPlan {
     }
 
     pub fn output_template(&self) -> String {
-        format!("{} [{}].{}", self.title, self.video_id, self.ext())
+        match &self.template {
+            Some(t) => t
+                .replace("{title}", &self.title)
+                .replace("{id}", &self.video_id)
+                .replace("{ext}", self.ext()),
+            None => format!("{} [{}].{}", self.title, self.video_id, self.ext()),
+        }
     }
 }
 
@@ -574,7 +581,21 @@ mod tests {
             download_dir: PathBuf::from("/tmp/dl"),
             title: "Some Video".to_string(),
             video_id: "abc12345678".to_string(),
+            template: None,
         }
+    }
+
+    #[test]
+    fn custom_template_substitutes_tokens() {
+        let mut p = plan(DownloadKind::Audio, AudioQuality::Best);
+        p.template = Some("{title} by me.{ext}".to_string());
+        assert_eq!(p.output_template(), "Some Video by me.mp3");
+
+        p.template = Some("{id} - {title}".to_string());
+        assert_eq!(p.output_template(), "abc12345678 - Some Video");
+
+        p.template = None;
+        assert_eq!(p.output_template(), "Some Video [abc12345678].mp3");
     }
 
     #[test]

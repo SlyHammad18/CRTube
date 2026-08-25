@@ -68,20 +68,29 @@ async fn ensure_tools_flow(
         installer::ensure_ffmpeg(app, &bin).await.map_err(|e| e.to_string())?;
 
     let current_ytdlp = installer::probe_ytdlp(&bin).await;
-    let latest =
-        installer::fetch_latest_ytdlp().await.map_err(|e| e.to_string())?;
+    let settings = crate::commands::settings::load_settings(app);
 
-    let mut ytdlp_updated = false;
-    let ytdlp_version = match current_ytdlp.as_deref() {
-        Some(v) if v == latest.tag => latest.tag.clone(),
-        _ => {
-            if current_ytdlp.is_some() {
-                ytdlp_updated = true;
+    let needs_check = match &current_ytdlp {
+        None => true,
+        Some(_) if settings.autoupdate_ytdlp => true,
+        Some(_) => false,
+    };
+
+    let (ytdlp_version, ytdlp_updated) = if needs_check {
+        let latest =
+            installer::fetch_latest_ytdlp().await.map_err(|e| e.to_string())?;
+        match current_ytdlp.as_deref() {
+            Some(v) if v == latest.tag => (latest.tag.clone(), false),
+            _ => {
+                let updated = current_ytdlp.is_some();
+                let version = install_latest_ytdlp(app, &bin, &latest)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                (version, updated)
             }
-            install_latest_ytdlp(app, &bin, &latest)
-                .await
-                .map_err(|e| e.to_string())?
         }
+    } else {
+        (current_ytdlp.clone().expect("checked above"), false)
     };
 
     let outcome = EnsureOutcome {

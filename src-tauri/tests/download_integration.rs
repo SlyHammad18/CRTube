@@ -35,6 +35,7 @@ fn plan(kind: DownloadKind, dir: &std::path::Path, quality: AudioQuality) -> Dow
         download_dir: dir.to_path_buf(),
         title: "Me at the zoo".to_string(),
         video_id: "jNQXAC9IVRw".to_string(),
+        template: None,
     }
 }
 
@@ -93,6 +94,7 @@ async fn downloads_tiny_video_as_mp4() {
         video_id: p.video_id.clone(),
         ext: p.ext().to_string(),
         dir: dir.clone(),
+        started: std::time::SystemTime::now(),
     });
 
     run_download_job(
@@ -150,6 +152,7 @@ async fn downloads_mp3_best_with_cover_and_tags() {
         video_id: p.video_id.clone(),
         ext: "mp3".to_string(),
         dir: dir.clone(),
+        started: std::time::SystemTime::now(),
     });
 
     run_download_job(id, stdout, registry, move |e| {
@@ -211,6 +214,7 @@ async fn cancel_mid_download_leaves_no_partial_files() {
         video_id: p.video_id.clone(),
         ext: p.ext().to_string(),
         dir: dir.clone(),
+        started: std::time::SystemTime::now(),
     });
 
     let runner = tokio::spawn(run_download_job(id, stdout, registry.clone(), move |e| {
@@ -252,12 +256,13 @@ async fn cancel_mid_download_leaves_no_partial_files() {
 #[ignore = "requires network and installed yt-dlp/ffmpeg"]
 async fn find_final_file_ignores_partials() {
     let dir = unique_dir("find");
+    let now = std::time::SystemTime::now();
     std::fs::write(dir.join("Me at the zoo [jNQXAC9IVRw].mp4.part"), "x").unwrap();
     std::fs::write(dir.join("Me at the zoo [jNQXAC9IVRw].mp4"), "x").unwrap();
     std::fs::write(dir.join("Me at the zoo [jNQXAC9IVRw].webp"), "x").unwrap();
-    let found = find_final_file(&dir, "jNQXAC9IVRw", "mp4").expect("finds final");
+    let found = find_final_file(&dir, "jNQXAC9IVRw", "mp4", now).expect("finds final");
     assert!(found.to_string_lossy().ends_with(".mp4"));
     assert_eq!(cleanup_partials(&dir, "jNQXAC9IVRw"), 2);
-    assert!(find_final_file(&dir, "jNQXAC9IVRw", "mp4").is_some());
+    assert!(find_final_file(&dir, "jNQXAC9IVRw", "mp4", now).is_some());
     let _ = std::fs::remove_dir_all(&dir);
 }
