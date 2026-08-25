@@ -34,6 +34,7 @@ pub struct FormatInfo {
     pub filesize: Option<u64>,
     pub vcodec: Option<String>,
     pub acodec: Option<String>,
+    pub dynamic_range: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -124,6 +125,8 @@ pub struct DownloadPlan {
     pub title: String,
     pub video_id: String,
     pub template: Option<String>,
+    pub embed_thumbnail: bool,
+    pub embed_metadata: bool,
 }
 
 impl DownloadPlan {
@@ -172,8 +175,6 @@ pub fn download_args(bin_dir: &Path, plan: &DownloadPlan, url: &str) -> Vec<Stri
             ));
             args.push("--merge-output-format".to_string());
             args.push(plan.container.clone());
-            args.push("--embed-metadata".to_string());
-            args.push("--embed-thumbnail".to_string());
         }
         DownloadKind::Audio => {
             args.push("-x".to_string());
@@ -181,9 +182,13 @@ pub fn download_args(bin_dir: &Path, plan: &DownloadPlan, url: &str) -> Vec<Stri
             args.push("mp3".to_string());
             args.push("--audio-quality".to_string());
             args.push(plan.quality.code().to_string());
-            args.push("--embed-thumbnail".to_string());
-            args.push("--embed-metadata".to_string());
         }
+    }
+    if plan.embed_metadata {
+        args.push("--embed-metadata".to_string());
+    }
+    if plan.embed_thumbnail {
+        args.push("--embed-thumbnail".to_string());
     }
     args
 }
@@ -313,6 +318,11 @@ fn norm_format(v: &Value) -> Option<FormatInfo> {
             .or_else(|| v.get("filesize_approx").and_then(Value::as_u64)),
         vcodec,
         acodec,
+        dynamic_range: v
+            .get("dynamic_range")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty() && *s != "SDR")
+            .map(String::from),
     })
 }
 
@@ -322,7 +332,7 @@ pub fn normalize_formats(formats: &[Value]) -> Vec<FormatInfo> {
         let Some(fmt) = norm_format(raw) else {
             continue;
         };
-        let key = format!("{:?}|{}", fmt.height, fmt.ext);
+        let key = format!("{:?}|{}|{:?}", fmt.height, fmt.ext, fmt.dynamic_range);
         match best.iter_mut().find(|(k, _)| *k == key) {
             Some((_, existing)) => {
                 if fmt.filesize.unwrap_or(0) > existing.filesize.unwrap_or(0) {
@@ -582,7 +592,27 @@ mod tests {
             title: "Some Video".to_string(),
             video_id: "abc12345678".to_string(),
             template: None,
+            embed_thumbnail: true,
+            embed_metadata: true,
         }
+    }
+
+    #[test]
+    fn embed_flags_omitted_when_disabled() {
+        let mut p = plan(DownloadKind::Video, AudioQuality::Best);
+        p.embed_thumbnail = false;
+        p.embed_metadata = false;
+        let args = download_args(Path::new("/b"), &p, "u");
+        assert!(!args.contains(&"--embed-thumbnail".to_string()));
+        assert!(!args.contains(&"--embed-metadata".to_string()));
+        assert!(args.contains(&"--merge-output-format".to_string()));
+
+        let mut p = plan(DownloadKind::Audio, AudioQuality::Best);
+        p.embed_thumbnail = true;
+        p.embed_metadata = false;
+        let args = download_args(Path::new("/b"), &p, "u");
+        assert!(args.contains(&"--embed-thumbnail".to_string()));
+        assert!(!args.contains(&"--embed-metadata".to_string()));
     }
 
     #[test]

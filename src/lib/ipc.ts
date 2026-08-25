@@ -31,6 +31,8 @@ export interface DownloadRequest {
   quality?: AudioQualityPref;
   thumbUrl?: string;
   downloadDir?: string;
+  embedThumbnail?: boolean;
+  embedMetadata?: boolean;
 }
 
 export const ipc = {

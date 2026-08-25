@@ -3,12 +3,15 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useUIStore } from "./stores/ui";
 import { useToolsStore } from "./stores/tools";
 import { useQueueStore } from "./stores/queue";
+import { useLibraryStore } from "./stores/library";
+import { useSettingsStore } from "./stores/settings";
 import { Titlebar } from "./components/titlebar/Titlebar";
 import { Rail } from "./components/rail/Rail";
 import { BootOverlay } from "./components/boot/BootOverlay";
 import { Scanlines } from "./components/common/Scanlines";
 import { Toasts } from "./components/common/Toasts";
 import { FirstRunOverlay } from "./components/setup/FirstRunOverlay";
+import { FormatSheet } from "./components/sheet/FormatSheet";
 import { HomeSearch } from "./components/search/HomeSearch";
 import { PlaceholderView } from "./components/common/PlaceholderView";
 
@@ -21,6 +24,8 @@ export default function App() {
   useEffect(() => {
     void useToolsStore.getState().init();
     useQueueStore.getState().attach();
+    void useLibraryStore.getState().refresh();
+    void useSettingsStore.getState().load();
   }, []);
 
   return (
@@ -71,6 +76,7 @@ export default function App() {
       </motion.div>
       <BootOverlay onDone={() => setBooted(true)} />
       <FirstRunOverlay />
+      <FormatSheet />
       <Scanlines />
       <Toasts />
     </>

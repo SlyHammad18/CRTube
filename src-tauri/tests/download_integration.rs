@@ -36,6 +36,8 @@ fn plan(kind: DownloadKind, dir: &std::path::Path, quality: AudioQuality) -> Dow
         title: "Me at the zoo".to_string(),
         video_id: "jNQXAC9IVRw".to_string(),
         template: None,
+        embed_thumbnail: true,
+        embed_metadata: true,
     }
 }
 

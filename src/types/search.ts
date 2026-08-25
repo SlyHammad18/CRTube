@@ -14,6 +14,7 @@ export interface FormatInfo {
   filesize?: number;
   vcodec?: string;
   acodec?: string;
+  dynamicRange?: string;
 }
 
 export interface VideoInfo {

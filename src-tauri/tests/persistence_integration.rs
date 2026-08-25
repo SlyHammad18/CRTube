@@ -36,6 +36,8 @@ async fn download_lands_in_db_and_persists_across_restart() {
         title: "Me at the zoo".to_string(),
         video_id: "jNQXAC9IVRw".to_string(),
         template: None,
+        embed_thumbnail: true,
+        embed_metadata: true,
     };
     let args = download_args(&bin, &plan, "https://www.youtube.com/watch?v=jNQXAC9IVRw");
     let mut child = download::spawn_ytdlp(&bin, &args).expect("spawn");

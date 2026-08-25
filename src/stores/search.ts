@@ -1,12 +1,12 @@
 import { create } from "zustand";
 import { ipc } from "../lib/ipc";
 import { looksLikeUrl } from "../lib/detect";
-import type { SearchItem, VideoInfo } from "../types/search";
+import { useSheetStore } from "./sheet";
+import type { SearchItem } from "../types/search";
 
 const PAGE_SIZE = 20;
 
 type SearchStatus = "idle" | "searching" | "loadingMore" | "done" | "error";
-type InfoStatus = "idle" | "probing" | "done" | "error";
 
 interface SearchStore {
   query: string;
@@ -17,16 +17,10 @@ interface SearchStore {
   hasMore: boolean;
   recent: string[];
 
-  info: VideoInfo | null;
-  infoStatus: InfoStatus;
-  infoError: string | null;
-  probedFrom: string | null;
-
   search: (query: string) => Promise<void>;
   loadMore: () => Promise<void>;
-  probe: (url: string) => Promise<void>;
   submitRaw: (raw: string) => Promise<void>;
-  clearInfo: () => void;
+  clear: () => void;
 }
 
 function rememberRecent(recent: string[], query: string): string[] {
@@ -42,11 +36,6 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
   hasMore: false,
   recent: [],
 
-  info: null,
-  infoStatus: "idle",
-  infoError: null,
-  probedFrom: null,
-
   search: async (query) => {
     const q = query.trim();
     if (!q) return;
@@ -57,10 +46,6 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
       status: "searching",
       error: null,
       hasMore: false,
-      info: null,
-      infoStatus: "idle",
-      infoError: null,
-      probedFrom: null,
     });
     try {
       const items = await ipc.searchYoutube(q, 1);
@@ -93,40 +78,21 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
     }
   },
 
-  probe: async (url) => {
-    set({
-      items: [],
-      query: "",
-      page: 0,
-      hasMore: false,
-      status: "idle",
-      error: null,
-      info: null,
-      infoStatus: "probing",
-      infoError: null,
-      probedFrom: url.trim(),
-    });
-    try {
-      const info = await ipc.fetchInfo(url.trim());
-      set({ info, infoStatus: "done" });
-    } catch (e) {
-      set({ infoStatus: "error", infoError: String(e) });
-    }
-  },
-
   submitRaw: async (raw) => {
     if (looksLikeUrl(raw)) {
-      await get().probe(raw);
-    } else {
-      await get().search(raw);
+      useSheetStore.getState().openForUrl(raw);
+      return;
     }
+    await get().search(raw);
   },
 
-  clearInfo: () =>
+  clear: () =>
     set({
-      info: null,
-      infoStatus: "idle",
-      infoError: null,
-      probedFrom: null,
+      query: "",
+      page: 0,
+      items: [],
+      status: "idle",
+      error: null,
+      hasMore: false,
     }),
 }));

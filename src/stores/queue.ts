@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { ipc } from "../lib/ipc";
 import type { DlDonePayload, DlErrorPayload, DlProgressPayload } from "../types/dl";
+import { useLibraryStore } from "./library";
 
 export type DlStatus = "active" | "done" | "error";
 
@@ -68,6 +69,7 @@ export const useQueueStore = create<QueueStore>((set) => ({
     void ipc.onDlDone((d: DlDonePayload) => {
       if (import.meta.env.DEV) console.debug("dl://done", d);
       patch(d.id, { status: "done", pct: 100 });
+      void useLibraryStore.getState().refresh();
     });
     void ipc.onDlError((e: DlErrorPayload) => {
       if (import.meta.env.DEV) console.debug("dl://error", e);

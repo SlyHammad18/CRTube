@@ -25,6 +25,8 @@ pub struct DownloadOpts {
     pub quality: Option<String>,
     pub thumb_url: Option<String>,
     pub download_dir: Option<String>,
+    pub embed_thumbnail: Option<bool>,
+    pub embed_metadata: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -117,6 +119,8 @@ pub async fn start_download(
         title: opts.title.trim().to_string(),
         video_id: opts.video_id.trim().to_string(),
         template: settings.filename_template.clone(),
+        embed_thumbnail: opts.embed_thumbnail.unwrap_or(true),
+        embed_metadata: opts.embed_metadata.unwrap_or(true),
     };
     if plan.title.is_empty() || plan.video_id.is_empty() {
         return Err("missing video title or id".into());
