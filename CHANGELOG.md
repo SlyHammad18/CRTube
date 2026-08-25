@@ -116,6 +116,21 @@ Player milestone: music/video playback tab with playlists and synced lyrics.
   volume/speed all render. `cargo clippy` + `npm run build` clean, 48 unit
   tests pass.
 
+### T15 fix — duplicate controls + empty artwork frame
+- The Now Playing pane already renders its own seek bar + transport (per
+  §4.8), so the global PlayerBar showing the same controls alongside it read as
+  duplicated UI. PlayerBar now hides while the Now Playing pane is open in the
+  player view (`nowPlayingOpen && view === "player"`); it returns on other
+  views and when the pane is collapsed. The window then has exactly one seek
+  bar + one transport row.
+- Now Playing artwork frame always paints a poster (cached thumbnail) behind
+  the portaled `<video>`, with a music-note placeholder when there is no art —
+  so the frame is never an empty black box ("video not working" perception).
+- Verified: single control set in the pane, artwork shows an image, and the
+  pane-collapse → bar-return + video-portal fallback path is unchanged
+  (PlayerTab unmounts the pane on collapse, releasing the primary slot to the
+  bar's secondary slot). `npm run build` clean.
+
 ## [0.1.0] — 2026-08-26
 
 Initial release: a complete, locally-processed YouTube downloader with a

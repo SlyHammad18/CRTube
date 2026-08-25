@@ -22,6 +22,10 @@ import { setSecondarySlot } from "./mediaSlots";
 export function PlayerBar() {
   const reduce = useReducedMotion();
   const active = usePlayerStore((s) => s.pos >= 0 && s.queue.length > 0);
+  // The Now Playing pane is the full player (seek + transport + lyrics) — the
+  // global mini-bar is redundant while it's open, so hide to avoid duplicate
+  // controls. The bar returns on other views or when the pane is collapsed.
+  const paneOpen = useUIStore((s) => s.nowPlayingOpen && s.view === "player");
   const entry = usePlayerStore(selectCurrentEntry);
   const playing = usePlayerStore((s) => s.playing);
   const currentTimeS = usePlayerStore((s) => s.currentTimeS);
@@ -50,7 +54,7 @@ export function PlayerBar() {
 
   return (
     <AnimatePresence>
-      {active && (
+      {active && !paneOpen && (
         <motion.div
           initial={reduce ? { opacity: 0 } : { y: 66 }}
           animate={reduce ? { opacity: 1 } : { y: 0 }}

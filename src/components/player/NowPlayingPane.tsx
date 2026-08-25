@@ -31,7 +31,6 @@ export function NowPlayingPane() {
     return () => setPrimarySlot(null);
   }, [slotEl]);
 
-  const isVideo = entry?.kind === "video" && entry.path !== "";
   const thumb =
     entry?.thumbUrl &&
     (entry.thumbUrl.startsWith("http")
@@ -56,19 +55,20 @@ export function NowPlayingPane() {
 
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-hidden border-l border-line bg-panel/50 p-4">
-      {/* Artwork frame — hosts the portaled <video> for video tracks */}
+      {/* Artwork frame — poster (cached thumbnail) behind the portaled <video>
+          for video tracks, so the frame is never an empty black box. */}
       <div className="relative aspect-square w-full shrink-0 overflow-hidden rounded-card border border-line bg-raise">
-        {thumb && !isVideo ? (
+        {thumb ? (
           <img
             src={thumb}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
           />
-        ) : !isVideo ? (
-          <span className="absolute inset-0 grid place-items-center font-mono text-11 text-dim">
-            no artwork
+        ) : (
+          <span className="absolute inset-0 grid place-items-center text-dim">
+            <MusicNotes size={40} weight="light" aria-hidden />
           </span>
-        ) : null}
+        )}
         <div ref={setSlotEl} id="nowplaying-media-slot" className="absolute inset-0" />
       </div>
 
