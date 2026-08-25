@@ -90,6 +90,32 @@ Player milestone: music/video playback tab with playlists and synced lyrics.
   updated to match. Verified: `npm run build` clean, `.text-11{}` present in
   bundle, re-critique of screenshots.
 
+### T15 — Now Playing + Caption Deck
+- `lib/lrc.ts`: pure `parseLrc` (multi-stamp + sorted) and binary-search
+  `activeIndex` for synced-line lookup.
+- `types/lyrics.ts` + `ipc.fetchLyrics` binding to the existing
+  `fetch_lyrics` Rust command (LRCLIB; cache-first).
+- `hooks/useLyrics.ts`: lazy fetch on active-entry change, state machine
+  (idle/loading/loaded/instrumental/none/error), and manual artist/title
+  override `refetch` for the fallback ladder.
+- `SeekBar.tsx`: 2px track, ice fill, grows to 4px on hover; flanking mono
+  times with click-to-toggle remaining/total; click/drag-to-seek.
+- `VolumeSlider.tsx`: reusable custom `.range-ice` control bound to settings.
+- `CaptionDeck.tsx`: the signature synced-lyrics deck — active line held at
+  center via spring scroll with masked edges, click-line-to-seek, 4px ice
+  caret; fallback ladder (instrumental tag / plain static block / no-result
+  prompt + manual-search form prefilled from metadata). Reduced-motion
+  collapses the spring.
+- `NowPlayingPane.tsx`: artwork + primary video portal slot, title, SeekBar,
+  transport row (shuffle·prev·44px play·next·repeat w/ "1" badge),
+  VolumeSlider + SpeedMenu, and CaptionDeck filling the remainder; idle block
+  preserved.
+- Verified live: LRCLIB lookup for "HIM - Join Me In Death" returned synced
+  LRC; active line highlighted and advanced with playback (0:00 → "Baby, join
+  me in death" → 0:21 "Not wearing half your perfume"); SeekBar/transport/
+  volume/speed all render. `cargo clippy` + `npm run build` clean, 48 unit
+  tests pass.
+
 ## [0.1.0] — 2026-08-26
 
 Initial release: a complete, locally-processed YouTube downloader with a

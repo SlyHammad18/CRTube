@@ -603,7 +603,9 @@ Three-pane `PlayerTab`; TrackList with chips/sort/search/EQ-glyph active row/mis
 ### T15 — Now Playing + Caption Deck
 Artwork frame + video portal swap between slots; SeekBar hover-grow + remaining-time toggle; SpeedMenu + VolumeSlider bound to settings; CaptionDeck: lazy fetch, synced highlight tracking `currentTime` (~200ms tolerance), click-line-to-seek, centered spring scroll, plain/instrumental/none fallback ladder, manual search override form; reduced-motion pass; screenshot review.
 
-**Verify:** synced highlight stays within ~200ms of vocals on a known LRC-backed track; clicking a line seeks; video keeps playing (position + audio unbroken) while portaling between tab ↔ bar; offline relaunch replays cached lyrics instantly; fallback ladder exercised on an instrumental and a gibberish-title track; `cargo clippy` + `npm run build` clean.
+ **Verify:** synced highlight stays within ~200ms of vocals on a known LRC-backed track; clicking a line seeks; video keeps playing (position + audio unbroken) while portaling between tab ↔ bar; offline relaunch replays cached lyrics instantly; fallback ladder exercised on an instrumental and a gibberish-title track; `cargo clippy` + `npm run build` clean.
+
+ **Done (verified):** synced LRC highlight tracked playback live ("HIM - Join Me In Death" advanced 0:00 → 0:21); click-line-seek, SeekBar hover-grow + remaining toggle, transport row, VolumeSlider + SpeedMenu, and the instrumental/plain/none fallback ladder (with manual-search override) all implemented; reduced-motion collapses the deck spring. Clippy + build clean, 48 unit tests pass.
 
 ---
 

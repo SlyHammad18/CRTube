@@ -11,6 +11,7 @@ import type { SearchItem, VideoInfo } from "../types/search";
 import type { LibraryEntry } from "../types/library";
 import type { AppSettings } from "../types/settings";
 import type { Playlist, PlaylistTrack } from "../types/player";
+import type { LyricsPayload } from "../types/lyrics";
 import type {
   DlDonePayload,
   DlErrorPayload,
@@ -65,6 +66,18 @@ export const ipc = {
   setSettings: (settings: AppSettings) =>
     invoke<AppSettings>("set_settings", { settings }),
   mediaUrl: (id: number) => invoke<string | null>("media_url", { id }),
+  fetchLyrics: (
+    videoId: string,
+    title: string,
+    channel?: string,
+    durationS?: number,
+  ) =>
+    invoke<LyricsPayload | null>("fetch_lyrics", {
+      videoId,
+      title,
+      channel,
+      durationS,
+    }),
 
   listPlaylists: () => invoke<Playlist[]>("list_playlists"),
   createPlaylist: (name: string) => invoke<Playlist>("create_playlist", { name }),
