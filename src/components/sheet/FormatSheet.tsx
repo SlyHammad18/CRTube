@@ -11,7 +11,6 @@ import {
 import { useSheetStore } from "../../stores/sheet";
 import { useSettingsStore } from "../../stores/settings";
 import { useQueueStore } from "../../stores/queue";
-import { pushToast } from "../../stores/toast";
 import { ipc, type AudioQualityPref, type DownloadKind } from "../../lib/ipc";
 import { fmtBytes, fmtDuration } from "../../lib/format";
 import { Toggle } from "../common/Toggle";
@@ -250,7 +249,6 @@ export function FormatSheet() {
 
   const settings = useSettingsStore((s) => s.settings);
   const setDownloadDir = useSettingsStore((s) => s.setDownloadDir);
-  const labelJob = useQueueStore((s) => s.labelJob);
   const reduce = useReducedMotion();
 
   const [tab, setTab] = useState<DownloadKind>("video");
@@ -290,9 +288,22 @@ export function FormatSheet() {
   const onDownload = async () => {
     const videoId = prefill?.videoId ?? info?.videoId;
     if (!videoId || !title || submitting) return;
+    const selectedRow = videoFormats.find(
+      (f) => f.height === height && f.ext === container,
+    );
+    const audioRows = info?.formats.filter((f) => f.height == null) ?? [];
+    const bestAudioSize = Math.max(0, ...audioRows.map((f) => f.filesize ?? 0));
+    const expectedSize =
+      tab === "video"
+        ? (selectedRow?.filesize ?? 0) + bestAudioSize > 0
+          ? (selectedRow?.filesize ?? 0) + bestAudioSize
+          : undefined
+        : bestAudioSize > 0
+          ? bestAudioSize
+          : undefined;
     setSubmitting(true);
     try {
-      const { id } = await ipc.startDownload({
+      useQueueStore.getState().enqueue({
         url: watchUrl(videoId),
         kind: tab,
         videoId,
@@ -306,12 +317,9 @@ export function FormatSheet() {
         downloadDir: settings?.download_dir,
         embedThumbnail: tab === "audio" ? embedThumb : true,
         embedMetadata: tab === "audio" ? embedMeta : true,
+        expectedSize,
       });
-      labelJob(id, title, videoId);
-      pushToast("Added to queue");
       close();
-    } catch (e) {
-      pushToast(`Queue failed — ${String(e)}`);
     } finally {
       setSubmitting(false);
     }

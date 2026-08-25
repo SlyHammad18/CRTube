@@ -18,6 +18,18 @@ export function fmtCount(n?: number | null): string | null {
   return String(n);
 }
 
+export function fmtEta(seconds?: number | null): string | null {
+  if (seconds === undefined || seconds === null || Number.isNaN(seconds)) {
+    return null;
+  }
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
 export function fmtBytes(bytes?: number | null): string | null {
   if (bytes === undefined || bytes === null || bytes <= 0) return null;
   const units = ["B", "KB", "MB", "GB", "TB"];

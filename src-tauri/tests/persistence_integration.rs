@@ -56,7 +56,7 @@ async fn download_lands_in_db_and_persists_across_restart() {
         started: std::time::SystemTime::now(),
     });
 
-    run_download_job(id, stdout, registry, move |e| {
+    run_download_job(id, stdout, registry, None, move |e| {
         sink.lock().unwrap().push(e)
     })
     .await;

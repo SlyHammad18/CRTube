@@ -5,6 +5,7 @@ export interface DlProgressPayload {
   eta_s: number | null;
   downloaded: number;
   total: number | null;
+  stage: string;
 }
 
 export interface DlDonePayload {

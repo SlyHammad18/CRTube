@@ -51,6 +51,19 @@
   animation: caret 1.1s step-end infinite;
 }
 
+@keyframes sheen {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(410%);
+  }
+}
+
+.animate-sheen {
+  animation: sheen 1.8s linear infinite;
+}
+
 @layer base {
   html,
   body,

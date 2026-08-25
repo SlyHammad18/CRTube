@@ -13,6 +13,8 @@ import { Toasts } from "./components/common/Toasts";
 import { FirstRunOverlay } from "./components/setup/FirstRunOverlay";
 import { FormatSheet } from "./components/sheet/FormatSheet";
 import { HomeSearch } from "./components/search/HomeSearch";
+import { DownloadsView } from "./components/downloads/DownloadsView";
+import { LibraryView } from "./components/library/LibraryView";
 import { PlaceholderView } from "./components/common/PlaceholderView";
 
 export default function App() {
@@ -66,6 +68,10 @@ export default function App() {
               >
                 {view === "search" ? (
                   <HomeSearch />
+                ) : view === "downloads" ? (
+                  <DownloadsView />
+                ) : view === "library" ? (
+                  <LibraryView />
                 ) : (
                   <PlaceholderView view={view} />
                 )}

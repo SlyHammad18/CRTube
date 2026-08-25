@@ -215,20 +215,24 @@ pub fn compute_metrics(
         .map(|t| ((cur_downloaded as f64 / t as f64) * 100.0).min(100.0))
         .unwrap_or(0.0);
 
-    let derived = prev.and_then(|(prev_secs, prev_downloaded)| {
+    let instant = prev.and_then(|(prev_secs, prev_downloaded)| {
         let dt = cur_secs - prev_secs;
         if dt <= 0.05 || cur_downloaded <= prev_downloaded {
             return None;
         }
-        let speed = ((cur_downloaded - prev_downloaded) as f64 / dt) as u64;
-        let eta = total.map(|t| ((t.saturating_sub(cur_downloaded)) as f64 / speed as f64) as u64);
-        Some((Some(speed), eta))
+        Some(((cur_downloaded - prev_downloaded) as f64 / dt) as u64)
+    });
+    let average = if cur_secs > 0.2 && cur_downloaded > 0 {
+        Some((cur_downloaded as f64 / cur_secs) as u64)
+    } else {
+        None
+    };
+    let speed = instant.or(average);
+    let eta = speed.and_then(|sp| {
+        total.map(|t| (t.saturating_sub(cur_downloaded) as f64 / sp as f64) as u64)
     });
 
-    match derived {
-        Some((speed, eta)) => (pct, speed, eta),
-        None => (pct, None, None),
-    }
+    (pct, speed, eta)
 }
 
 fn value_str(v: &Value, key: &str) -> Option<String> {
@@ -689,9 +693,10 @@ mod tests {
     #[test]
     fn computes_pct_speed_eta() {
         let total = Some(1000);
-        let (pct, speed, _eta) = compute_metrics(None, 1.0, 250, total);
+        let (pct, speed, eta) = compute_metrics(None, 1.0, 250, total);
         assert_eq!(pct, 25.0);
-        assert_eq!(speed, None);
+        assert_eq!(speed, Some(250));
+        assert_eq!(eta, Some(3));
 
         let (pct, speed, eta) = compute_metrics(Some((1.0, 250)), 3.0, 450, total);
         assert_eq!(pct, 45.0);

@@ -27,6 +27,7 @@ pub struct DownloadOpts {
     pub download_dir: Option<String>,
     pub embed_thumbnail: Option<bool>,
     pub embed_metadata: Option<bool>,
+    pub expected_size: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -175,6 +176,7 @@ pub async fn start_download(
         id,
         stdout,
         registry,
+        opts.expected_size,
         move |event| {
             if let DlEvent::Done(done) = &event {
                 let size_bytes = std::fs::metadata(&done.path).ok().map(|m| m.len());

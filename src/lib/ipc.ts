@@ -33,6 +33,7 @@ export interface DownloadRequest {
   downloadDir?: string;
   embedThumbnail?: boolean;
   embedMetadata?: boolean;
+  expectedSize?: number;
 }
 
 export const ipc = {

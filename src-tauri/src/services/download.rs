@@ -20,6 +20,7 @@ pub struct DlProgress {
     pub eta_s: Option<u64>,
     pub downloaded: u64,
     pub total: Option<u64>,
+    pub stage: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -120,28 +121,72 @@ pub async fn run_download_job(
     id: u64,
     stdout: ChildStdout,
     registry: Arc<JobRegistry>,
+    fallback_total: Option<u64>,
     on_event: impl Fn(DlEvent),
 ) {
     let mut lines = BufReader::new(stdout).lines();
     let start = Instant::now();
     let mut prev: Option<(f64, u64)> = None;
     let mut last_emit = Instant::now() - EMIT_INTERVAL;
+    let mut stage = "download".to_string();
+    let mut last_downloaded: u64 = 0;
+    let mut last_total: Option<u64> = None;
+    let mut last_pct: f64 = 0.0;
+    let mut stream_offset: u64 = 0;
+    let mut stream_downloaded: u64 = 0;
 
     while let Ok(Some(line)) = lines.next_line().await {
+        if line.contains("[download] Destination:") {
+            stream_offset += stream_downloaded;
+            stream_downloaded = 0;
+            prev = None;
+            continue;
+        }
         let Some((downloaded, total)) = parse_progress_line(&line) else {
+            let new_stage = if line.contains("[Merger]") {
+                Some("merging")
+            } else if line.contains("[ExtractAudio]") {
+                Some("extracting audio")
+            } else if line.contains("[EmbedThumbnail]") || line.contains("[Metadata]") {
+                Some("embedding tags")
+            } else {
+                None
+            };
+            if let Some(s) = new_stage {
+                if stage != s {
+                    stage = s.to_string();
+                    on_event(DlEvent::Progress(DlProgress {
+                        id,
+                        pct: last_pct,
+                        speed_bps: None,
+                        eta_s: None,
+                        downloaded: last_downloaded,
+                        total: last_total,
+                        stage: stage.clone(),
+                    }));
+                    last_emit = Instant::now();
+                }
+            }
             continue;
         };
+        let effective_total = total.or(fallback_total);
+        stream_downloaded = downloaded;
+        let cumulative = stream_offset.saturating_add(downloaded);
         let secs = start.elapsed().as_secs_f64();
-        let (pct, speed, eta) = compute_metrics(prev, secs, downloaded, total);
-        prev = Some((secs, downloaded));
+        let (pct, speed, eta) = compute_metrics(prev, secs, cumulative, effective_total);
+        prev = Some((secs, cumulative));
+        last_downloaded = cumulative;
+        last_total = effective_total;
+        last_pct = pct;
         if last_emit.elapsed() >= EMIT_INTERVAL {
             on_event(DlEvent::Progress(DlProgress {
                 id,
                 pct,
                 speed_bps: speed,
                 eta_s: eta,
-                downloaded,
-                total,
+                downloaded: cumulative,
+                total: effective_total,
+                stage: stage.clone(),
             }));
             last_emit = Instant::now();
         }

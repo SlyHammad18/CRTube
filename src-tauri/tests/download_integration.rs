@@ -103,6 +103,7 @@ async fn downloads_tiny_video_as_mp4() {
         id,
         stdout,
         registry,
+        None,
         move |e| sink.lock().unwrap().push(e),
     )
     .await;
@@ -157,7 +158,7 @@ async fn downloads_mp3_best_with_cover_and_tags() {
         started: std::time::SystemTime::now(),
     });
 
-    run_download_job(id, stdout, registry, move |e| {
+    run_download_job(id, stdout, registry, None, move |e| {
         sink.lock().unwrap().push(e)
     })
     .await;
@@ -219,9 +220,13 @@ async fn cancel_mid_download_leaves_no_partial_files() {
         started: std::time::SystemTime::now(),
     });
 
-    let runner = tokio::spawn(run_download_job(id, stdout, registry.clone(), move |e| {
-        sink.lock().unwrap().push(e)
-    }));
+    let runner = tokio::spawn(run_download_job(
+        id,
+        stdout,
+        registry.clone(),
+        None,
+        move |e| sink.lock().unwrap().push(e),
+    ));
 
     assert!(
         wait_for_progress(&events, Duration::from_secs(90)).await,
