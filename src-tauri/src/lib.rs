@@ -1,5 +1,5 @@
 mod commands;
-mod services;
+pub mod services;
 
 use commands::tools::ToolService;
 
@@ -11,7 +11,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::tools::ensure_tools,
             commands::tools::tool_versions,
-            commands::tools::update_ytdlp
+            commands::tools::update_ytdlp,
+            commands::search::search_youtube,
+            commands::search::fetch_info
         ])
         .run(tauri::generate_context!())
         .expect("error while running CRTube");

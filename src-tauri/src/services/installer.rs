@@ -10,6 +10,8 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const YT_DLP_RELEASE_API: &str =
     "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
+
+pub const APP_IDENTIFIER: &str = "io.github.slyhammad18.crtube";
 const YT_DLP_ASSET_LINUX: &str = "yt-dlp";
 const YT_DLP_ASSET_WINDOWS: &str = "yt-dlp.exe";
 const YT_DLP_ASSET_MACOS: &str = "yt-dlp_macos";
@@ -99,6 +101,38 @@ pub fn bin_dir(app: &AppHandle) -> Result<PathBuf> {
         .join("bin"))
 }
 
+#[allow(dead_code)]
+pub fn resolve_bin_dir() -> Result<PathBuf> {
+    if let Ok(dir) = std::env::var("CRTUBE_BIN_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let data_home = std::env::var("XDG_DATA_HOME")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| PathBuf::from(h).join(".local/share"))
+            })
+            .ok_or_else(|| ToolError::Network("cannot resolve app data dir".into()))?;
+        Ok(data_home.join(APP_IDENTIFIER).join("bin"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let appdata = std::env::var("APPDATA")
+            .map(PathBuf::from)
+            .map_err(|_| ToolError::Network("APPDATA unset".into()))?;
+        Ok(appdata.join(APP_IDENTIFIER).join("bin"))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        Err(ToolError::UnsupportedPlatform)
+    }
+}
+
 pub fn ytdlp_path(bin: &Path) -> PathBuf {
     bin.join(yt_dlp_asset_name())
 }
@@ -137,7 +171,6 @@ pub fn parse_ffmpeg_version(line: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-#[allow(dead_code)]
 pub fn prepended_path(bin: &Path) -> String {
     let existing = std::env::var("PATH").unwrap_or_default();
     let sep = if cfg!(windows) { ";" } else { ":" };

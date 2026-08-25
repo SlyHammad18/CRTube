@@ -7,12 +7,17 @@ import type {
   UpdateYtdlpResult,
   VersionsResult,
 } from "../types/tools";
+import type { SearchItem, VideoInfo } from "../types/search";
 
 export const ipc = {
   ensureTools: () => invoke<EnsureResult>("ensure_tools"),
   toolVersions: () => invoke<VersionsResult>("tool_versions"),
   updateYtdlp: (force: boolean) =>
     invoke<UpdateYtdlpResult>("update_ytdlp", { force }),
+
+  searchYoutube: (query: string, page: number) =>
+    invoke<SearchItem[]>("search_youtube", { query, page }),
+  fetchInfo: (url: string) => invoke<VideoInfo>("fetch_info", { url }),
 
   onToolsProgress: async (
     cb: (payload: ToolsProgressPayload) => void,

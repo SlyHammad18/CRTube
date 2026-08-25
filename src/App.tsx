@@ -8,6 +8,7 @@ import { BootOverlay } from "./components/boot/BootOverlay";
 import { Scanlines } from "./components/common/Scanlines";
 import { Toasts } from "./components/common/Toasts";
 import { FirstRunOverlay } from "./components/setup/FirstRunOverlay";
+import { HomeSearch } from "./components/search/HomeSearch";
 import { PlaceholderView } from "./components/common/PlaceholderView";
 
 export default function App() {
@@ -56,7 +57,11 @@ export default function App() {
                   ease: [0.16, 1, 0.3, 1],
                 }}
               >
-                <PlaceholderView view={view} />
+                {view === "search" ? (
+                  <HomeSearch />
+                ) : (
+                  <PlaceholderView view={view} />
+                )}
               </motion.div>
             </AnimatePresence>
           </main>
