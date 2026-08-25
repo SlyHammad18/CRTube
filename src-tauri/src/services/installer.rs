@@ -59,6 +59,28 @@ impl std::fmt::Display for ToolError {
 
 impl std::error::Error for ToolError {}
 
+impl ToolError {
+    /// Friendly, user-facing text for toasts/status (no raw technical noise).
+    pub fn user_message(&self) -> String {
+        match self {
+            Self::Network(_) => {
+                "Couldn't reach the server — check your connection. Existing tools will be used if present.".to_string()
+            }
+            Self::ChecksumMismatch { asset } => format!(
+                "Downloaded {asset} failed its security check — keeping the previous version."
+            ),
+            Self::ChecksumUnavailable => {
+                "Couldn't verify the download's safety — keeping the previous version.".to_string()
+            }
+            Self::UnsupportedPlatform => {
+                "This platform isn't supported for automatic tool installation.".to_string()
+            }
+            Self::Archive(m) => format!("Couldn't unpack the download: {m}"),
+            Self::Io(e) => format!("Disk error while installing tools: {e}"),
+        }
+    }
+}
+
 impl From<std::io::Error> for ToolError {
     fn from(e: std::io::Error) -> Self {
         Self::Io(e)

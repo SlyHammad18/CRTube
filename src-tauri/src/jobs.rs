@@ -30,4 +30,13 @@ impl JobRegistry {
     pub fn take(&self, id: u64) -> Option<JobEntry> {
         self.jobs.lock().unwrap().remove(&id)
     }
+
+    /// True if a job for this video id is currently registered (in-flight).
+    pub fn has_video(&self, video_id: &str) -> bool {
+        self.jobs
+            .lock()
+            .unwrap()
+            .values()
+            .any(|j| j.video_id == video_id)
+    }
 }

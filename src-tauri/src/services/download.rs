@@ -7,7 +7,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, ChildStdout};
 
 use super::installer::{prepended_path, ytdlp_path};
-use super::ytdlp::{compute_metrics, parse_progress_line};
+use super::ytdlp::{compute_metrics, friendly_message, parse_progress_line};
 use crate::jobs::JobRegistry;
 
 const EMIT_INTERVAL: Duration = Duration::from_millis(150);
@@ -225,16 +225,17 @@ pub async fn run_download_job(
         }
         _ => {
             cleanup_partials(&entry.dir, &entry.video_id);
-            let tail: Vec<&str> = stderr.lines().rev().take(4).collect();
-            let tail = tail.into_iter().rev().collect::<Vec<_>>().join(" | ");
-            on_event(DlEvent::Failed(DlError {
-                id,
-                message: if tail.is_empty() {
-                    format!("yt-dlp exited with {}", status.map(|s| s.to_string()).unwrap_or_else(|_| "error".into()))
-                } else {
-                    tail
-                },
-            }));
+            let message = if stderr.trim().is_empty() {
+                format!(
+                    "yt-dlp exited with {}",
+                    status
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|_| "error".into())
+                )
+            } else {
+                friendly_message(&stderr)
+            };
+            on_event(DlEvent::Failed(DlError { id, message }));
         }
     }
 }

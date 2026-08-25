@@ -11,6 +11,8 @@ import {
 import { useSheetStore } from "../../stores/sheet";
 import { useSettingsStore } from "../../stores/settings";
 import { useQueueStore } from "../../stores/queue";
+import { useLibraryStore } from "../../stores/library";
+import { pushToast } from "../../stores/toast";
 import { ipc, type AudioQualityPref, type DownloadKind } from "../../lib/ipc";
 import { fmtBytes, fmtDuration } from "../../lib/format";
 import { Toggle } from "../common/Toggle";
@@ -288,6 +290,14 @@ export function FormatSheet() {
   const onDownload = async () => {
     const videoId = prefill?.videoId ?? info?.videoId;
     if (!videoId || !title || submitting) return;
+    if (
+      useLibraryStore
+        .getState()
+        .entries.some((e) => e.videoId === videoId)
+    ) {
+      pushToast("Already in your library");
+      return;
+    }
     const selectedRow = videoFormats.find(
       (f) => f.height === height && f.ext === container,
     );

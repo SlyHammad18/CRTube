@@ -127,6 +127,15 @@ pub async fn start_download(
         return Err("missing video title or id".into());
     }
 
+    if registry.has_video(&plan.video_id) {
+        return Err("This video is already downloading".into());
+    }
+    if let Ok(conn) = db.0.lock() {
+        if db::has_download(&conn, &plan.video_id).unwrap_or(false) {
+            return Err("This video is already in your library".into());
+        }
+    }
+
     let args = ytdlp::download_args(&bin_dir, &plan, &url);
     let mut child = download::spawn_ytdlp(&bin_dir, &args)
         .map_err(|e| format!("failed to spawn yt-dlp: {e}"))?;

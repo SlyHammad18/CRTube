@@ -65,7 +65,7 @@ async fn ensure_tools_flow(
     tokio::fs::create_dir_all(&bin).await.map_err(|e| e.to_string())?;
 
     let ffmpeg_version =
-        installer::ensure_ffmpeg(app, &bin).await.map_err(|e| e.to_string())?;
+        installer::ensure_ffmpeg(app, &bin).await.map_err(|e| e.user_message())?;
 
     let current_ytdlp = installer::probe_ytdlp(&bin).await;
     let settings = crate::commands::settings::load_settings(app);
@@ -77,17 +77,35 @@ async fn ensure_tools_flow(
     };
 
     let (ytdlp_version, ytdlp_updated) = if needs_check {
-        let latest =
-            installer::fetch_latest_ytdlp().await.map_err(|e| e.to_string())?;
-        match current_ytdlp.as_deref() {
-            Some(v) if v == latest.tag => (latest.tag.clone(), false),
-            _ => {
-                let updated = current_ytdlp.is_some();
-                let version = install_latest_ytdlp(app, &bin, &latest)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                (version, updated)
-            }
+        match installer::fetch_latest_ytdlp().await {
+            Ok(latest) => match current_ytdlp.as_deref() {
+                Some(v) if v == latest.tag => (latest.tag.clone(), false),
+                _ => {
+                    let updated = current_ytdlp.is_some();
+                    match install_latest_ytdlp(app, &bin, &latest).await {
+                        Ok(version) => (version, updated),
+                        Err(e) => match &current_ytdlp {
+                            // Offline / checksum / download failure while an
+                            // existing yt-dlp is present: keep using it instead
+                            // of failing the whole boot.
+                            Some(v) => {
+                                emit_status(app, "ready");
+                                (v.clone(), false)
+                            }
+                            None => return Err(format!("Couldn't install yt-dlp: {}", e.user_message())),
+                        },
+                    }
+                }
+            },
+            Err(e) => match &current_ytdlp {
+                Some(v) => (v.clone(), false),
+                None => {
+                    return Err(format!(
+                        "Couldn't check for tools (offline?): {}",
+                        e.user_message()
+                    ))
+                }
+            },
         }
     } else {
         (current_ytdlp.clone().expect("checked above"), false)
@@ -125,7 +143,7 @@ async fn update_ytdlp_flow(
     let bin = installer::bin_dir(app).map_err(|e| e.to_string())?;
     tokio::fs::create_dir_all(&bin).await.map_err(|e| e.to_string())?;
 
-    let latest = installer::fetch_latest_ytdlp().await.map_err(|e| e.to_string())?;
+    let latest = installer::fetch_latest_ytdlp().await.map_err(|e| e.user_message())?;
     let current = installer::probe_ytdlp(&bin).await;
 
     if !force && current.as_deref() == Some(latest.tag.as_str()) {
@@ -137,7 +155,7 @@ async fn update_ytdlp_flow(
 
     let installed = install_latest_ytdlp(app, &bin, &latest)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.user_message())?;
 
     let ffmpeg = svc.cached().and_then(|v| v.ffmpeg);
     svc.cache(Versions {

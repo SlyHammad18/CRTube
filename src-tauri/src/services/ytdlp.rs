@@ -138,12 +138,18 @@ impl DownloadPlan {
     }
 
     pub fn output_template(&self) -> String {
+        let safe_title = sanitize_filename_component(&self.title);
+        let title_part = if safe_title.is_empty() {
+            self.video_id.clone()
+        } else {
+            safe_title
+        };
         match &self.template {
             Some(t) => t
-                .replace("{title}", &self.title)
+                .replace("{title}", &title_part)
                 .replace("{id}", &self.video_id)
                 .replace("{ext}", self.ext()),
-            None => format!("{} [{}].{}", self.title, self.video_id, self.ext()),
+            None => format!("{} [{}].{}", title_part, self.video_id, self.ext()),
         }
     }
 }
@@ -191,6 +197,104 @@ pub fn download_args(bin_dir: &Path, plan: &DownloadPlan, url: &str) -> Vec<Stri
         args.push("--embed-thumbnail".to_string());
     }
     args
+}
+
+/// Sanitize a user-supplied filename *component*: strip control characters and
+/// filesystem-illegal characters, trim whitespace/dots, and cap length so the
+/// final path component stays within typical filesystem limits (255 bytes).
+/// Unicode is preserved except for the illegal codepoints above.
+pub fn sanitize_filename_component(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for ch in name.chars() {
+        if ch.is_control() {
+            continue;
+        }
+        match ch {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => out.push('_'),
+            c => out.push(c),
+        }
+    }
+    let trimmed = out.trim().trim_matches('.').to_string();
+    let capped: String = trimmed.chars().take(200).collect();
+    if capped.is_empty() || capped.chars().all(|c| c == '_' || c.is_whitespace()) {
+        "video".to_string()
+    } else {
+        capped
+    }
+}
+
+/// Map a raw yt-dlp error / stderr into a short, friendly, user-facing message.
+/// Returns a condensed copy of the original error when no known pattern matches.
+pub fn friendly_message(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+
+    if lower.contains("no space left on device")
+        || lower.contains("no space")
+        || lower.contains("disk is full")
+        || lower.contains("errno 28")
+    {
+        return "Disk is full — free up space and try again".to_string();
+    }
+    if lower.contains("sign in to confirm you're not a bot")
+        || lower.contains("confirm you're not a bot")
+        || lower.contains("botguard")
+        || lower.contains("please log in to confirm")
+    {
+        return "YouTube blocked this request — try again in a few minutes".to_string();
+    }
+    if lower.contains("not available in your country")
+        || lower.contains("unavailable in your country")
+        || lower.contains("blocked in your country")
+        || (lower.contains("region") && lower.contains("unavailable"))
+    {
+        return "This video is blocked in your region".to_string();
+    }
+    if lower.contains("this video is private") || lower.contains("private video") {
+        return "This video is private".to_string();
+    }
+    if lower.contains("video unavailable") || lower.contains("this video is unavailable") {
+        return "This video is unavailable".to_string();
+    }
+    if lower.contains("http error 429")
+        || lower.contains("too many requests")
+        || (lower.contains("rate") && lower.contains("limit"))
+    {
+        return "YouTube is rate-limiting requests — wait a moment and retry".to_string();
+    }
+    if lower.contains("failed to extract")
+        || lower.contains("unable to extract")
+        || lower.contains("bug report")
+    {
+        return "Couldn't read this video — YouTube may have changed, update to the newest CRTube".to_string();
+    }
+    if lower.contains("is not a valid url")
+        || lower.contains("unsupported url")
+        || lower.contains("no supported")
+    {
+        return "That link isn't a downloadable YouTube video".to_string();
+    }
+    if lower.contains("timed out")
+        || lower.contains("timeout")
+        || (lower.contains("network") || lower.contains("connection"))
+    {
+        return "Network error — check your connection and retry".to_string();
+    }
+
+    let cleaned: String = raw
+        .lines()
+        .filter(|l| {
+            let t = l.to_lowercase();
+            t.contains("error") || t.contains("warning")
+        })
+        .map(|l| l.trim())
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if cleaned.is_empty() {
+        "Download failed — see the queue for details".to_string()
+    } else {
+        cleaned.chars().take(160).collect()
+    }
 }
 
 pub fn parse_progress_line(line: &str) -> Option<(u64, Option<u64>)> {
@@ -394,13 +498,7 @@ async fn run_ytdlp(bin: &Path, args: &[String], timeout_secs: u64) -> Result<Str
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail: Vec<&str> = stderr.lines().rev().take(4).collect();
-        let tail = tail.into_iter().rev().collect::<Vec<_>>().join(" | ");
-        return Err(YtDlpError::Failed(if tail.is_empty() {
-            format!("yt-dlp exited with {}", output.status)
-        } else {
-            tail
-        }));
+        return Err(YtDlpError::Failed(friendly_message(&stderr)));
     }
     String::from_utf8(output.stdout).map_err(|_| YtDlpError::Parse("stdout not utf8".into()))
 }
@@ -711,5 +809,72 @@ mod tests {
         assert_eq!(pct, 0.0);
         assert!(speed.is_some());
         assert!(eta.is_none());
+    }
+
+    #[test]
+    fn sanitizes_illegal_filename_chars_and_length() {
+        assert_eq!(sanitize_filename_component("Foo/Bar:Baz*?"), "Foo_Bar_Baz__");
+        assert_eq!(
+            sanitize_filename_component("  leading and trailing. "),
+            "leading and trailing"
+        );
+        // control chars dropped, unicode kept
+        assert_eq!(
+            sanitize_filename_component("a\u{0007}b\u{1F600}c"),
+            "ab\u{1F600}c"
+        );
+        // empty after sanitizing falls back to "video"
+        assert_eq!(sanitize_filename_component("***"), "video");
+        // length is capped
+        let long = "x".repeat(500);
+        assert!(sanitize_filename_component(&long).len() <= 200);
+    }
+
+    #[test]
+    fn output_template_is_sanitized() {
+        let mut p = DownloadPlan {
+            kind: DownloadKind::Video,
+            container: "mp4".to_string(),
+            height: 720,
+            quality: AudioQuality::Best,
+            download_dir: PathBuf::from("/tmp/dl"),
+            title: "Weird: Title? /with* bad|chars".to_string(),
+            video_id: "abc12345678".to_string(),
+            template: None,
+            embed_thumbnail: true,
+            embed_metadata: true,
+        };
+        let out = p.output_template();
+        assert!(!out.contains(['/', ':', '*', '?', '|']));
+        assert!(out.starts_with("Weird_ Title_ _with_ bad_chars"));
+        assert!(out.ends_with("[abc12345678].mp4"));
+
+        p.template = Some("{title}.{ext}".to_string());
+        let out2 = p.output_template();
+        assert!(!out2.contains(['/', ':']));
+        assert!(out2.ends_with(".mp4"));
+    }
+
+    #[test]
+    fn friendly_messages_map_known_errors() {
+        assert_eq!(
+            friendly_message("ERROR: Unable to write ... No space left on device"),
+            "Disk is full — free up space and try again"
+        );
+        assert_eq!(
+            friendly_message("Sign in to confirm you're not a bot"),
+            "YouTube blocked this request — try again in a few minutes"
+        );
+        assert_eq!(
+            friendly_message("This video is not available in your country"),
+            "This video is blocked in your region"
+        );
+        assert_eq!(
+            friendly_message("ERROR: Private video"),
+            "This video is private"
+        );
+        // unknown error condenses instead of crashing
+        let msg = friendly_message("some random failure with no known pattern");
+        assert!(!msg.is_empty());
     }
 }

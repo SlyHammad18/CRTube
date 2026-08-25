@@ -66,7 +66,7 @@ export const useQueueStore = create<QueueStore>((set, get) => {
       .then(({ id }) => patchItem(item.localId, { backendId: id }))
       .catch((e) => {
         patchItem(item.localId, { status: "error", error: String(e) });
-        pushToast(`Couldn't start “${item.request.title}”`);
+        pushToast(`Couldn't start: ${String(e)}`);
         get().pump();
       });
   }
@@ -167,7 +167,7 @@ export const useQueueStore = create<QueueStore>((set, get) => {
         const item = get().items.find((i) => i.backendId === e.id);
         if (!item) return;
         patchItem(item.localId, { status: "error", error: e.message });
-        pushToast(`Failed — ${item.request.title}`);
+        pushToast(`Failed — ${e.message}`);
         get().pump();
       });
 
