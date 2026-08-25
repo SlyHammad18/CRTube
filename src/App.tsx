@@ -1,9 +1,13 @@
+import { useEffect } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useUIStore } from "./stores/ui";
+import { useToolsStore } from "./stores/tools";
 import { Titlebar } from "./components/titlebar/Titlebar";
 import { Rail } from "./components/rail/Rail";
 import { BootOverlay } from "./components/boot/BootOverlay";
 import { Scanlines } from "./components/common/Scanlines";
+import { Toasts } from "./components/common/Toasts";
+import { FirstRunOverlay } from "./components/setup/FirstRunOverlay";
 import { PlaceholderView } from "./components/common/PlaceholderView";
 
 export default function App() {
@@ -11,6 +15,10 @@ export default function App() {
   const booted = useUIStore((s) => s.booted);
   const setBooted = useUIStore((s) => s.setBooted);
   const reduce = useReducedMotion();
+
+  useEffect(() => {
+    void useToolsStore.getState().init();
+  }, []);
 
   return (
     <>
@@ -55,7 +63,9 @@ export default function App() {
         </div>
       </motion.div>
       <BootOverlay onDone={() => setBooted(true)} />
+      <FirstRunOverlay />
       <Scanlines />
+      <Toasts />
     </>
   );
 }

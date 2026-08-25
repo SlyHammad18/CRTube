@@ -1,4 +1,4 @@
-// z-index layers: views 0 · format sheet 40 · scanlines 90 · boot overlay 100 · toasts 110
+// z-index layers: views 0 · format sheet 40 · first-run overlay 60 · scanlines 90 · boot overlay 100 · toasts 110
 export function Scanlines() {
   return (
     <div

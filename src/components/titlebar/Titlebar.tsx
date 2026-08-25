@@ -3,8 +3,23 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Broadcast, Copy, Minus, Square, X } from "@phosphor-icons/react";
 import type { IconProps } from "@phosphor-icons/react";
 import type { ComponentType } from "react";
+import { useToolsStore } from "../../stores/tools";
 
 type ControlIcon = ComponentType<IconProps>;
+
+const DOT_CLASS: Record<string, string> = {
+  idle: "bg-dim",
+  updating: "bg-amber",
+  ready: "bg-ice",
+  error: "bg-signal",
+};
+
+const STATE_LABEL: Record<string, string> = {
+  idle: "checking",
+  updating: "updating",
+  ready: "ready",
+  error: "error",
+};
 
 function useMaximized() {
   const [maximized, setMaximized] = useState(false);
@@ -28,6 +43,8 @@ function useMaximized() {
 export function Titlebar() {
   const maximized = useMaximized();
   const win = getCurrentWindow();
+  const toolsState = useToolsStore((s) => s.state);
+  const ytdlpVersion = useToolsStore((s) => s.ytdlpVersion);
 
   const controls: {
     label: string;
@@ -68,8 +85,10 @@ export function Titlebar() {
           data-tauri-drag-region
           className="flex items-center gap-2 font-mono text-12 text-dim"
         >
-          <span className="inline-block h-[7px] w-[7px] rounded-full bg-ice" />
-          ytdlp —— · ready
+          <span
+            className={`inline-block h-[7px] w-[7px] rounded-full ${DOT_CLASS[toolsState]}`}
+          />
+          ytdlp {ytdlpVersion ?? "——"} · {STATE_LABEL[toolsState]}
         </span>
       </div>
       <div className="flex items-stretch">
