@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useUIStore } from "./stores/ui";
 import { useToolsStore } from "./stores/tools";
+import { useQueueStore } from "./stores/queue";
 import { Titlebar } from "./components/titlebar/Titlebar";
 import { Rail } from "./components/rail/Rail";
 import { BootOverlay } from "./components/boot/BootOverlay";
@@ -19,6 +20,7 @@ export default function App() {
 
   useEffect(() => {
     void useToolsStore.getState().init();
+    useQueueStore.getState().attach();
   }, []);
 
   return (

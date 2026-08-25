@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -89,6 +89,134 @@ pub fn probe_args(url: &str) -> Vec<String> {
         "--no-playlist".to_string(),
         url.to_string(),
     ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownloadKind {
+    Video,
+    Audio,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioQuality {
+    Best,
+    Q192,
+    Q128,
+}
+
+impl AudioQuality {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::Best => "0",
+            Self::Q192 => "2",
+            Self::Q128 => "5",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DownloadPlan {
+    pub kind: DownloadKind,
+    pub container: String,
+    pub height: u32,
+    pub quality: AudioQuality,
+    pub download_dir: PathBuf,
+    pub title: String,
+    pub video_id: String,
+}
+
+impl DownloadPlan {
+    pub fn ext(&self) -> &str {
+        match self.kind {
+            DownloadKind::Audio => "mp3",
+            DownloadKind::Video => &self.container,
+        }
+    }
+
+    pub fn output_template(&self) -> String {
+        format!("{} [{}].{}", self.title, self.video_id, self.ext())
+    }
+}
+
+const PROGRESS_TEMPLATE: &str =
+    "download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s";
+
+pub fn download_args(bin_dir: &Path, plan: &DownloadPlan, url: &str) -> Vec<String> {
+    let mut args = vec![
+        "--newline".to_string(),
+        "--no-colors".to_string(),
+        "--ffmpeg-location".to_string(),
+        bin_dir.to_string_lossy().to_string(),
+        "--progress-template".to_string(),
+        PROGRESS_TEMPLATE.to_string(),
+        "-P".to_string(),
+        plan.download_dir.to_string_lossy().to_string(),
+        "-o".to_string(),
+        plan.output_template(),
+        url.to_string(),
+    ];
+    match plan.kind {
+        DownloadKind::Video => {
+            args.push("-f".to_string());
+            args.push(format!(
+                "bv*[ext={container}][height<={height}]+ba[ext=m4a]/b[height<={height}]",
+                container = plan.container,
+                height = plan.height
+            ));
+            args.push("--merge-output-format".to_string());
+            args.push(plan.container.clone());
+            args.push("--embed-metadata".to_string());
+            args.push("--embed-thumbnail".to_string());
+        }
+        DownloadKind::Audio => {
+            args.push("-x".to_string());
+            args.push("--audio-format".to_string());
+            args.push("mp3".to_string());
+            args.push("--audio-quality".to_string());
+            args.push(plan.quality.code().to_string());
+            args.push("--embed-thumbnail".to_string());
+            args.push("--embed-metadata".to_string());
+        }
+    }
+    args
+}
+
+pub fn parse_progress_line(line: &str) -> Option<(u64, Option<u64>)> {
+    let rest = line.strip_prefix("PROG|")?;
+    let mut parts = rest.split('|');
+    let downloaded = parts.next()?.trim().parse::<u64>().ok()?;
+    let total = match parts.next()?.trim() {
+        "NA" | "" => None,
+        n => n.parse::<u64>().ok(),
+    };
+    Some((downloaded, total))
+}
+
+pub fn compute_metrics(
+    prev: Option<(f64, u64)>,
+    cur_secs: f64,
+    cur_downloaded: u64,
+    total: Option<u64>,
+) -> (f64, Option<u64>, Option<u64>) {
+    let pct = total
+        .filter(|t| *t > 0)
+        .map(|t| ((cur_downloaded as f64 / t as f64) * 100.0).min(100.0))
+        .unwrap_or(0.0);
+
+    let derived = prev.and_then(|(prev_secs, prev_downloaded)| {
+        let dt = cur_secs - prev_secs;
+        if dt <= 0.05 || cur_downloaded <= prev_downloaded {
+            return None;
+        }
+        let speed = ((cur_downloaded - prev_downloaded) as f64 / dt) as u64;
+        let eta = total.map(|t| ((t.saturating_sub(cur_downloaded)) as f64 / speed as f64) as u64);
+        Some((Some(speed), eta))
+    });
+
+    match derived {
+        Some((speed, eta)) => (pct, speed, eta),
+        None => (pct, None, None),
+    }
 }
 
 fn value_str(v: &Value, key: &str) -> Option<String> {
@@ -434,6 +562,98 @@ mod tests {
         assert_eq!(page3[0].video_id, "v40");
 
         assert!(page_slice(Vec::new(), 1).is_empty());
-        assert_eq!(page_slice(items.clone(), 99).len(), 0);
+        assert_eq!(page_slice(items, 99).len(), 0);
+    }
+
+    fn plan(kind: DownloadKind, quality: AudioQuality) -> DownloadPlan {
+        DownloadPlan {
+            kind,
+            container: "mp4".to_string(),
+            height: 720,
+            quality,
+            download_dir: PathBuf::from("/tmp/dl"),
+            title: "Some Video".to_string(),
+            video_id: "abc12345678".to_string(),
+        }
+    }
+
+    #[test]
+    fn video_download_args_match_pinned_invocation() {
+        let args = download_args(Path::new("/opt/bin"), &plan(DownloadKind::Video, AudioQuality::Best), "https://youtu.be/abc12345678");
+        assert_eq!(
+            args,
+            vec![
+                "--newline",
+                "--no-colors",
+                "--ffmpeg-location",
+                "/opt/bin",
+                "--progress-template",
+                "download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s",
+                "-P",
+                "/tmp/dl",
+                "-o",
+                "Some Video [abc12345678].mp4",
+                "https://youtu.be/abc12345678",
+                "-f",
+                "bv*[ext=mp4][height<=720]+ba[ext=m4a]/b[height<=720]",
+                "--merge-output-format",
+                "mp4",
+                "--embed-metadata",
+                "--embed-thumbnail",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn audio_download_args_match_pinned_invocation() {
+        for (quality, code) in [
+            (AudioQuality::Best, "0"),
+            (AudioQuality::Q192, "2"),
+            (AudioQuality::Q128, "5"),
+        ] {
+            let args = download_args(Path::new("/b"), &plan(DownloadKind::Audio, quality), "u");
+            let qpos = args.iter().position(|a| a == "--audio-quality").unwrap();
+            assert_eq!(args[qpos + 1], code);
+            assert!(args.contains(&"-x".to_string()));
+            assert!(args.contains(&"--audio-format".to_string()));
+            assert!(args.windows(2).any(|w| w[0] == "-o" && w[1].ends_with(".mp3")));
+            assert!(args.contains(&"--embed-thumbnail".to_string()));
+            assert!(args.contains(&"--embed-metadata".to_string()));
+        }
+    }
+
+    #[test]
+    fn parses_progress_template_lines() {
+        assert_eq!(parse_progress_line("PROG|1024|4096"), Some((1024, Some(4096))));
+        assert_eq!(parse_progress_line("PROG|1024|NA"), Some((1024, None)));
+        assert_eq!(parse_progress_line("PROG| 2048 | 8192 "), Some((2048, Some(8192))));
+        assert_eq!(parse_progress_line("PROG|abc|4096"), None);
+        assert_eq!(parse_progress_line("[download] Destination: x"), None);
+        assert_eq!(parse_progress_line(""), None);
+    }
+
+    #[test]
+    fn computes_pct_speed_eta() {
+        let total = Some(1000);
+        let (pct, speed, _eta) = compute_metrics(None, 1.0, 250, total);
+        assert_eq!(pct, 25.0);
+        assert_eq!(speed, None);
+
+        let (pct, speed, eta) = compute_metrics(Some((1.0, 250)), 3.0, 450, total);
+        assert_eq!(pct, 45.0);
+        assert_eq!(speed, Some(100));
+        assert_eq!(eta, Some(5));
+
+        let (pct, _, eta) = compute_metrics(Some((1.0, 900)), 2.0, 1000, total);
+        assert_eq!(pct, 100.0);
+        assert_eq!(eta, Some(0));
+
+        let (pct, speed, eta) = compute_metrics(Some((1.0, 100)), 2.0, 200, None);
+        assert_eq!(pct, 0.0);
+        assert!(speed.is_some());
+        assert!(eta.is_none());
     }
 }
