@@ -2,10 +2,19 @@ import { create } from "zustand";
 import { ipc } from "../lib/ipc";
 import type { LibraryEntry } from "../types/library";
 
+export type LibraryFilter = "all" | "audio" | "video";
+export type LibraryDensity = "grid" | "list";
+
 interface LibraryStore {
   entries: LibraryEntry[];
   ids: Set<string>;
   loaded: boolean;
+  filter: LibraryFilter;
+  searchQuery: string;
+  density: LibraryDensity;
+  setFilter: (filter: LibraryFilter) => void;
+  setSearchQuery: (query: string) => void;
+  setDensity: (density: LibraryDensity) => void;
   refresh: () => Promise<void>;
   removeLocal: (id: number) => void;
 }
@@ -14,6 +23,13 @@ export const useLibraryStore = create<LibraryStore>((set) => ({
   entries: [],
   ids: new Set(),
   loaded: false,
+  filter: "all",
+  searchQuery: "",
+  density: "grid",
+
+  setFilter: (filter) => set({ filter }),
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setDensity: (density) => set({ density }),
 
   refresh: async () => {
     try {
