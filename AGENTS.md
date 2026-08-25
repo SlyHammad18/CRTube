@@ -30,3 +30,4 @@
 ## Verification
 - Standing gates: `cargo clippy` clean, `npm run build` clean, plus each task's manual checks in §7.
 - Integration tests hit real yt-dlp (network required). Download tests verify embedded cover art/tags via ffprobe and that cancel leaves no partial files.
+- Screenshots: make sure the CRTube window is focused before capturing (GNOME Wayland — X11 focus tools don't work; a freshly launched window grabs focus, so relaunch rather than activate).

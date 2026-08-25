@@ -46,11 +46,12 @@ export function BootOverlay({ onDone }: { onDone: () => void }) {
             animate={
               reduce
                 ? { opacity: 1 }
-                : { opacity: 1, scale: [0.96, 1.02, 1] }
+                : { opacity: [0, 1, 0.55, 1], scale: [0.96, 1.02, 1] }
             }
             transition={{
               delay: reduce ? 0 : 0.18,
-              duration: reduce ? 0.15 : 0.3,
+              duration: reduce ? 0.15 : 0.34,
+              times: reduce ? undefined : [0, 0.35, 0.6, 1],
               ease: [0.16, 1, 0.3, 1],
             }}
           >
@@ -75,6 +76,24 @@ export function BootOverlay({ onDone }: { onDone: () => void }) {
                 >
                   CRTUBE
                 </motion.span>
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 overflow-hidden"
+                >
+                  <motion.span
+                    className="absolute inset-0 font-display text-[44px] font-bold tracking-tight text-transparent"
+                    style={{
+                      backgroundImage: SHEEN,
+                      WebkitBackgroundClip: "text",
+                      backgroundClip: "text",
+                    }}
+                    initial={{ x: "-105%", opacity: 0.9 }}
+                    animate={{ x: "105%", opacity: 0 }}
+                    transition={{ delay: 0.38, duration: 0.45, ease: "easeInOut" }}
+                  >
+                    CRTUBE
+                  </motion.span>
+                </span>
               </>
             )}
             <span

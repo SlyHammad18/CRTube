@@ -92,7 +92,7 @@ export function QueueRow({ item }: { item: QueueItem }) {
               </motion.div>
             </div>
             {item.status === "active" && (
-              <span className="shrink-0 font-mono text-12 text-dim">
+              <span className="shrink-0 font-mono text-12 text-mute">
                 {item.stage !== "download"
                   ? `${item.stage}…`
                   : `${speed ? `${speed}/s` : "—"} · ${
@@ -101,7 +101,7 @@ export function QueueRow({ item }: { item: QueueItem }) {
               </span>
             )}
             {item.status === "queued" && (
-              <span className="shrink-0 font-mono text-12 text-dim">queued</span>
+              <span className="shrink-0 font-mono text-12 text-mute">queued</span>
             )}
             {item.status === "done" && (
               <span className="shrink-0 font-mono text-12 text-ice">done</span>

@@ -12,14 +12,14 @@ export function DownloadsView() {
           Downloads
         </h1>
         {items.length > 0 && (
-          <span className="font-mono text-12 text-dim">
+          <span className="font-mono text-12 text-mute">
             {items.length} item{items.length === 1 ? "" : "s"}
           </span>
         )}
       </header>
       {items.length === 0 ? (
         <div className="flex flex-1 items-center justify-center pb-[20vh]">
-          <p className="font-mono text-15 text-dim">{"> no active transfers_"}</p>
+          <p className="font-mono text-15 text-mute">{"> no active transfers_"}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">

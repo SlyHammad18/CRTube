@@ -153,7 +153,7 @@ function EntryCard({ entry }: { entry: LibraryEntry }) {
         <h3 className="line-clamp-2 min-h-[2.5em] text-13 leading-snug text-ink">
           {entry.title}
         </h3>
-        <p className="mt-1 flex items-baseline justify-between gap-2 font-mono text-12 text-dim">
+        <p className="mt-1 flex items-baseline justify-between gap-2 font-mono text-12 text-mute">
           <span>{fmtBytes(entry.sizeBytes) ?? "—"}</span>
           <span>
             {new Date(entry.createdAt * 1000).toLocaleDateString(undefined, {
@@ -194,7 +194,7 @@ function EntryRow({ entry }: { entry: LibraryEntry }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-13 text-ink">{entry.title}</p>
-        <p className="truncate font-mono text-12 text-dim">
+        <p className="truncate font-mono text-12 text-mute">
           {entry.channel ?? "—"} · {fmtDuration(entry.durationS) ?? "—"} ·{" "}
           {fmtBytes(entry.sizeBytes) ?? "—"} · {date}
           {missing && <span className="text-amber"> · missing</span>}
@@ -334,7 +334,7 @@ export function LibraryView() {
       <header className="mb-4 flex items-baseline justify-between">
         <h1 className="font-display text-18 font-semibold tracking-tight">Library</h1>
         {entries.length > 0 && (
-          <span className="font-mono text-12 text-dim">
+          <span className="font-mono text-12 text-mute">
             {entries.length} items · {gb} GB
           </span>
         )}
@@ -342,7 +342,7 @@ export function LibraryView() {
 
       {loaded && entries.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 pb-[16vh]">
-          <p className="font-mono text-15 text-dim">{"> nothing archived yet_"}</p>
+          <p className="font-mono text-15 text-mute">{"> nothing archived yet_"}</p>
           <button
             onClick={() => setView("search")}
             className="rounded-card bg-ice px-4 py-2 text-13 font-semibold text-void hover:bg-ink active:scale-[0.98]"
@@ -354,7 +354,7 @@ export function LibraryView() {
         <>
           <ControlsRow />
           {filtered.length === 0 ? (
-            <p className="mt-10 text-center font-mono text-15 text-dim">
+            <p className="mt-10 text-center font-mono text-15 text-mute">
               {"> no matches for “"}
               {searchQuery.trim() || filter}
               {"”_"}

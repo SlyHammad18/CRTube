@@ -131,7 +131,7 @@ function VideoTab({
 
   if (!formats.length) {
     return (
-      <p className="py-8 text-center font-mono text-13 text-dim">
+      <p className="py-8 text-center font-mono text-13 text-mute">
         {"> no video formats in source — try MP3"}
       </p>
     );

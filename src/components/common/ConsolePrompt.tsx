@@ -4,7 +4,7 @@ export function ConsolePrompt({ lines }: { lines: string[] }) {
   const reduce = useReducedMotion();
   return (
     <div className="flex flex-1 items-center justify-center">
-      <div className="font-mono text-15 text-dim">
+      <div className="font-mono text-15 text-mute">
         {lines.map((line, i) => (
           <p key={line}>
             {line}

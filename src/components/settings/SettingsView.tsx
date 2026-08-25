@@ -36,7 +36,7 @@ function Row({
     <div className="flex items-center justify-between gap-4 px-4 py-3">
       <div className="min-w-0">
         <p className="text-13 text-ink">{label}</p>
-        {hint && <p className="text-12 leading-snug text-dim">{hint}</p>}
+        {hint && <p className="text-12 leading-snug text-mute">{hint}</p>}
       </div>
       {children}
     </div>
@@ -115,7 +115,7 @@ function EngineSection() {
     <Section title="Engine">
       <Row label="yt-dlp" hint="Downloader engine">
         <div className="flex shrink-0 items-center gap-2.5">
-          <span className="font-mono text-12 text-dim">
+          <span className="font-mono text-12 text-mute">
             {ytdlpVersion ?? "—"}
           </span>
           <button
@@ -205,7 +205,7 @@ function AboutSection() {
   return (
     <Section title="About">
       <Row label="CRTube">
-        <span className="shrink-0 font-mono text-12 text-dim">v{version}</span>
+        <span className="shrink-0 font-mono text-12 text-mute">v{version}</span>
       </Row>
       <Row
         label="Attribution"

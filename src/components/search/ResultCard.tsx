@@ -77,7 +77,7 @@ export function ResultCard({ item, index }: ResultCardProps) {
         </h3>
         <p className="mt-1 flex items-baseline justify-between gap-2 text-12 text-mute">
           <span className="truncate">{item.channel ?? "—"}</span>
-          {views && <span className="shrink-0 font-mono text-dim">{views}</span>}
+          {views && <span className="shrink-0 font-mono text-mute">{views}</span>}
         </p>
       </div>
     </motion.article>

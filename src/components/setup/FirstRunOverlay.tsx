@@ -5,11 +5,13 @@ import type { ToolProgress } from "../../types/tools";
 
 function ToolBar({ label, info }: { label: string; info: ToolProgress }) {
   const started = info.stage !== "idle";
+  const reduce = useReducedMotion();
+  const indeterminate = started && info.pct === 0 && !reduce;
   return (
     <div className="w-[340px]">
       <div className="mb-1.5 flex items-baseline justify-between">
         <span className="text-13 text-mute">{label}</span>
-        <span className="font-mono text-12 text-dim">
+        <span className="font-mono text-12 text-mute">
           {started ? `${info.stage} · ${Math.round(info.pct)}%` : "waiting"}
         </span>
       </div>
@@ -22,7 +24,7 @@ function ToolBar({ label, info }: { label: string; info: ToolProgress }) {
               ? { scaleX: 0, opacity: 0 }
               : info.pct > 0
                 ? { scaleX: Math.max(info.pct / 100, 0.02), opacity: 1 }
-                : { scaleX: 0.04, opacity: [0.4, 1, 0.4] }
+                : { scaleX: 0.04, opacity: indeterminate ? [0.4, 1, 0.4] : 0.6 }
           }
           transition={
             info.pct > 0 || !started
@@ -32,7 +34,9 @@ function ToolBar({ label, info }: { label: string; info: ToolProgress }) {
                 }
               : {
                   scaleX: { duration: 0 },
-                  opacity: { duration: 1.2, repeat: Infinity, ease: "easeInOut" },
+                  opacity: indeterminate
+                    ? { duration: 1.2, repeat: Infinity, ease: "easeInOut" }
+                    : { duration: 0.15 },
                 }
           }
         />
@@ -71,7 +75,7 @@ export function FirstRunOverlay() {
                 <p className="mt-3 font-mono text-13 text-signal">
                   &gt; engine calibration failed
                 </p>
-                <p className="mt-2 max-w-[420px] break-all text-center font-mono text-12 text-dim">
+                <p className="mt-2 max-w-[420px] break-all text-center font-mono text-12 text-mute">
                   {error}
                 </p>
                 <button
@@ -84,7 +88,7 @@ export function FirstRunOverlay() {
               </>
             ) : (
               <>
-                <p className="mt-2 font-mono text-13 text-dim">
+                <p className="mt-2 font-mono text-13 text-mute">
                   &gt; fetching engines
                 </p>
                 <div className="mt-8 flex flex-col gap-5">
