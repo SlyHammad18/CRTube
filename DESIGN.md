@@ -76,7 +76,7 @@ Hard rules:
 Rules:
 
 - **Everything numeric is mono.** File sizes, percentages, timestamps, version strings.
-- Type scale: `12 / 13 / 15 / 18 / 24 / 32`.
+ - Type scale: `11 / 12 / 13 / 15 / 18 / 24 / 32`. The **11px micro tier** is reserved for status tags, badges, section labels, and the mono sort/speed pills — never body copy.
 - Display headings: tight tracking (`tracking-tight`), no all-caps eyebrows except the titlebar telemetry readout.
 - Italic/bold emphasis within a headline uses the same family — never inject a second display face.
 
@@ -226,7 +226,7 @@ Full-screen overlay before any search is possible: "Calibrating display…" — 
 Three panes inside the main view area:
 
 ```
-┌ SIDEBAR 232px ─┬─ TRACK LIST (1fr) ─────────────┬─ NOW PLAYING 340px ─┐
+┌ SIDEBAR 216px ─┬─ TRACK LIST (1fr) ───────────────┬─ NOW PLAYING 320px ─┐
 │ LIBRARY        │ [ALL][AUDIO][VIDEO]  ⌕ search  │ ┌─────────────────┐ │
 │  ♪ All Tracks  │ ┌────────────────────────────┐ │ │ artwork r10     │ │
 │  ◷ Recently    │ │ #  THUMB  TITLE    ⏱   ⋯  │ │ │ or <video> slot │ │
@@ -251,8 +251,8 @@ Three panes inside the main view area:
 
 **Track list (center, 1fr)**
 
-- Header row: pill filter chips `(All)(Audio)(Video)` reusing library vocabulary, local search field, sortable columns (Title / Duration / Added — click toggles asc/desc).
-- Row anatomy: index (mono) · 40px rounded-10 thumb · title (Manrope 600) + channel (`mute`) · duration (mono) · hover actions: `＋` add-to-playlist, `⌗` reveal, trash w/ confirm.
+- Header row: pill filter chips `(All)(Audio)(Video)` reusing library vocabulary, local search field, and a compact **sort popover** (`sort custom ↑`, opens a menuitemradio list of custom/title/duration/added with an asc/desc toggle row — mirrors the SpeedMenu vocabulary). Toolbar is single-row `flex-nowrap` so it never wraps.
+- Row anatomy: index (mono) · 44px **square** rounded-10 thumb · title (Manrope 600) + channel (`mute`) · duration (mono) · hover actions: `＋` add-to-playlist, `⌗` reveal, trash w/ confirm.
 - **Active row:** `ice`-tinted title + 3-bar EQ glyph (2px bars, staggered scaleY loop; frozen bars under reduced motion).
 - Missing files render an amber `MISSING` pill tag (pill radius reserved for status tags), row disabled, skipped on queue advance.
 - Interactions: double-click or hover ▶ starts playback and sets the play context (current view/filter or playlist); `＋` opens a popover listing playlists with checkmarks + `New playlist…`.
@@ -260,7 +260,7 @@ Three panes inside the main view area:
 
 **Playlists view** (a sidebar playlist selected): same list plus total-runtime header chip (mono) + primary **PLAY ALL** button. Rows gain a grip handle and support **drag-to-reorder** via Motion `Reorder.Group/Item` (spring physics, `layout` animation, reduced-motion collapse); order persists through `reorder_playlist_items`. Duplicate adds are silent no-ops (`UNIQUE(playlist_id, download_id)`).
 
-**Now Playing pane (340px, collapsible via `PanelRight` toggle, state in ui store)**
+**Now Playing pane (320px, collapsible via `PanelRight` toggle, state in ui store)**
 
 - Artwork frame: radius 10 + scanline overlay; shows cached thumbnail. For `kind === 'video'` tracks, the live `<video>` element portals into this frame (§4.9).
 - Title (Chakra Petch 24, 2-line clamp) + channel (Manrope, `mute`).
@@ -281,14 +281,15 @@ Three panes inside the main view area:
 ### 4.9 Global Player Bar & Media Host
 
 ```
-│ ━━━━━━━━━━━━ 2px ice hairline progress across full bar width ━━ │
-│ [thumb48/mini-video] Title…  Channel ⏮ ▶ ⏭ 1:24/3:41 ⇄ ↻ vol ⌃ │
+│ ━━━━━━━━━ 2px ice hairline (click-to-seek) across full width ━━━━━━━━ │
+│ [thumb48] Title… Channel   ⏮ ▶(36px) ⏭   1:24/3:41 | vol ━━●━━ ⌃  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 - **Persistent across every view** (Spotify/YT-Music pattern): slides up once the play queue is non-empty, springs away when the queue is cleared. Height 64px; sits right of the rail.
-- Top edge carries a full-width 2px `ice` hairline progress fill — reads like a channel signal meter.
-- Anatomy: 48px thumb (or title/channel marquee-clamped text) · compact transport (prev/play/next) · mono time `1:24 / 3:41` · shuffle/repeat mirrors of the Now Playing controls · volume · `⌃` caret navigates to the Player tab.
+- Top edge carries a full-width 2px `ice` hairline progress fill that **also acts as a click-to-seek strip** (grows to 3px on hover) — reads like a channel signal meter you can scrub.
+- **Three-zone layout** via `grid-cols-[1fr_auto_1fr]`: **left** = 48px thumb (or title/channel, `flex-1 min-w-0`) · **center (truly centered)** = compact transport only (prev · play/pause 36px `ice` circle · next) · **right** = mono time `1:24 / 3:41`, a vertical `line` divider, volume (custom-styled `.range-ice` slider with inline ice-fill gradient — no native widget), and the `⌃` caret navigating to the Player tab.
+- Shuffle/repeat/speed deliberately live in the **Now Playing transport** (§4.8), not the bar — the global bar stays a minimal now-playing indicator.
 - **Media host contract:** exactly one `<video>` DOM node lives in a persistent `MediaHost` mounted at shell level. React portals reparent the *same node* between two slots — `#playerbar-media-slot` (bar thumb position) and `#nowplaying-media-slot` (Player tab artwork frame). Portal identity preservation guarantees zero reload/restart when switching views; video keeps playing (picture shrinks into the bar) exactly like audio does.
 - Audio-only tracks never portal — their slot shows artwork instead.
 

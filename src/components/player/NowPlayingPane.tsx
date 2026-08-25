@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MusicNotes } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 import { setPrimarySlot } from "./../player-bar/mediaSlots";
@@ -24,25 +25,25 @@ export function NowPlayingPane() {
       : convertFileSrc(entry.thumbUrl));
 
   return (
-    <aside className="flex h-full w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-panel/50 p-5">
-      {/* Artwork frame — hosts the portaled <video> for video tracks */}
-      <div className="relative aspect-square w-full overflow-hidden rounded-card border border-line bg-raise">
-        {thumb && !isVideo ? (
-          <img
-            src={thumb}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : !isVideo ? (
-          <span className="absolute inset-0 grid place-items-center font-mono text-11 text-dim">
-            no artwork
-          </span>
-        ) : null}
-        <div ref={setSlotEl} id="nowplaying-media-slot" className="absolute inset-0" />
-      </div>
-
+    <aside className="flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-panel/50 p-4">
       {entry ? (
         <>
+          {/* Artwork frame — hosts the portaled <video> for video tracks */}
+          <div className="relative aspect-square w-full overflow-hidden rounded-card border border-line bg-raise">
+            {thumb && !isVideo ? (
+              <img
+                src={thumb}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : !isVideo ? (
+              <span className="absolute inset-0 grid place-items-center font-mono text-11 text-dim">
+                no artwork
+              </span>
+            ) : null}
+            <div ref={setSlotEl} id="nowplaying-media-slot" className="absolute inset-0" />
+          </div>
+
           <div className="min-w-0">
             <h2 className="line-clamp-2 font-display text-24 font-semibold leading-tight tracking-tight">
               {entry.title}
@@ -56,9 +57,14 @@ export function NowPlayingPane() {
           </p>
         </>
       ) : (
-        <div className="mt-auto flex flex-col gap-1">
-          <p className="font-mono text-12 text-dim">{"> nothing playing_"}</p>
-          <p className="font-mono text-12 text-dim">double-click a track</p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+          <div className="grid aspect-square w-40 place-items-center rounded-card border border-line bg-raise">
+            <MusicNotes size={32} weight="light" className="text-dim" aria-hidden />
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="font-mono text-12 text-dim">{"> nothing playing_"}</p>
+            <p className="font-mono text-12 text-dim">double-click a track</p>
+          </div>
         </div>
       )}
     </aside>

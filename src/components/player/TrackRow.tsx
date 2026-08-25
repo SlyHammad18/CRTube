@@ -75,7 +75,7 @@ export function TrackRow({
         if (e.key === "Enter" && !missing) onPlay();
       }}
       onDoubleClick={() => !missing && onPlay()}
-      className={`group flex cursor-default items-center gap-3 rounded-card border px-2 py-2 transition-colors duration-150 ${
+      className={`group flex cursor-default items-center gap-2.5 rounded-card border px-2.5 py-1.5 transition-colors duration-150 ${
         missing
           ? "border-amber/40 opacity-70"
           : isActive
@@ -104,7 +104,7 @@ export function TrackRow({
       </span>
 
       {/* Thumb */}
-      <div className="relative h-10 w-[72px] shrink-0 overflow-hidden rounded-card border border-line bg-raise">
+      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-card border border-line bg-raise">
         {thumbSrcOf(entry) && !missing && (
           <img
             src={thumbSrcOf(entry)}
@@ -124,7 +124,7 @@ export function TrackRow({
         >
           {entry.title}
           {missing && (
-            <span className="ml-2 rounded-full border border-amber/50 px-1.5 py-px align-middle font-mono text-10 font-normal uppercase tracking-wide text-amber">
+            <span className="ml-2 rounded-full border border-amber/50 px-1.5 py-px align-middle font-mono text-11 font-normal uppercase tracking-wide text-amber">
               missing
             </span>
           )}

@@ -10,35 +10,10 @@ import { usePlaylistsStore } from "../../stores/playlists";
 import { useUIStore } from "../../stores/ui";
 import { ConsolePrompt } from "../common/ConsolePrompt";
 import { TrackRow } from "./TrackRow";
+import { SortMenu } from "./SortMenu";
 
-type SortKey = "manual" | "title" | "duration" | "added";
+export type SortKey = "manual" | "title" | "duration" | "added";
 type Filter = "all" | "audio" | "video";
-
-function SortButton({
-  label,
-  active,
-  dir,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  dir: 1 | -1;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      aria-pressed={active}
-      onClick={onClick}
-      className={`rounded-full border px-2.5 py-0.5 font-mono text-11 transition-colors duration-150 active:scale-[0.98] ${
-        active
-          ? "border-ice bg-ice text-void"
-          : "border-line text-mute hover:bg-raise hover:text-ink"
-      }`}
-    >
-      {label} {active ? (dir === 1 ? "↑" : "↓") : ""}
-    </button>
-  );
-}
 
 /** One draggable playlist row (manual-order mode only). */
 function DragRow({
@@ -186,8 +161,8 @@ export function TrackList() {
       </header>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 px-6 pb-3 pt-4">
-        <div role="group" aria-label="Filter tracks" className="flex gap-1.5">
+      <div className="flex flex-nowrap items-center gap-2 px-6 pb-3 pt-4">
+        <div role="group" aria-label="Filter tracks" className="flex shrink-0 gap-1.5">
           {(["all", "audio", "video"] as const).map((f) => (
             <button
               key={f}
@@ -225,27 +200,7 @@ export function TrackList() {
           )}
         </div>
 
-        <div role="group" aria-label="Sort tracks" className="flex items-center gap-1.5">
-          <span className="font-mono text-11 uppercase tracking-wide text-dim">sort</span>
-          {(selection.type === "playlist"
-            ? (["manual", "title", "duration", "added"] as const)
-            : (["title", "duration", "added"] as const)
-          ).map((key) => (
-            <SortButton
-              key={key}
-              label={key === "manual" ? "custom" : key}
-              active={sort.key === key}
-              dir={sort.dir}
-              onClick={() =>
-                setSort((s) =>
-                  s.key === key
-                    ? { key, dir: s.dir === 1 ? -1 : 1 }
-                    : { key, dir: key === "added" || key === "manual" ? -1 : 1 },
-                )
-              }
-            />
-          ))}
-        </div>
+        <SortMenu sort={sort} setSort={setSort} isPlaylist={selection.type === "playlist"} />
       </div>
 
       {/* List */}

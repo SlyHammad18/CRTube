@@ -115,7 +115,7 @@ export function PlaylistsPane() {
   const totalBytes = libEntries.reduce((acc, e) => acc + (e.sizeBytes ?? 0), 0);
 
   return (
-    <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-line bg-panel/50">
+    <aside className="flex h-full w-[216px] shrink-0 flex-col border-r border-line bg-panel/50">
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <SidebarLabel>Library</SidebarLabel>
         <LibraryItem

@@ -1,11 +1,9 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "motion/react";
 import {
-  ArrowClockwise,
   CaretUp,
   Pause,
   Play,
-  Shuffle,
   SkipBack,
   SkipForward,
   SpeakerHigh,
@@ -16,7 +14,6 @@ import { fmtDuration } from "../../lib/format";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 import { useUIStore } from "../../stores/ui";
 import { setSecondarySlot } from "./mediaSlots";
-import { SpeedMenu } from "../player/SpeedMenu";
 
 /**
  * Global player bar (DESIGN §4.9) — persistent across every view once the
@@ -29,8 +26,6 @@ export function PlayerBar() {
   const playing = usePlayerStore((s) => s.playing);
   const currentTimeS = usePlayerStore((s) => s.currentTimeS);
   const durationS = usePlayerStore((s) => s.durationS);
-  const repeat = usePlayerStore((s) => s.repeat);
-  const shuffle = usePlayerStore((s) => s.shuffle);
   const volume = usePlayerStore((s) => s.volume);
 
   // Hairline progress driven by a MotionValue — no re-render per tick.
@@ -46,6 +41,13 @@ export function PlayerBar() {
   const setView = useUIStore((s) => s.setView);
   const store = usePlayerStore;
 
+  const handleSeek = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    const d = store.getState().durationS;
+    if (d > 0) store.getState().seek(frac * d);
+  };
+
   return (
     <AnimatePresence>
       {active && (
@@ -60,94 +62,80 @@ export function PlayerBar() {
           }
           className="relative shrink-0 border-t border-line bg-panel"
         >
-          {/* Signal-meter hairline */}
-          <div className="absolute inset-x-0 top-0 h-[2px] bg-line">
-            <motion.div
-              style={{ scaleX: progress }}
-              className="h-full w-full origin-left bg-ice"
-            />
-          </div>
-
-          <div className="flex h-16 items-center gap-3 px-4">
-            {/* Thumb / mini-video slot — portals land here for video tracks */}
-            <button
-              aria-label="Open player"
-              onClick={() => setView("player")}
-              className="group relative h-12 w-[72px] shrink-0 overflow-hidden rounded-card border border-line bg-raise"
-            >
-              <div
-                ref={(el) => {
-                  setSecondarySlot(el);
-                }}
-                id="playerbar-media-slot"
-                className="absolute inset-0"
+          {/* Click-to-seek hairline */}
+          <button
+            aria-label="Seek"
+            onClick={handleSeek}
+            className="group absolute inset-x-0 top-0 z-10 -mt-px h-3 cursor-pointer"
+          >
+            <div className="absolute inset-x-0 top-0 h-[2px] bg-line transition-[height] duration-150 group-hover:h-[3px]">
+              <motion.div
+                style={{ scaleX: progress }}
+                className="h-full w-full origin-left bg-ice"
               />
-              {entry?.kind !== "video" && thumbSrc(entry)}
-              {entry == null && (
-                <span className="grid h-full w-full place-items-center font-mono text-10 text-dim">
-                  ——
-                </span>
-              )}
-            </button>
+            </div>
+          </button>
 
-            {/* Title block */}
-            <button
-              onClick={() => setView("player")}
-              className="min-w-0 max-w-[220px] flex-1 text-left"
-            >
-              <p className="truncate text-13 font-semibold text-ink">
-                {entry?.title ?? "Nothing playing"}
-              </p>
-              <p className="truncate text-12 text-mute">
-                {entry?.channel ?? "queue a track from Library"}
-              </p>
-            </button>
+          <div className="grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
+            {/* Left: thumb + title */}
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                aria-label="Open player"
+                onClick={() => setView("player")}
+                className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-card border border-line bg-raise"
+              >
+                <div
+                  ref={(el) => {
+                    setSecondarySlot(el);
+                  }}
+                  id="playerbar-media-slot"
+                  className="absolute inset-0"
+                />
+                {entry?.kind !== "video" && thumbSrc(entry)}
+                {entry == null && (
+                  <span className="grid h-full w-full place-items-center font-mono text-11 text-dim">
+                    ——
+                  </span>
+                )}
+              </button>
 
-            {/* Transport */}
+              <button onClick={() => setView("player")} className="min-w-0 flex-1 text-left">
+                <p className="truncate text-13 font-semibold text-ink">
+                  {entry?.title ?? "Nothing playing"}
+                </p>
+                <p className="truncate text-12 text-mute">
+                  {entry?.channel ?? "queue a track from Library"}
+                </p>
+              </button>
+            </div>
+
+            {/* Center: transport only */}
             <div className="flex shrink-0 items-center gap-1">
-              <IconBtn label="Shuffle" active={shuffle} onClick={() => store.getState().toggleShuffle()}>
-                <Shuffle size={16} weight="light" aria-hidden />
-              </IconBtn>
               <IconBtn label="Previous" onClick={() => store.getState().prev()}>
                 <SkipBack size={17} weight="light" aria-hidden />
               </IconBtn>
               <button
                 aria-label={playing ? "Pause" : "Play"}
                 onClick={() => store.getState().toggle()}
-                className="mx-1 grid h-10 w-10 place-items-center rounded-full bg-ice text-void transition-transform duration-150 hover:bg-ink active:scale-[0.98]"
+                className="mx-1 grid h-9 w-9 place-items-center rounded-full bg-ice text-void transition-transform duration-150 hover:bg-ink active:scale-[0.98]"
               >
                 {playing ? (
-                  <Pause size={18} weight="fill" aria-hidden />
+                  <Pause size={16} weight="fill" aria-hidden />
                 ) : (
-                  <Play size={18} weight="fill" aria-hidden />
+                  <Play size={16} weight="fill" aria-hidden />
                 )}
               </button>
               <IconBtn label="Next" onClick={() => store.getState().next()}>
                 <SkipForward size={17} weight="light" aria-hidden />
               </IconBtn>
-              <span className="relative">
-                <IconBtn
-                  label={`Repeat: ${repeat}`}
-                  active={repeat !== "off"}
-                  onClick={() => store.getState().cycleRepeat()}
-                >
-                  <ArrowClockwise size={16} weight="light" aria-hidden />
-                </IconBtn>
-                {repeat === "one" && (
-                  <span className="pointer-events-none absolute -right-0.5 -top-0.5 grid h-3 w-3 place-items-center rounded-full bg-ice font-mono text-[8px] leading-none text-void">
-                    1
-                  </span>
-                )}
-              </span>
             </div>
 
-            {/* Mono time readout */}
-            <span className="hidden shrink-0 font-mono text-12 tabular-nums text-mute md:block">
-              {fmtDuration(currentTimeS) ?? "0:00"} / {fmtDuration(durationS) ?? "0:00"}
-            </span>
-
-            <div className="ml-auto flex shrink-0 items-center gap-2.5">
-              <SpeedMenu />
+            {/* Right: time, volume, expand */}
+            <div className="flex shrink-0 items-center justify-end gap-2.5">
+              <span className="hidden shrink-0 font-mono text-12 tabular-nums text-mute md:block">
+                {fmtDuration(currentTimeS) ?? "0:00"} / {fmtDuration(durationS) ?? "0:00"}
+              </span>
+              <div className="h-4 w-px bg-line" />
               <div className="flex items-center gap-1.5">
                 <span className="text-mute" aria-hidden>
                   {volume > 0 ? (
@@ -164,7 +152,12 @@ export function PlayerBar() {
                   step={0.01}
                   value={volume}
                   onChange={(e) => store.getState().setVolume(Number(e.target.value))}
-                  className="w-20 accent-ice"
+                  className="range-ice w-24"
+                  style={{
+                    background: `linear-gradient(to right, var(--color-ice) ${Math.round(
+                      volume * 100,
+                    )}%, var(--color-line) ${Math.round(volume * 100)}%)`,
+                  }}
                 />
               </div>
               <IconBtn label="Expand player" onClick={() => setView("player")}>

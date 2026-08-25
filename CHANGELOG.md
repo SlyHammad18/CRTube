@@ -70,6 +70,26 @@ Player milestone: music/video playback tab with playlists and synced lyrics.
   reversed (first row flipped) → rename survived restart; empty-state prompt
   captured; toolbar/chips/sort rendered.
 
+### T14.5 — Player UI typography & layout fix
+- Added an `11px` micro type tier to `theme.css` `@theme` so the 22 usages of
+  `text-10`/`text-11` (section labels, sort/speed pills, badges, MISSING tags,
+  footer stats) render at the intended size instead of inheriting 15px body
+  text — the root cause of the oversized sort cluster and "loud" micro-copy.
+- Toolbar rewritten as a single non-wrapping row: filter chips + search + a new
+  **SortMenu** popover (`sort custom ↑` → menuitemradio list + asc/desc toggle),
+  replacing the four always-visible sort pills that wrapped to a second row.
+- Global PlayerBar slimmed to a three-zone `grid-cols-[1fr_auto_1fr]`: left
+  (48px thumb + title/channel, `flex-1 min-w-0`), centered transport only
+  (prev · 36px play · next), right (mono time · divider · custom `.range-ice`
+  volume slider with ice fill · caret). Removed shuffle/repeat/speed from the
+  bar — they belong to the Now Playing transport. Hairline is now click-to-seek.
+- TrackRow densified: 44px square thumbs, tighter padding/gaps.
+- Sidebar 232→216px, Now Playing 340→320px; idle Now Playing shows a CRT idle
+  block instead of an empty artwork square. Default window 1150→1240 (min 1000).
+- DESIGN.md §2.2 (type scale), §4.8 (panes, sort popover), §4.9 (bar anatomy)
+  updated to match. Verified: `npm run build` clean, `.text-11{}` present in
+  bundle, re-critique of screenshots.
+
 ## [0.1.0] — 2026-08-26
 
 Initial release: a complete, locally-processed YouTube downloader with a
