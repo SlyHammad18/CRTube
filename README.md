@@ -1,13 +1,23 @@
 # CRTube
 
+<p align="center">
+  <img src="./docs/home.png" alt="CRTube home screen" width="720" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/SlyHammad18/CRTube/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/SlyHammad18/CRTube?color=4DD8FF" /></a>
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-4DD8FF" />
+  <img alt="Tauri" src="https://img.shields.io/badge/Tauri-v2-4DD8FF?logo=tauri&logoColor=white" />
+  <img alt="React" src="https://img.shields.io/badge/React-18-4DD8FF?logo=react&logoColor=white" />
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-1.70%2B-4DD8FF?logo=rust&logoColor=white" />
+  <img alt="Platforms" src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows-4DD8FF" />
+  <img alt="Engine" src="https://img.shields.io/badge/engine-yt--dlp-4DD8FF" />
+</p>
+
 A desktop client for downloading YouTube videos and audio, built on
 [Tauri v2](https://v2.tauri.app/) + React + Rust. Search, pick a format, and
 queue downloads with live progress — everything runs locally through
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) and ffmpeg, with no telemetry.
-
-![Ice Console](https://img.shields.io/badge/theme-Ice%20Console-4DD8FF)
-![Tauri](https://img.shields.io/badge/Tauri-v2-4DD8FF)
-![License](https://img.shields.io/badge/license-MIT-4DD8FF)
 
 ## Features
 
