@@ -15,6 +15,7 @@ import { FormatSheet } from "./components/sheet/FormatSheet";
 import { HomeSearch } from "./components/search/HomeSearch";
 import { DownloadsView } from "./components/downloads/DownloadsView";
 import { LibraryView } from "./components/library/LibraryView";
+import { SettingsView } from "./components/settings/SettingsView";
 import { PlaceholderView } from "./components/common/PlaceholderView";
 
 export default function App() {
@@ -72,6 +73,8 @@ export default function App() {
                   <DownloadsView />
                 ) : view === "library" ? (
                   <LibraryView />
+                ) : view === "settings" ? (
+                  <SettingsView />
                 ) : (
                   <PlaceholderView view={view} />
                 )}
