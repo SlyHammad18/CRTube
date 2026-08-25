@@ -10,6 +10,7 @@ import type {
 import type { SearchItem, VideoInfo } from "../types/search";
 import type { LibraryEntry } from "../types/library";
 import type { AppSettings } from "../types/settings";
+import type { Playlist, PlaylistTrack } from "../types/player";
 import type {
   DlDonePayload,
   DlErrorPayload,
@@ -64,6 +65,20 @@ export const ipc = {
   setSettings: (settings: AppSettings) =>
     invoke<AppSettings>("set_settings", { settings }),
   mediaUrl: (id: number) => invoke<string | null>("media_url", { id }),
+
+  listPlaylists: () => invoke<Playlist[]>("list_playlists"),
+  createPlaylist: (name: string) => invoke<Playlist>("create_playlist", { name }),
+  renamePlaylist: (id: number, name: string) =>
+    invoke<void>("rename_playlist", { id, name }),
+  deletePlaylist: (id: number) => invoke<void>("delete_playlist", { id }),
+  addPlaylistItem: (playlistId: number, downloadId: number) =>
+    invoke<number>("add_playlist_item", { playlistId, downloadId }),
+  removePlaylistItem: (itemId: number) =>
+    invoke<void>("remove_playlist_item", { itemId }),
+  listPlaylistItems: (playlistId: number) =>
+    invoke<PlaylistTrack[]>("list_playlist_items", { playlistId }),
+  reorderPlaylistItems: (playlistId: number, itemIds: number[]) =>
+    invoke<void>("reorder_playlist_items", { playlistId, itemIds }),
 
   onDlProgress: async (
     cb: (payload: DlProgressPayload) => void,

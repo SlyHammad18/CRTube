@@ -57,9 +57,13 @@ export default function App() {
           <div className="flex min-w-0 flex-1 flex-col">
             <main className="relative min-h-0 flex-1 overflow-hidden">
               <AnimatePresence mode="wait">
-                <motion.div
-                  key={view}
-                  className="absolute inset-0 flex flex-col overflow-y-auto p-8"
+              <motion.div
+                key={view}
+                className={`absolute inset-0 flex flex-col ${
+                  view === "player"
+                    ? "overflow-hidden p-0" // §4.8 panes are edge-to-edge
+                    : "overflow-y-auto p-8"
+                }`}
                   initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
                   animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
                   exit={{

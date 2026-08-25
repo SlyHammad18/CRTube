@@ -1,19 +1,16 @@
-import { useLibraryStore } from "../../stores/library";
-import { ConsolePrompt } from "../common/ConsolePrompt";
+import { useUIStore } from "../../stores/ui";
+import { TrackList } from "./TrackList";
+import { PlaylistsPane } from "./PlaylistsPane";
+import { NowPlayingPane } from "./NowPlayingPane";
 
-/**
- * Player tab shell. The three-pane library/playlist/now-playing surface
- * lands in T14/T15; T13 ships the engine, global bar, and this placeholder.
- */
+/** §4.8 — three-pane Player surface: sidebar | track list | now playing. */
 export function PlayerTab() {
-  const count = useLibraryStore((s) => s.entries.length);
+  const nowPlayingOpen = useUIStore((s) => s.nowPlayingOpen);
   return (
-    <ConsolePrompt
-      lines={
-        count > 0
-          ? ["> CRTUBE://PLAYER", `> ${count} tracks ready — deck arrives next_`]
-          : ["> CRTUBE://PLAYER", "> awaiting media — download something in SEARCH_"]
-      }
-    />
+    <div className="flex h-full min-h-0 w-full">
+      <PlaylistsPane />
+      <TrackList />
+      {nowPlayingOpen && <NowPlayingPane />}
+    </div>
   );
 }

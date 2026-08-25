@@ -78,6 +78,23 @@
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
 
+/* §4.8 — EQ glyph on the active track row (transform-only; frozen by the
+   global reduced-motion collapse). */
+@keyframes eq-bar {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq-bar 0.9s ease-in-out infinite;
+}
+
 @layer base {
   html,
   body,

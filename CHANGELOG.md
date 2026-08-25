@@ -48,6 +48,28 @@ Player milestone: music/video playback tab with playlists and synced lyrics.
   across automatic player/search/library/downloads switches without
   interruption; no media errors.
 
+### T14 — Player lists & playlists UI
+- Three-pane Player tab: playlists sidebar (232px) · track list · now-playing
+  pane (340px, toggleable); edge-to-edge layout for the player view.
+- PlaylistsPane: LIBRARY section (All Tracks, Recently Added) + PLAYLISTS
+  with inline create/rename, confirm-guarded delete via row ⋯ menu, mono
+  counts, storage footer.
+- TrackList: pill filter chips, search, sort pills (custom/title/duration/
+  added with direction arrows), playlist header with runtime chip + PLAY ALL,
+  console-prompt empty states for empty library / no matches / empty
+  playlist.
+- TrackRow: index-or-EQ glyph column (staggered scaleY loop, frozen under
+  reduced motion), thumb, title + channel, mono duration, hover actions —
+  add-to-playlist popover (membership checkmarks, inline composer), reveal,
+  delete-file confirm (library) or remove-from-playlist (playlist).
+- Drag-to-reorder in manual order via Motion `Reorder` + grip handles;
+  optimistic resequence persisted through `reorder_playlist_items`.
+- Playlists store mirrors backend dedupe — duplicate adds surface as
+  checkmark state and never create rows.
+- Verified live over real IPC: create → add ×4 (deduped to 3) → reorder
+  reversed (first row flipped) → rename survived restart; empty-state prompt
+  captured; toolbar/chips/sort rendered.
+
 ## [0.1.0] — 2026-08-26
 
 Initial release: a complete, locally-processed YouTube downloader with a
