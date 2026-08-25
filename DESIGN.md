@@ -1,8 +1,8 @@
-# CRTube — Design & Build Specification
+# CRTube — Design & Build Specification (v0.2)
 
-A YouTube downloader desktop app. Rust + Tauri v2 shell, React + TypeScript UI, powered by `yt-dlp` (auto-installed, auto-updated) and static `ffmpeg` (installed once).
+A YouTube downloader **and** local music/video player desktop app. Rust + Tauri v2 shell, React + TypeScript UI, powered by `yt-dlp` (auto-installed, auto-updated) and static `ffmpeg` (installed once). Downloads land in a library the built-in Player tab plays back — audio-first, video secondary — with playlists and synced lyrics.
 
-**Design thesis:** *cathode-ray-tube nostalgia fused with modern dark-tech.* The name is the identity — one signature idea (the "power-on" moment, §3) carries the whole UI.
+**Design thesis:** *cathode-ray-tube nostalgia fused with modern dark-tech.* One signature idea (the "power-on" moment, §3) carries the whole UI; the Player surface adds a second motif — the **Caption Deck** (§4.8) — so the screen finally does what a cathode-ray tube was built for: broadcast.
 
 **Design dials:** `VARIANCE 6 · MOTION 7 · DENSITY 4`
 
@@ -13,6 +13,8 @@ A YouTube downloader desktop app. Rust + Tauri v2 shell, React + TypeScript UI, 
 | Frontend | React 18 + TypeScript + Vite |
 | Accent | Ice cyan `#4DD8FF` |
 | Packaging targets | Linux (deb, AppImage) + Windows (NSIS) |
+| Media engine | Webview-native `<video>` element served over the Tauri asset protocol |
+| Lyrics provider | LRCLIB (`lrclib.net`) — free, keyless, synced LRC |
 
 ---
 
@@ -23,12 +25,13 @@ A YouTube downloader desktop app. Rust + Tauri v2 shell, React + TypeScript UI, 
 | Shell | **Tauri v2** (Rust) | Requested |
 | Frontend | **React 18 + TypeScript + Vite** | Mature Tauri ecosystem, matches motion/styling tooling |
 | Styling | **Tailwind CSS v4** via `@tailwindcss/vite` | Token-driven utilities, no postcss plugin needed for v4 |
-| Motion | **Motion** (`motion/react`) | Springs, layout animations, `AnimatePresence` |
+| Motion | **Motion** (`motion/react`) | Springs, layout animations, `AnimatePresence`, `Reorder` |
 | Icons | **@phosphor-icons/react** | One icon family only; global stroke width 1.5 |
 | Fonts | **Self-hosted `@fontsource/*`** | Desktop app → zero runtime font CDN requests |
-| State | **Zustand** | Queue / settings / library / search stores |
-| DB | **rusqlite** (bundled SQLite) | Download history persistence |
-| HTTP | **reqwest** (rustls-tls) | Fetch yt-dlp releases, ffmpeg bundles, thumbnails |
+| State | **Zustand** | Queue / settings / library / search / player / playlists stores |
+| DB | **rusqlite** (bundled SQLite) | Download history + playlist persistence |
+| HTTP | **reqwest** (rustls-tls) | Fetch yt-dlp releases, ffmpeg bundles, thumbnails, LRCLIB lyrics |
+| Playback | **HTML `<video>` element** (plays audio-only files too) | Native seek / `playbackRate` / ended+error events; zero new deps |
 | Tauri plugins | `dialog`, `opener`, `core:window` | Folder picker, reveal/play file, window controls |
 
 No other UI/component libraries. Never hand-roll SVG icons.
@@ -66,9 +69,9 @@ Hard rules:
 
 | Role | Face | Weights | Usage |
 |---|---|---|---|
-| Display | **Chakra Petch** | 600 / 700 | Wordmark, headings, quality chips — squared techno grotesk |
+| Display | **Chakra Petch** | 600 / 700 | Wordmark, headings, quality chips, active lyric line — squared techno grotesk |
 | Body/UI | **Manrope** | 400–600 | Titles, labels, body copy |
-| Telemetry | **JetBrains Mono** | 400 / 500 | Durations, sizes, speeds, versions, ETAs |
+| Telemetry | **JetBrains Mono** | 400 / 500 | Durations, sizes, speeds, versions, ETAs, lyric timestamps |
 
 Rules:
 
@@ -79,7 +82,7 @@ Rules:
 
 ### 2.3 Shape & elevation
 
-- Radius lock: **10px** everywhere — cards, inputs, buttons, sheets.
+- Radius lock: **10px** everywhere — cards, inputs, buttons, sheets, artwork frames.
 - Full-pill radius reserved exclusively for filter chips and status tags.
 - Elevation = 1px `line` border + tinted shadow. No glow-based elevation.
 
@@ -110,6 +113,7 @@ Echoed quietly elsewhere so the motif stays coherent without repeating itself lo
 - Fixed scanline overlay at 3% opacity, `pointer-events-none`, z-index layer documented in code.
 - Titlebar telemetry readout in JetBrains Mono: `● ytdlp 2026.08.20 · ready`. Status dot: `ice` = ready, `amber` = updating tools, `signal` = error.
 - Empty states written as console prompts: `> awaiting input_`, `> nothing archived yet_`.
+- The Player surface echoes the broadcast motif with the **Caption Deck** (§4.8) — synced lyrics set like closed-captioning.
 
 **Reduced motion:** the entire signature collapses under `prefers-reduced-motion` — instant crossfade instead of flicker, scanline overlay rendered static.
 
@@ -123,16 +127,18 @@ Echoed quietly elsewhere so the motif stays coherent without repeating itself lo
 ┌──────────────────────────────────────────────────────────┐
 │ ◉ CRTUBE   ● ytdlp 2026.08.20·ready          ─  □  ✕    │ ← 40px custom titlebar
 ├────┬─────────────────────────────────────────────────────┤
-│ ⌕  │                                                     │
-│ ⇩³ │                MAIN VIEW                            │
-│ ▦  │              (animated swap)                        │
-│    │                                                     │
-│ ⚙  │                                                     │
+│ ♪  │                                                     │
+│ ⌕  │                MAIN VIEW                            │
+│ ⇩³ │              (animated swap)                        │
+│ ▦  │                                                     │
+│    ├─────────────────────────────────────────────────────┤
+│ ⚙  │ PLAYERBAR (64px, global — appears when queue ≠ ∅)   │
 └────┴─────────────────────────────────────────────────────┘
 ```
 
+- **Default view on launch: `player`.**
 - **Titlebar (40px):** full-width drag region (`data-tauri-drag-region`). Left: logo mark + telemetry readout. Right: minimize, maximize, close — close hover fills `signal`. Double-click toggles maximize.
-- **Icon rail (64px):** Search/home, Downloads (badge = active count), Library; Settings pinned bottom. Active view gets an `ice` left notch + subtle icon tint.
+- **Icon rail (64px):** **Player** (`MusicNote`, first), Search/home, Downloads (badge = active count), Library; Settings pinned bottom. Active view gets an `ice` left notch + subtle icon tint. While audio plays, a 4px `ice` dot under the Player icon pulses (opacity keyframes; static dot under reduced motion).
 - View transitions: fade + 8px rise in (240ms, `cubic-bezier(0.16,1,0.3,1)`), fade out (120ms), orchestrated with `AnimatePresence`.
 
 ### 4.2 Home / Search
@@ -146,7 +152,7 @@ Echoed quietly elsewhere so the motif stays coherent without repeating itself lo
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐             │
 │  │ thumb  │ │ thumb  │ │ thumb  │ │ thumb  │             │
 │  │ 12:04▓ │ │        │ │✓in lib │ │        │             │
-│  │ Title… │ │ Title… │ │ Title… │ │ Title… │             │
+│  │ Title… │ │ Title… │ │ Title… │ │        │             │
 │  │ Ch ·1M │ │        │ │        │ │        │             │
 │  └────────┘ └────────┘ └────────┘ └────────┘             │
 ```
@@ -209,9 +215,82 @@ Grouped sections, bound live (no restart required):
 - **Downloads:** concurrency stepper (1–5), applies immediately to the running queue.
 - **About:** app version, yt-dlp attribution + unaffiliation disclaimer, licenses note.
 
+Changing the download directory re-applies the runtime asset-protocol allow rule (§5.6) immediately.
+
 ### 4.7 First-run setup overlay
 
 Full-screen overlay before any search is possible: "Calibrating display…" — two real progress bars (`yt-dlp`, `ffmpeg`) fed by installer progress events, then auto-dismisses into the boot sequence's tail. Blocks interaction until tools are ready.
+
+### 4.8 Player (default view — music-first, video minor)
+
+Three panes inside the main view area:
+
+```
+┌ SIDEBAR 232px ─┬─ TRACK LIST (1fr) ─────────────┬─ NOW PLAYING 340px ─┐
+│ LIBRARY        │ [ALL][AUDIO][VIDEO]  ⌕ search  │ ┌─────────────────┐ │
+│  ♪ All Tracks  │ ┌────────────────────────────┐ │ │ artwork r10     │ │
+│  ◷ Recently    │ │ #  THUMB  TITLE    ⏱   ⋯  │ │ │ or <video> slot │ │
+│                │ │ 1  ▦     Song A    3:41 ＋│ │ └─────────────────┘ │
+│ PLAYLISTS   ＋ │ │ 2  ▮▮    Song B ●  4:02 ＋│ │ SONG TITLE (Petch24)│
+│  ▤ Focus Mix 12│ │ 3  ▦     Song C    2:55 ＋│ │ Channel · Manrope   │
+│  ▤ Night Drive │ └────────────────────────────┘ │ 0:00 ━━●━━━━━ 3:41  │
+│                │  sortable header, scroll list  │ ⇄ ⏮ ▶(ice) ⏭ ↻     │
+│ ────────────── │                                │ vol ──●──  speed ⌄  │
+│ 12 tracks      │                                │ ╔══ CAPTION DECK ╗═╗│
+│ 1.2 GB (mono)  │                                │ ║ past lines  dim  ║│
+└────────────────┴────────────────────────────────┴─╫▶ ACTIVE LINE ice ╟┤
+                                                    ║ next lines mute  ║│
+                                                    ╚══════════════════╝╝
+```
+
+**Sidebar (232px)**
+
+- `LIBRARY` section: **All Tracks**, **Recently Added** (sort shortcut).
+- `PLAYLISTS` section with `＋ New` (turns into an inline text input, `↵` commits / `esc` cancels). Playlist rows show name + mono track count; overflow `⋯` menu: Play, Rename (inline edit), Delete (signal-red confirm popover — deletes playlist rows only, never media files).
+- Footer: mono stats `12 tracks · 1.2 GB` (sum of `size_bytes`).
+
+**Track list (center, 1fr)**
+
+- Header row: pill filter chips `(All)(Audio)(Video)` reusing library vocabulary, local search field, sortable columns (Title / Duration / Added — click toggles asc/desc).
+- Row anatomy: index (mono) · 40px rounded-10 thumb · title (Manrope 600) + channel (`mute`) · duration (mono) · hover actions: `＋` add-to-playlist, `⌗` reveal, trash w/ confirm.
+- **Active row:** `ice`-tinted title + 3-bar EQ glyph (2px bars, staggered scaleY loop; frozen bars under reduced motion).
+- Missing files render an amber `MISSING` pill tag (pill radius reserved for status tags), row disabled, skipped on queue advance.
+- Interactions: double-click or hover ▶ starts playback and sets the play context (current view/filter or playlist); `＋` opens a popover listing playlists with checkmarks + `New playlist…`.
+- Empty states (console-prompt style): `> awaiting media_ download something in SEARCH` / `> this playlist is empty_ add tracks with +`.
+
+**Playlists view** (a sidebar playlist selected): same list plus total-runtime header chip (mono) + primary **PLAY ALL** button. Rows gain a grip handle and support **drag-to-reorder** via Motion `Reorder.Group/Item` (spring physics, `layout` animation, reduced-motion collapse); order persists through `reorder_playlist_items`. Duplicate adds are silent no-ops (`UNIQUE(playlist_id, download_id)`).
+
+**Now Playing pane (340px, collapsible via `PanelRight` toggle, state in ui store)**
+
+- Artwork frame: radius 10 + scanline overlay; shows cached thumbnail. For `kind === 'video'` tracks, the live `<video>` element portals into this frame (§4.9).
+- Title (Chakra Petch 24, 2-line clamp) + channel (Manrope, `mute`).
+- Seek bar: 2px `line` track, `ice` fill, grows to 4px on hover; flanking times in mono (`0:00` elapsed / `-3:41` remaining toggleable by click).
+- Transport row: shuffle · previous · **play/pause (44px `ice` circle, `void` icon — the only filled accent circle in the app)** · next · repeat (cycles off → all → one; `one` shows mono superscript `1` badge).
+- Secondary row: volume slider (icon + thin slider) and **SpeedMenu** popover: `0.50× 0.75× 1× 1.25× 1.5× 1.75× 2×` mono pills, current selection `ice` fill. Volume + speed persist in settings (§5.5).
+
+**Caption Deck — synced lyrics (the Player's signature motif)**
+
+- Fills the remainder of the Now Playing pane. Inner line-track translates vertically so the active line holds center; mask-image fade top/bottom edges; only `transform` animates.
+- Line states: past lines `dim` at 45% opacity · **active line `ink`, Chakra Petch, 4px `ice` caret bar on the left edge** · upcoming lines `mute`.
+- Click any line → seek to its timestamp (spring feedback on the deck).
+- Fallback ladder: synced LRC → plain text (static scrollable block, same typography, no caret) → `instrumental` flag renders an `INSTRUMENTAL` status tag → no result: console prompt `> no lyrics found_ try manual search` with an inline artist/title override form prefilled from parsed metadata (§5.7).
+- Lyrics fetch lazily on first play of a track; cached hits render instantly (§5.7).
+
+**Keyboard map (global, ignored while typing in inputs):** `Space` play/pause · `←/→` seek ∓5s · `↑/↓` volume ±10%.
+
+### 4.9 Global Player Bar & Media Host
+
+```
+│ ━━━━━━━━━━━━ 2px ice hairline progress across full bar width ━━ │
+│ [thumb48/mini-video] Title…  Channel ⏮ ▶ ⏭ 1:24/3:41 ⇄ ↻ vol ⌃ │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+- **Persistent across every view** (Spotify/YT-Music pattern): slides up once the play queue is non-empty, springs away when the queue is cleared. Height 64px; sits right of the rail.
+- Top edge carries a full-width 2px `ice` hairline progress fill — reads like a channel signal meter.
+- Anatomy: 48px thumb (or title/channel marquee-clamped text) · compact transport (prev/play/next) · mono time `1:24 / 3:41` · shuffle/repeat mirrors of the Now Playing controls · volume · `⌃` caret navigates to the Player tab.
+- **Media host contract:** exactly one `<video>` DOM node lives in a persistent `MediaHost` mounted at shell level. React portals reparent the *same node* between two slots — `#playerbar-media-slot` (bar thumb position) and `#nowplaying-media-slot` (Player tab artwork frame). Portal identity preservation guarantees zero reload/restart when switching views; video keeps playing (picture shrinks into the bar) exactly like audio does.
+- Audio-only tracks never portal — their slot shows artwork instead.
 
 ---
 
@@ -219,21 +298,25 @@ Full-screen overlay before any search is possible: "Calibrating display…" — 
 
 ```
 src-tauri/src/
-├─ lib.rs            # builder, plugins, managed state, event wiring
+├─ lib.rs            # builder, plugins, managed state, event wiring, asset-scope setup
 ├─ commands/
 │  ├─ tools.rs       # ensure_tools, tool_versions, update_ytdlp(force)
 │  ├─ search.rs      # search_youtube(query, page), fetch_info(url)
 │  ├─ download.rs    # start_download(opts) -> job_id, cancel_download(id)
 │  ├─ library.rs     # list_library, add_entry, delete_entry, reveal_path
-│  └─ settings.rs    # get_settings / set_settings (JSON)
+│  ├─ settings.rs    # get_settings / set_settings (JSON)
+│  └─ player.rs      # playlists CRUD + fetch_lyrics
 ├─ services/
 │  ├─ installer.rs   # GitHub release fetch, sha256 verify, atomic replace
 │  ├─ ytdlp.rs       # arg builders + progress-line parser (pure, unit-tested fns)
-│  └─ db.rs          # rusqlite migrations
+│  ├─ lyrics.rs      # LRCLIB client + cache (pure helpers, unit-tested)
+│  └─ db.rs          # rusqlite migrations (v1 downloads, v2 playlists)
 └─ jobs.rs           # Mutex<HashMap<job_id, Child>> process registry
 ```
 
 ### 5.1 Events (backend → frontend)
+
+Unchanged — playback timing is webview-local and lyrics are request/response, so the Player adds **no new events**.
 
 | Event | Payload |
 |---|---|
@@ -245,7 +328,22 @@ src-tauri/src/
 
 ### 5.2 Commands
 
-`ensure_tools · tool_versions · update_ytdlp · search_youtube · fetch_info · start_download · cancel_download · list_library · delete_entry · reveal_path · pick_folder · get_settings · set_settings`
+Existing: `ensure_tools · tool_versions · update_ytdlp · search_youtube · fetch_info · start_download · cancel_download · list_library · delete_entry · reveal_path · open_path · has_download · pick_folder · get_settings · set_settings`
+
+Added (v0.2):
+
+```
+list_playlists(db) -> Vec<Playlist{id,name,track_count,created_at}>
+create_playlist(db, name) -> Playlist
+rename_playlist(db, id, name)
+delete_playlist(db, id)
+add_playlist_item(db, playlist_id, download_id)
+remove_playlist_item(db, item_id)
+list_playlist_items(db, playlist_id) -> Vec<PlaylistTrack>   -- JOIN downloads, ordered by position
+reorder_playlist_items(db, playlist_id, item_ids: Vec<i64>)
+fetch_lyrics(app, video_id, title, channel, duration_s) -> Option<LyricsPayload>
+-- LyricsPayload { synced, plain, instrumental, track_name, artist_name, cached }
+```
 
 ### 5.3 Tool installation
 
@@ -295,6 +393,8 @@ yt-dlp --dump-single-json --no-playlist {url}
 
 ### 5.5 Database schema
 
+Migration v1 (existing, unchanged):
+
 ```sql
 CREATE TABLE downloads (
   id INTEGER PRIMARY KEY,
@@ -314,11 +414,52 @@ CREATE TABLE downloads (
 );
 ```
 
-Settings persisted as JSON at `{app_config}/settings.json`: `{ download_dir, concurrent, autoupdate_ytdlp, filename_template }`.
+Migration v2 (player):
+
+```sql
+CREATE TABLE playlists (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE playlist_items (
+  id INTEGER PRIMARY KEY,
+  playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+  download_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  added_at INTEGER NOT NULL,
+  UNIQUE(playlist_id, download_id)
+);
+```
+
+Settings persisted as JSON at `{app_config}/settings.json`: `{ download_dir, concurrent, autoupdate_ytdlp, filename_template, player_volume, player_speed }` — the two new fields carry serde defaults (`1.0`), so pre-v0.2 files load unchanged.
 
 ### 5.6 Security & capabilities
 
-Minimal Tauri capability set: dialog, opener, core window permissions. The frontend never touches the fs plugin — file ops happen Rust-side; paths cross the bridge as strings only. No secrets involved; GitHub API used unauthenticated (rate limits acceptable for a desktop client).
+Minimal Tauri capability set: dialog, opener, core window permissions. The frontend never touches the fs plugin — file ops happen Rust-side; paths cross the bridge as strings only. No secrets involved; GitHub API used unauthenticated (rate limits acceptable for a desktop client); LRCLIB is keyless.
+
+Media bytes are served to the webview through the **asset protocol**. Static config scope stays minimal (`$APPDATA/thumbs/**`, `$APPDATA/bin/**`); at startup — and again whenever `set_settings` runs — the backend calls `asset_protocol_scope().allow_directory(effective_download_dir(), true)` so only the *actual* download root becomes playable, whatever the user picked.
+
+### 5.7 Lyrics service (LRCLIB)
+
+Endpoints (no key, no rate limit):
+
+```
+GET https://lrclib.net/api/get?artist_name={a}&track_name={t}&duration={s}
+GET https://lrclib.net/api/search?q={query}          # fallback when /get misses
+→ 200 { id, trackName, artistName, duration, instrumental,
+        plainLyrics, syncedLyrics }                  # syncedLyrics = LRC text
+```
+
+Flow inside `fetch_lyrics(app, video_id, title, channel, duration_s)`:
+
+1. Cache-first: return `{app_data}/lyrics/{video_id}.lrc` (synced) or `.txt` (plain) if present, `cached: true`.
+2. Derive search terms with pure fn `parse_title_artist(title, channel)` — splits `"Artist - Title"` patterns, strips parenthetical noise (`(Official Video)`, `[HD]`…); falls back to artist = channel.
+3. Try `/api/get` with duration tolerance; miss → `/api/search?q="{artist} {track}"` and pick via pure fn `pick_best(results, duration_s)` (min duration delta ≤ 3s, prefer entries with `syncedLyrics`).
+4. Persist atomically (temp-write → rename) into the lyrics cache; return payload.
+
+Frontend owns LRC rendering: pure TS `lib/lrc.ts` — `parseLrc(text) -> [{tMs, s}]` sorted (multiple timestamps per line supported) and `activeIndex(lines, tMs)` pointer-walk against `<video>.currentTime`. Both pure and unit-testable.
 
 ---
 
@@ -326,31 +467,52 @@ Minimal Tauri capability set: dialog, opener, core window permissions. The front
 
 ```
 src/
-├─ main.tsx / App.tsx        # providers, router shell, boot gate
-├─ theme.css                 # Tailwind v4 tokens (@theme), fonts, scanlines
+├─ main.tsx / App.tsx        # providers, router shell, boot gate, PlayerBar + MediaHost mount
+├─ theme.css                 # Tailwind v4 tokens (@theme), fonts, scanlines, caption-deck utils
 ├─ components/
 │  ├─ titlebar/              # drag region, telemetry, window buttons
-│  ├─ rail/                  # nav rail + active notch
+│  ├─ rail/                  # nav rail + active notch + playing pulse dot
 │  ├─ boot/                  # power-on sequence overlay
 │  ├─ search/                # hero dock, result cards, skeletons
 │  ├─ sheet/                 # format slide-over
 │  ├─ downloads/             # queue rows, progress bars
 │  ├─ library/               # grid/list, filters, action rows
+│  ├─ player/                # PlayerTab, PlaylistsPane, TrackList/Row, NowPlaying,
+│  │                         # CaptionDeck, Transport, SeekBar, SpeedMenu,
+│  │                         # VolumeSlider, AddToPlaylistMenu
+│  ├─ player-bar/            # global PlayerBar + MediaHost (portal slots)
 │  ├─ settings/              # sections
 │  └─ common/                # toast stack, pills, empty states, confirm popover
-├─ stores/                   # zustand: queue, settings, library, search, ui
+├─ stores/                   # zustand: queue, settings, library, search, ui,
+│                            #           player, playlists
 ├─ lib/
 │  ├─ ipc.ts                 # typed command wrappers + event listeners
+│  ├─ lrc.ts                 # pure LRC parser + active-line finder
 │  └─ format.ts              # bytes/duration/ETA formatters (mono output)
 └─ types/                    # shared DTOs mirroring Rust serde structs
 ```
+
+Player store (`stores/player.ts`) shape:
+
+```
+queue: LibraryEntry[]        // logical queue (play context snapshot)
+order: number[]              // permutation — shuffled or linear
+pos: number                  // index into order
+playing, currentTimeS, durationS
+repeat: 'off'|'all'|'one'    shuffle: boolean
+context: {type:'library'|'playlist', id?} | null
+actions: playAll(entries,start) enqueue toggle next prev cycleRepeat
+         toggleShuffle(current stays first) setSpeed setVolume seek onEnded onError
+```
+
+Advance rules: `onEnded` honors repeat-one (seek 0) → repeat-all (wrap) → off (stop at queue end); `next()` manual always advances; both skip `status === 'missing'` entries; media `error` event → toast + skip (never a dead queue).
 
 Motion rules (project-wide):
 
 - Animate only `transform` and `opacity`.
 - Springs for interactive elements (`stiffness 300, damping 22` range); eased curves for entrances.
 - Stagger children via variants, not per-item timers where avoidable.
-- All motion gated behind `useReducedMotion()` / media query collapse.
+- All motion gated behind `useReducedMotion()` / media query collapse — CaptionDeck snapping, EQ bars freezing, Reorder going instant included.
 
 ---
 
@@ -413,6 +575,26 @@ Error-path matrix (no network at boot, yt-dlp update failure, disk full, region-
 
 **Verify:** `npm run tauri build` produces installable artifacts; each error scenario shows a friendly inline/toast message, never a crash.
 
+### T12 — Player backend foundation
+DB migration v2 (playlists, playlist_items); `commands/player.rs` with the eight playlist commands; `services/lyrics.rs` (cache, `parse_title_artist`, `pick_best`, LRCLIB client) + `fetch_lyrics`; runtime asset-scope `allow_directory` on startup and after `set_settings`; settings gains `player_volume`/`player_speed`.
+
+**Verify:** `cargo clippy` + `cargo test` clean (pure fns covered); manual IPC: create/list/rename/delete playlist persists across restart; dup add is a no-op; `fetch_lyrics("Bohemian Rhapsody","Queen",354)` returns LRC and second call reports `cached:true`; a file under a custom download dir loads via `convertFileSrc` in the webview.
+
+### T13 — Playback engine
+Default view flips to `player`; rail gains Player item + playing pulse dot; `stores/player.ts` with order/permutation logic (shuffle keeps current first); `MediaHost` single-`<video>` node + portal slots; global `PlayerBar` (hairline progress, compact transport, mini-video thumb slot, caret nav); transport wiring: repeat off/all/one, shuffle, speed (`playbackRate`), seek, volume, prev restart-if->3s, ended/advance/skip-missing, error toast+skip; keyboard map; volume/speed persisted via settings.
+
+**Verify:** start an mp3 → walk every view: audio never stops; repeat-one loops seamlessly; shuffle regenerates order without replaying current; 1.5× audibly faster and survives restart; missing track skipped with toast; Space/arrows work outside inputs; queue-end stops cleanly with repeat off.
+
+### T14 — Player lists & playlists UI
+Three-pane `PlayerTab`; TrackList with chips/sort/search/EQ-glyph active row/missing pills/hover actions; AddToPlaylist picker popover; PlaylistsPane CRUD (inline create/rename, delete confirm, mono counts, storage footer); playlist view with runtime header, PLAY ALL, Motion `Reorder` drag-to-reorder persistence; console-prompt empty states.
+
+**Verify:** CRUD + reorder survive restart; duplicate add no-op visible (checkmark state); chips/search/sort correct against ≥20 mixed tracks; empty states for empty library and empty playlist; drag reorder respects reduced-motion.
+
+### T15 — Now Playing + Caption Deck
+Artwork frame + video portal swap between slots; SeekBar hover-grow + remaining-time toggle; SpeedMenu + VolumeSlider bound to settings; CaptionDeck: lazy fetch, synced highlight tracking `currentTime` (~200ms tolerance), click-line-to-seek, centered spring scroll, plain/instrumental/none fallback ladder, manual search override form; reduced-motion pass; screenshot review.
+
+**Verify:** synced highlight stays within ~200ms of vocals on a known LRC-backed track; clicking a line seeks; video keeps playing (position + audio unbroken) while portaling between tab ↔ bar; offline relaunch replays cached lyrics instantly; fallback ladder exercised on an instrumental and a gibberish-title track; `cargo clippy` + `npm run build` clean.
+
 ---
 
 ## 8. Risks & Mitigations
@@ -424,3 +606,6 @@ Error-path matrix (no network at boot, yt-dlp update failure, disk full, region-
 | Static ffmpeg URLs rot | URLs isolated as constants in `installer.rs`, checksummed downloads |
 | IP blocks / rate limiting | Surface yt-dlp's own error text in friendly toasts; retry affordance |
 | Partial files on crash/kill | `.part` cleanup on cancel/error; temp-write → atomic rename pattern everywhere |
+| WebKitGTK codec gaps (mkv/H.264 variance across Linux distros) | Media `error` event → toast "format can't play in-app" + `open_path` escape hatch; mp3/mp4/webm treated as first-class |
+| YT titles defeat lyric matching ("Song (Official Video)") | `parse_title_artist` strips decoration; `/api/search` fallback; manual override form is the guaranteed exit |
+| Very large libraries (1k+ rows) | Plain scroll list acceptable at v1 scale; virtualization noted as future work |

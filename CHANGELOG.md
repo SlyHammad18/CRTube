@@ -1,7 +1,27 @@
 # Changelog
 
 All notable work is tracked here, grouped by the task breakdown in
-[`DESIGN.md`](./DESIGN.md) (T1–T11). Versions follow the task milestones.
+[`DESIGN.md`](./DESIGN.md) (T1–T15). Versions follow the task milestones.
+
+## [0.2.0] — 2026-08-26
+
+Player milestone: music/video playback tab with playlists and synced lyrics.
+
+### T12 — Player backend foundation
+- DB migration v2: `playlists` + `playlist_items` (FK cascade, unique per
+  playlist/download); `foreign_keys` pragma enabled on open.
+- Playlist data layer + 8 commands: create/rename/delete/list playlists,
+  add/remove/list items, transactional reorder. Duplicate adds are no-ops.
+- `services/lyrics.rs`: LRCLIB client (keyless), pure helpers
+  `parse_title_artist` (strips YouTube decoration) and `pick_best`
+  (duration-tolerance match preferring synced LRC), atomic lyrics cache at
+  `{app_data}/lyrics/{video_id}.lrc|.txt`; `fetch_lyrics` command.
+- Settings gains `player_volume` / `player_speed` (serde defaults keep
+  pre-v0.2 settings.json files loading unchanged); sanitize clamps both.
+- Asset protocol scope widened at runtime to the effective download dir on
+  startup and after every `set_settings`.
+- Verified: clippy clean, 42 unit tests pass, live LRCLIB network test
+  returns synced LRC for a known track.
 
 ## [0.1.0] — 2026-08-26
 
@@ -70,4 +90,5 @@ dark "Ice Console" interface.
   descriptions). `npm run tauri build` produces deb + AppImage (and rpm on
   Linux; NSIS on Windows).
 
+[0.2.0]: https://github.com/SlyHammad18/CRTube/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SlyHammad18/CRTube/releases/tag/v0.1.0

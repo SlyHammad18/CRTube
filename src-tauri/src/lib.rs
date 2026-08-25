@@ -23,6 +23,8 @@ pub fn run() {
                 .map_err(|e| e.to_string())?;
             let conn = services::db::open(&dir.join("library.db")).map_err(|e| e.to_string())?;
             app.manage(Arc::new(Db(Mutex::new(conn))));
+            // §5.6 — make the download dir playable over the asset protocol.
+            commands::settings::allow_media_scope(app.handle(), &commands::settings::load_settings(app.handle()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -41,7 +43,16 @@ pub fn run() {
             commands::library::open_path,
             commands::library::pick_folder,
             commands::settings::get_settings,
-            commands::settings::set_settings
+            commands::settings::set_settings,
+            commands::player::list_playlists,
+            commands::player::create_playlist,
+            commands::player::rename_playlist,
+            commands::player::delete_playlist,
+            commands::player::add_playlist_item,
+            commands::player::remove_playlist_item,
+            commands::player::list_playlist_items,
+            commands::player::reorder_playlist_items,
+            commands::player::fetch_lyrics
         ])
         .run(tauri::generate_context!())
         .expect("error while running CRTube");

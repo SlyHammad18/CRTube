@@ -4,6 +4,9 @@ use tauri::{AppHandle, Manager};
 use std::path::PathBuf;
 
 pub const DEFAULT_CONCURRENT: u32 = 3;
+/// §4.8 — playback speed menu spans 0.5×–2×; clamp wider inputs into a safe range.
+pub const SPEED_MIN: f32 = 0.25;
+pub const SPEED_MAX: f32 = 4.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -12,6 +15,8 @@ pub struct AppSettings {
     pub concurrent: u32,
     pub autoupdate_ytdlp: bool,
     pub filename_template: Option<String>,
+    pub player_volume: f32,
+    pub player_speed: f32,
 }
 
 impl Default for AppSettings {
@@ -21,6 +26,8 @@ impl Default for AppSettings {
             concurrent: DEFAULT_CONCURRENT,
             autoupdate_ytdlp: true,
             filename_template: None,
+            player_volume: 1.0,
+            player_speed: 1.0,
         }
     }
 }
@@ -71,9 +78,30 @@ pub fn load_settings(app: &AppHandle) -> AppSettings {
     settings_path(app).map(|p| load_from(&p)).unwrap_or_default()
 }
 
+/// Widen the runtime asset-protocol scope to the effective download dir (§5.6)
+/// so downloaded media is playable by the webview. Idempotent; safe to call on
+/// every startup and every `set_settings`.
+pub fn allow_media_scope(app: &AppHandle, settings: &AppSettings) {
+    let dir = settings.effective_download_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    if let Err(e) = app.asset_protocol_scope().allow_directory(&dir, true) {
+        log_scope_error(&e.to_string());
+    }
+}
+
+fn log_scope_error(msg: &str) {
+    eprintln!("crtube: asset scope allow failed: {msg}");
+}
+
 fn sanitize(mut s: AppSettings) -> AppSettings {
     s.download_dir = s.download_dir.trim().to_string();
     s.concurrent = s.concurrent.clamp(1, 5);
+    s.player_volume = s.player_volume.clamp(0.0, 1.0);
+    if !s.player_speed.is_finite() || s.player_speed < SPEED_MIN {
+        s.player_speed = SPEED_MIN;
+    } else if s.player_speed > SPEED_MAX {
+        s.player_speed = SPEED_MAX;
+    }
     if let Some(t) = &s.filename_template {
         if t.trim().is_empty() {
             s.filename_template = None;
@@ -98,6 +126,7 @@ pub fn set_settings(app: AppHandle, settings: AppSettings) -> Result<AppSettings
         s.download_dir = default_download_dir()?.to_string_lossy().to_string();
     }
     save_to(&settings_path(&app)?, &s)?;
+    allow_media_scope(&app, &s);
     Ok(s)
 }
 
@@ -121,6 +150,22 @@ mod tests {
         assert!(s.autoupdate_ytdlp);
         assert!(s.filename_template.is_none());
         assert_eq!(s.download_dir, "");
+        // v0.2 player fields default to unity.
+        assert_eq!(s.player_volume, 1.0);
+        assert_eq!(s.player_speed, 1.0);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn pre_v02_file_without_player_fields_loads_with_defaults() {
+        let p = temp_path("legacy");
+        let _ = std::fs::remove_file(&p);
+        std::fs::write(&p, r#"{"download_dir":"/tmp/x","concurrent":2,"autoupdate_ytdlp":true}"#)
+            .unwrap();
+        let s = load_from(&p);
+        assert_eq!(s.player_volume, 1.0);
+        assert_eq!(s.player_speed, 1.0);
+        assert_eq!(s.concurrent, 2);
         let _ = std::fs::remove_file(&p);
     }
 
@@ -133,6 +178,7 @@ mod tests {
             concurrent: 5,
             autoupdate_ytdlp: false,
             filename_template: Some("{id} - {title}.{ext}".into()),
+            ..Default::default()
         };
         save_to(&p, &s).unwrap();
         let loaded = load_from(&p);
@@ -148,6 +194,8 @@ mod tests {
         assert!(raw.contains("\"download_dir\""));
         assert!(raw.contains("\"autoupdate_ytdlp\""));
         assert!(raw.contains("\"filename_template\""));
+        assert!(raw.contains("\"player_volume\""));
+        assert!(raw.contains("\"player_speed\""));
         assert!(!raw.contains("\"downloadDir\""));
         let _ = std::fs::remove_file(&p);
     }
@@ -173,6 +221,40 @@ mod tests {
             ..Default::default()
         });
         assert!(s.filename_template.is_none());
+    }
+
+    #[test]
+    fn sanitize_clamps_player_volume_and_speed() {
+        let s = sanitize(AppSettings {
+            player_volume: 1.7,
+            player_speed: 12.0,
+            ..Default::default()
+        });
+        assert_eq!(s.player_volume, 1.0);
+        assert_eq!(s.player_speed, SPEED_MAX);
+
+        let s = sanitize(AppSettings {
+            player_volume: -3.0,
+            player_speed: 0.0,
+            ..Default::default()
+        });
+        assert_eq!(s.player_volume, 0.0);
+        assert_eq!(s.player_speed, SPEED_MIN);
+
+        let s = sanitize(AppSettings {
+            player_speed: f32::NAN,
+            ..Default::default()
+        });
+        assert_eq!(s.player_speed, SPEED_MIN);
+
+        // In-range values pass through untouched.
+        let s = sanitize(AppSettings {
+            player_volume: 0.35,
+            player_speed: 1.5,
+            ..Default::default()
+        });
+        assert_eq!(s.player_volume, 0.35);
+        assert_eq!(s.player_speed, 1.5);
     }
 
     #[test]
