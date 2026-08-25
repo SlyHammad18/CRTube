@@ -4,13 +4,16 @@ import {
   DownloadSimple,
   GearSix,
   MagnifyingGlass,
+  MusicNote,
   SquaresFour,
 } from "@phosphor-icons/react";
 import type { View } from "../../stores/ui";
 import { useUIStore } from "../../stores/ui";
 import { useQueueStore } from "../../stores/queue";
+import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 
 const MAIN_ITEMS: { id: View; label: string; icon: typeof MagnifyingGlass }[] = [
+  { id: "player", label: "Player", icon: MusicNote },
   { id: "search", label: "Search", icon: MagnifyingGlass },
   { id: "downloads", label: "Downloads", icon: DownloadSimple },
   { id: "library", label: "Library", icon: SquaresFour },
@@ -20,6 +23,9 @@ export function Rail() {
   const view = useUIStore((s) => s.view);
   const setView = useUIStore((s) => s.setView);
   const activeCount = useQueueStore((s) => s.activeCount);
+  const playingNow = usePlayerStore(
+    (s) => s.playing && selectCurrentEntry(s) != null,
+  );
 
   return (
     <nav className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-line bg-panel py-3">
@@ -30,6 +36,7 @@ export function Rail() {
           active={view === id}
           onSelect={() => setView(id)}
           badge={id === "downloads" && activeCount > 0 ? activeCount : undefined}
+          pulse={id === "player" && playingNow}
         >
           <Icon size={21} weight="light" aria-hidden />
         </RailButton>
@@ -50,12 +57,14 @@ function RailButton({
   active,
   onSelect,
   badge,
+  pulse = false,
   children,
 }: {
   label: string;
   active: boolean;
   onSelect: () => void;
   badge?: number;
+  pulse?: boolean;
   children: ReactNode;
 }) {
   const reduce = useReducedMotion();
@@ -80,6 +89,14 @@ function RailButton({
         />
       )}
       {children}
+      {pulse && (
+        <span
+          aria-hidden
+          className={`absolute bottom-[2px] left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-ice ${
+            reduce ? "" : "animate-pulse-dot"
+          }`}
+        />
+      )}
       {badge !== undefined && (
         <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-ice px-1 font-mono text-[10px] leading-none text-void">
           {badge}

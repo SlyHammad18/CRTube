@@ -1,9 +1,11 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use tauri::{AppHandle, State};
 
 use crate::services::db::{self, Db, Playlist, PlaylistTrack};
 use crate::services::lyrics::{self, LyricsPayload};
+use crate::services::media::MediaServer;
 
 const PLAYLIST_NAME_MAX: usize = 80;
 
@@ -89,6 +91,23 @@ pub fn reorder_playlist_items(
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::reorder_playlist_items(&conn, playlist_id, &item_ids).map_err(|e| e.to_string())
+}
+
+/// Loopback stream URL for a download; `Ok(None)` when the row or file is gone.
+#[tauri::command]
+pub fn media_url(
+    server: State<'_, MediaServer>,
+    db: State<'_, Arc<Db>>,
+    id: i64,
+) -> Result<Option<String>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let path: Option<String> = conn
+        .query_row("SELECT path FROM downloads WHERE id = ?1", [id], |r| r.get(0))
+        .ok();
+    let playable = path
+        .filter(|p| !p.trim().is_empty() && Path::new(p.trim()).is_file())
+        .is_some();
+    Ok(playable.then(|| server.url_for(id)))
 }
 
 /// LRCLIB lookup for a track; cache-first, returns `Ok(None)` when nothing found.

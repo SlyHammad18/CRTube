@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type View = "search" | "downloads" | "library" | "settings";
+export type View = "player" | "search" | "downloads" | "library" | "settings";
 
 interface UIState {
   view: View;
@@ -10,7 +10,8 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  view: "search",
+  // §4.1 — the app opens on the Player.
+  view: "player",
   booted: false,
   setView: (view) => set({ view }),
   setBooted: (booted) => set({ booted }),

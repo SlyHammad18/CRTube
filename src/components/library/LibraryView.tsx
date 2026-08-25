@@ -14,6 +14,7 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useLibraryStore, type LibraryFilter } from "../../stores/library";
 import { useUIStore } from "../../stores/ui";
+import { usePlayerStore } from "../../stores/player";
 import { pushToast } from "../../stores/toast";
 import { ipc } from "../../lib/ipc";
 import { fmtBytes, fmtDuration } from "../../lib/format";
@@ -214,6 +215,18 @@ function EntryRow({ entry }: { entry: LibraryEntry }) {
   );
 }
 
+function NoMatches() {
+  const searchQuery = useLibraryStore((s) => s.searchQuery);
+  const filter = useLibraryStore((s) => s.filter);
+  return (
+    <p className="mt-10 text-center font-mono text-15 text-mute">
+      {"> no matches for “"}
+      {searchQuery.trim() || filter}
+      {"”_"}
+    </p>
+  );
+}
+
 function FilterPills() {
   const filter = useLibraryStore((s) => s.filter);
   const setFilter = useLibraryStore((s) => s.setFilter);
@@ -292,9 +305,47 @@ function DensityToggle() {
   );
 }
 
+function PlayAllButton({ entries }: { entries: LibraryEntry[] }) {
+  const disabled = entries.length === 0;
+  return (
+    <button
+      aria-label="Play all in app player"
+      disabled={disabled}
+      onClick={() =>
+        usePlayerStore
+          .getState()
+          .playAll(entries, 0, { type: "library" })
+      }
+      className="flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1 text-12 font-medium text-mute transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+    >
+      <Play size={12} weight="fill" aria-hidden />
+      Play all
+    </button>
+  );
+}
+
+/** Filter + search logic shared by the list and header controls. */
+function useFilteredEntries(): LibraryEntry[] {
+  const entries = useLibraryStore((s) => s.entries);
+  const filter = useLibraryStore((s) => s.filter);
+  const searchQuery = useLibraryStore((s) => s.searchQuery);
+  return useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return entries.filter(
+      (e) =>
+        (filter === "all" || e.kind === filter) &&
+        (q === "" ||
+          e.title.toLowerCase().includes(q) ||
+          (e.channel ?? "").toLowerCase().includes(q)),
+    );
+  }, [entries, filter, searchQuery]);
+}
+
 function ControlsRow() {
+  const filtered = useFilteredEntries();
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2.5">
+      <PlayAllButton entries={filtered} />
       <FilterPills />
       <SearchField />
       <DensityToggle />
@@ -305,8 +356,6 @@ function ControlsRow() {
 export function LibraryView() {
   const entries = useLibraryStore((s) => s.entries);
   const loaded = useLibraryStore((s) => s.loaded);
-  const filter = useLibraryStore((s) => s.filter);
-  const searchQuery = useLibraryStore((s) => s.searchQuery);
   const density = useLibraryStore((s) => s.density);
   const refresh = useLibraryStore((s) => s.refresh);
   const setView = useUIStore((s) => s.setView);
@@ -315,16 +364,7 @@ export function LibraryView() {
     void refresh();
   }, [refresh]);
 
-  const filtered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return entries.filter(
-      (e) =>
-        (filter === "all" || e.kind === filter) &&
-        (q === "" ||
-          e.title.toLowerCase().includes(q) ||
-          (e.channel ?? "").toLowerCase().includes(q)),
-    );
-  }, [entries, filter, searchQuery]);
+  const filtered = useFilteredEntries();
 
   const totalBytes = entries.reduce((acc, e) => acc + (e.sizeBytes ?? 0), 0);
   const gb = (totalBytes / 1024 ** 3).toFixed(1);
@@ -354,11 +394,7 @@ export function LibraryView() {
         <>
           <ControlsRow />
           {filtered.length === 0 ? (
-            <p className="mt-10 text-center font-mono text-15 text-mute">
-              {"> no matches for “"}
-              {searchQuery.trim() || filter}
-              {"”_"}
-            </p>
+            <NoMatches />
           ) : density === "grid" ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-4">
               <AnimatePresence initial={false}>

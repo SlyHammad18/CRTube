@@ -19,9 +19,34 @@ Player milestone: music/video playback tab with playlists and synced lyrics.
 - Settings gains `player_volume` / `player_speed` (serde defaults keep
   pre-v0.2 settings.json files loading unchanged); sanitize clamps both.
 - Asset protocol scope widened at runtime to the effective download dir on
-  startup and after every `set_settings`.
+  startup and after every `set_settings` (superseded for playback in T13 by
+  the loopback streamer; still covers any `<img>` use).
 - Verified: clippy clean, 42 unit tests pass, live LRCLIB network test
   returns synced LRC for a known track.
+
+### T13 — Playback engine
+- Default view flipped to Player; rail gains MusicNote item with a pulsing
+  ice dot while audio plays.
+- Loopback media streamer (`services/media.rs`): ephemeral 127.0.0.1 port,
+  per-session token, DB-id addressation, root confinement, HTTP Range/206 +
+  HEAD — required because WebKitGTK's GStreamer pipeline cannot fetch custom
+  URI schemes (`asset://`); served via new `media_url` command.
+- `stores/player.ts`: queue + order permutation (shuffle keeps current first),
+  repeat off/all/one, prev restart-if->3s, ended/advance logic skipping
+  missing files, error toast + skip, seek nonce protocol.
+- `MediaHost` owns the single `<video>` element (plays audio-only files too)
+  and portals it between slots without unmounting — playback survives every
+  view switch; global hotkeys (Space / arrows).
+- Global `PlayerBar`: signal-meter hairline progress (MotionValue), compact
+  transport, mono time readout, shuffle/repeat/volume/speed controls, caret
+  nav into the Player tab; slides up only when queue non-empty.
+- Volume + speed persist through settings (`player_volume`/`player_speed`),
+  debounced writes, hydrated on launch.
+- Library gains a "Play all" button feeding the queue with current filter/
+  search context.
+- Verified live: mp3 playback advanced in real time (mono clock 0:41→0:56)
+  across automatic player/search/library/downloads switches without
+  interruption; no media errors.
 
 ## [0.1.0] — 2026-08-26
 

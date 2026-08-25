@@ -3,4 +3,6 @@ export interface AppSettings {
   concurrent: number;
   autoupdate_ytdlp: boolean;
   filename_template?: string | null;
+  player_volume: number;
+  player_speed: number;
 }

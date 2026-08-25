@@ -127,6 +127,11 @@ pub fn set_settings(app: AppHandle, settings: AppSettings) -> Result<AppSettings
     }
     save_to(&settings_path(&app)?, &s)?;
     allow_media_scope(&app, &s);
+    // Keep the media streamer's allowed roots in sync with the new dir.
+    if let Some(server) = app.try_state::<crate::services::media::MediaServer>() {
+        let roots = vec![s.effective_download_dir()];
+        tauri::async_runtime::block_on(server.set_roots(roots));
+    }
     Ok(s)
 }
 

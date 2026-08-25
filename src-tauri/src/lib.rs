@@ -23,8 +23,17 @@ pub fn run() {
                 .map_err(|e| e.to_string())?;
             let conn = services::db::open(&dir.join("library.db")).map_err(|e| e.to_string())?;
             app.manage(Arc::new(Db(Mutex::new(conn))));
-            // §5.6 — make the download dir playable over the asset protocol.
-            commands::settings::allow_media_scope(app.handle(), &commands::settings::load_settings(app.handle()));
+            let settings =
+                commands::settings::load_settings(app.handle());
+            // §5.6 — asset protocol keeps serving thumbs/bin.
+            commands::settings::allow_media_scope(app.handle(), &settings);
+            // §5.6 — loopback media streamer serves downloaded audio/video
+            // (WebKitGTK's media pipeline cannot fetch custom schemes).
+            let media_roots = vec![settings.effective_download_dir()];
+            let server = tauri::async_runtime::block_on(
+                services::media::MediaServer::spawn(app.handle().clone(), media_roots),
+            )?;
+            app.manage(server);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -52,7 +61,8 @@ pub fn run() {
             commands::player::remove_playlist_item,
             commands::player::list_playlist_items,
             commands::player::reorder_playlist_items,
-            commands::player::fetch_lyrics
+            commands::player::fetch_lyrics,
+            commands::player::media_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running CRTube");

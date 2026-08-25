@@ -63,6 +63,7 @@ export const ipc = {
   getSettings: () => invoke<AppSettings>("get_settings"),
   setSettings: (settings: AppSettings) =>
     invoke<AppSettings>("set_settings", { settings }),
+  mediaUrl: (id: number) => invoke<string | null>("media_url", { id }),
 
   onDlProgress: async (
     cb: (payload: DlProgressPayload) => void,

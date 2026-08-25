@@ -13,7 +13,7 @@ A YouTube downloader **and** local music/video player desktop app. Rust + Tauri 
 | Frontend | React 18 + TypeScript + Vite |
 | Accent | Ice cyan `#4DD8FF` |
 | Packaging targets | Linux (deb, AppImage) + Windows (NSIS) |
-| Media engine | Webview-native `<video>` element served over the Tauri asset protocol |
+| Media engine | Webview-native `<video>` element fed by a loopback HTTP streamer |
 | Lyrics provider | LRCLIB (`lrclib.net`) — free, keyless, synced LRC |
 
 ---
@@ -31,7 +31,7 @@ A YouTube downloader **and** local music/video player desktop app. Rust + Tauri 
 | State | **Zustand** | Queue / settings / library / search / player / playlists stores |
 | DB | **rusqlite** (bundled SQLite) | Download history + playlist persistence |
 | HTTP | **reqwest** (rustls-tls) | Fetch yt-dlp releases, ffmpeg bundles, thumbnails, LRCLIB lyrics |
-| Playback | **HTML `<video>` element** (plays audio-only files too) | Native seek / `playbackRate` / ended+error events; zero new deps |
+| Playback | **HTML `<video>` element** fed by a loopback HTTP streamer (`services/media.rs`) | Native seek / `playbackRate` / ended+error events; WebKitGTK's GStreamer pipeline cannot fetch custom URI schemes, so `asset://` cannot feed media |
 | Tauri plugins | `dialog`, `opener`, `core:window` | Folder picker, reveal/play file, window controls |
 
 No other UI/component libraries. Never hand-roll SVG icons.
@@ -298,18 +298,19 @@ Three panes inside the main view area:
 
 ```
 src-tauri/src/
-├─ lib.rs            # builder, plugins, managed state, event wiring, asset-scope setup
+├─ lib.rs            # builder, plugins, managed state, event wiring, media-server + asset-scope setup
 ├─ commands/
 │  ├─ tools.rs       # ensure_tools, tool_versions, update_ytdlp(force)
 │  ├─ search.rs      # search_youtube(query, page), fetch_info(url)
 │  ├─ download.rs    # start_download(opts) -> job_id, cancel_download(id)
 │  ├─ library.rs     # list_library, add_entry, delete_entry, reveal_path
 │  ├─ settings.rs    # get_settings / set_settings (JSON)
-│  └─ player.rs      # playlists CRUD + fetch_lyrics
+│  └─ player.rs      # playlists CRUD, fetch_lyrics, media_url
 ├─ services/
 │  ├─ installer.rs   # GitHub release fetch, sha256 verify, atomic replace
 │  ├─ ytdlp.rs       # arg builders + progress-line parser (pure, unit-tested fns)
 │  ├─ lyrics.rs      # LRCLIB client + cache (pure helpers, unit-tested)
+│  ├─ media.rs       # loopback Range-capable media streamer (pure helpers, unit-tested)
 │  └─ db.rs          # rusqlite migrations (v1 downloads, v2 playlists)
 └─ jobs.rs           # Mutex<HashMap<job_id, Child>> process registry
 ```
@@ -343,6 +344,7 @@ list_playlist_items(db, playlist_id) -> Vec<PlaylistTrack>   -- JOIN downloads, 
 reorder_playlist_items(db, playlist_id, item_ids: Vec<i64>)
 fetch_lyrics(app, video_id, title, channel, duration_s) -> Option<LyricsPayload>
 -- LyricsPayload { synced, plain, instrumental, track_name, artist_name, cached }
+media_url(db, server, id) -> Option<String>                  -- loopback stream URL for a download
 ```
 
 ### 5.3 Tool installation
@@ -439,7 +441,14 @@ Settings persisted as JSON at `{app_config}/settings.json`: `{ download_dir, con
 
 Minimal Tauri capability set: dialog, opener, core window permissions. The frontend never touches the fs plugin — file ops happen Rust-side; paths cross the bridge as strings only. No secrets involved; GitHub API used unauthenticated (rate limits acceptable for a desktop client); LRCLIB is keyless.
 
-Media bytes are served to the webview through the **asset protocol**. Static config scope stays minimal (`$APPDATA/thumbs/**`, `$APPDATA/bin/**`); at startup — and again whenever `set_settings` runs — the backend calls `asset_protocol_scope().allow_directory(effective_download_dir(), true)` so only the *actual* download root becomes playable, whatever the user picked.
+**Media serving.** WebKitGTK's media pipeline (GStreamer) cannot fetch from custom URI schemes, so the asset protocol can serve thumbnails but not playback. Downloaded audio/video is instead streamed by a loopback-only HTTP server (`services/media.rs`, tokio, no new crates):
+
+- Binds `127.0.0.1:0` (ephemeral port) at startup; URLs look like `http://127.0.0.1:{port}/{token}/{download_id}`.
+- The token is a per-session SHA256 nonce — first path segment, constant-time-compared.
+- Files are addressed strictly by `downloads.id`; paths resolve server-side from the DB and are re-validated against canonicalised allowed roots (the effective download dir, updated on `set_settings`). No client-supplied paths, no traversal surface.
+- Full HTTP Range support (`206 Partial Content`, `Accept-Ranges: bytes`) so seeking works; `HEAD` honored.
+
+The static asset-protocol scope stays minimal (`$APPDATA/thumbs/**`, `$APPDATA/bin/**`) for cover art; a runtime `allow_directory` for the download root is still applied (harmless, useful for any `<img>` use), but playback never depends on it.
 
 ### 5.7 Lyrics service (LRCLIB)
 
@@ -576,14 +585,14 @@ Error-path matrix (no network at boot, yt-dlp update failure, disk full, region-
 **Verify:** `npm run tauri build` produces installable artifacts; each error scenario shows a friendly inline/toast message, never a crash.
 
 ### T12 — Player backend foundation
-DB migration v2 (playlists, playlist_items); `commands/player.rs` with the eight playlist commands; `services/lyrics.rs` (cache, `parse_title_artist`, `pick_best`, LRCLIB client) + `fetch_lyrics`; runtime asset-scope `allow_directory` on startup and after `set_settings`; settings gains `player_volume`/`player_speed`.
+DB migration v2 (playlists, playlist_items); `commands/player.rs` with the eight playlist commands; `services/lyrics.rs` (cache, `parse_title_artist`, `pick_best`, LRCLIB client) + `fetch_lyrics`; settings gains `player_volume`/`player_speed`.
 
-**Verify:** `cargo clippy` + `cargo test` clean (pure fns covered); manual IPC: create/list/rename/delete playlist persists across restart; dup add is a no-op; `fetch_lyrics("Bohemian Rhapsody","Queen",354)` returns LRC and second call reports `cached:true`; a file under a custom download dir loads via `convertFileSrc` in the webview.
+**Verify:** `cargo clippy` + `cargo test` clean (pure fns covered); manual IPC: create/list/rename/delete playlist persists across restart; dup add is a no-op; `fetch_lyrics("Bohemian Rhapsody","Queen",354)` returns LRC and second call reports `cached:true`.
 
 ### T13 — Playback engine
-Default view flips to `player`; rail gains Player item + playing pulse dot; `stores/player.ts` with order/permutation logic (shuffle keeps current first); `MediaHost` single-`<video>` node + portal slots; global `PlayerBar` (hairline progress, compact transport, mini-video thumb slot, caret nav); transport wiring: repeat off/all/one, shuffle, speed (`playbackRate`), seek, volume, prev restart-if->3s, ended/advance/skip-missing, error toast+skip; keyboard map; volume/speed persisted via settings.
+Default view flips to `player`; rail gains Player item + playing pulse dot; `stores/player.ts` with order/permutation logic (shuffle keeps current first); `services/media.rs` loopback Range-capable streamer + `media_url` command (WebKitGTK cannot fetch media over custom schemes — §5.6); `MediaHost` single-`<video>` node + portal slots; global `PlayerBar` (hairline progress, compact transport, mini-video thumb slot, caret nav); transport wiring: repeat off/all/one, shuffle, speed (`playbackRate`), seek, volume, prev restart-if->3s, ended/advance/skip-missing, error toast+skip; keyboard map; volume/speed persisted via settings.
 
-**Verify:** start an mp3 → walk every view: audio never stops; repeat-one loops seamlessly; shuffle regenerates order without replaying current; 1.5× audibly faster and survives restart; missing track skipped with toast; Space/arrows work outside inputs; queue-end stops cleanly with repeat off.
+**Verify:** start an mp3 → walk every view: audio never stops (automated screenshot pass: mono clock advanced 0:41→0:56 across player/search/library/downloads switches); repeat-one loops seamlessly; shuffle regenerates order without replaying current; 1.5× audibly faster and survives restart; missing track skipped with toast; Space/arrows work outside inputs; queue-end stops cleanly with repeat off.
 
 ### T14 — Player lists & playlists UI
 Three-pane `PlayerTab`; TrackList with chips/sort/search/EQ-glyph active row/missing pills/hover actions; AddToPlaylist picker popover; PlaylistsPane CRUD (inline create/rename, delete confirm, mono counts, storage footer); playlist view with runtime header, PLAY ALL, Motion `Reorder` drag-to-reorder persistence; console-prompt empty states.
