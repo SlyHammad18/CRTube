@@ -15,10 +15,6 @@ pub struct AppSettings {
     pub concurrent: u32,
     pub autoupdate_ytdlp: bool,
     pub hardware_accel: bool,
-    /// Re-encode video downloads to H.264/AAC at download time so they play
-    /// natively in WebKitGTK (which can't decode AV1/VP9). ON by default —
-    /// new downloads are stored as H.264/MP4 and need no playback-time transcode.
-    pub transcode_on_download: bool,
     /// Browser to pull cookies from for yt-dlp (e.g. "chrome", "firefox",
     /// "edge"). Empty by default. Needed when YouTube bot-walls extraction or
     /// for age/restricted videos. Requires that browser to be installed and
@@ -40,7 +36,6 @@ impl Default for AppSettings {
             concurrent: DEFAULT_CONCURRENT,
             autoupdate_ytdlp: true,
             hardware_accel: true,
-            transcode_on_download: true,
             youtube_cookies: String::new(),
             youtube_cookies_file: String::new(),
             filename_template: None,

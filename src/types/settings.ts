@@ -3,7 +3,6 @@ export interface AppSettings {
   concurrent: number;
   autoupdate_ytdlp: boolean;
   hardware_accel: boolean;
-  transcode_on_download: boolean;
   youtube_cookies: string;
   youtube_cookies_file: string;
   filename_template?: string | null;

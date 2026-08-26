@@ -262,7 +262,7 @@ Three panes inside the main view area:
 
 **Now Playing pane (320px, collapsible via `PanelRight` toggle, state in ui store)**
 
-- Artwork frame: radius 10 + scanline overlay; shows cached thumbnail. For `kind === 'video'` tracks, the live `<video>` element portals into this frame (§4.9).
+- Artwork frame: radius 10 + scanline overlay; shows cached thumbnail. For `kind === 'video'` tracks, the live `<video>` element overlays this frame (positioned by MediaHost over `#nowplaying-media-slot`, §4.9 — never reparented).
 - Title (Chakra Petch 24, 2-line clamp) + channel (Manrope, `mute`).
 - Seek bar: 2px `line` track, `ice` fill, grows to 4px on hover; flanking times in mono (`0:00` elapsed / `-3:41` remaining toggleable by click).
 - Transport row: shuffle · previous · **play/pause (44px `ice` circle, `void` icon — the only filled accent circle in the app)** · next · repeat (cycles off → all → one; `one` shows mono superscript `1` badge).
@@ -290,8 +290,8 @@ Three panes inside the main view area:
 - Top edge carries a full-width 2px `ice` hairline progress fill that **also acts as a click-to-seek strip** (grows to 3px on hover) — reads like a channel signal meter you can scrub.
 - **Three-zone layout** via `grid-cols-[1fr_auto_1fr]`: **left** = 48px thumb (or title/channel, `flex-1 min-w-0`) · **center (truly centered)** = compact transport only (prev · play/pause 36px `ice` circle · next) · **right** = mono time `1:24 / 3:41`, a vertical `line` divider, volume (custom-styled `.range-ice` slider with inline ice-fill gradient — no native widget), and the `⌃` caret navigating to the Player tab.
 - Shuffle/repeat/speed deliberately live in the **Now Playing transport** (§4.8), not the bar — the global bar stays a minimal now-playing indicator.
-- **Media host contract:** exactly one `<video>` DOM node lives in a persistent `MediaHost` mounted at shell level. React portals reparent the *same node* between two slots — `#playerbar-media-slot` (bar thumb position) and `#nowplaying-media-slot` (Player tab artwork frame). Portal identity preservation guarantees zero reload/restart when switching views; video keeps playing (picture shrinks into the bar) exactly like audio does.
-- Audio-only tracks never portal — their slot shows artwork instead.
+- **Media host contract:** exactly one `<video>` DOM node lives in a persistent `MediaHost` mounted at shell level. The node is **never reparented** — under WebKitGTK's GStreamer video sink, moving a `<video>` to a new DOM parent tears down the native compositing surface and blacks out / kills controls on Linux. Instead the single node stays mounted at app root and is *positioned over the active stage via CSS* (`top/left/width/height` from the target slot's measured rect, `object-fit` cover/contain). Slots `#nowplaying-media-slot` (Player tab artwork frame), `#playerbar-media-slot` (bar thumb), and the fullscreen stage are pure measurement placeholders; a rAF loop + ResizeObserver keeps the node tracking the stage through view transitions and the PlayerBar spring. Playback (audio included) is continuous across every view and fullscreen — the video keeps playing (picture shrinks into the bar) exactly like audio does.
+- Audio-only tracks never show video — the node hides (`visibility:hidden`, never `display:none`) while still decoding audio.
 
 ---
 

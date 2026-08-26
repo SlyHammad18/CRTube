@@ -7,14 +7,13 @@ import { SeekBar } from "./SeekBar";
 import { VolumeSlider } from "./VolumeSlider";
 
 /**
- * In-app fullscreen video overlay (§requested): reuses the single <video>
- * element (portaled into `els.fullscreen`), so playback — audio included —
- * never restarts. Provides timeline/timestamp (SeekBar) + volume controls.
- *
- * NOTE: the overlay is a plain <div> (no framer-motion transform/opacity
- * animation). Under WebKitGTK's legacy video path, a <video> goes black when
- * its ancestor is a promoted compositing layer, so we avoid animating this
- * container — the video must stay in normal document flow.
+ * In-app fullscreen video overlay (§requested): the single <video> element is
+ * NOT a child of this overlay — MediaHost keeps it mounted at app root and
+ * positions it over `els.fullscreen` via CSS. Playback (audio included) never
+ * restarts and, crucially, the video surface is never reparented under a
+ * promoted compositing layer, which previously made it go black under
+ * WebKitGTK. This overlay only provides the timeline/timestamp (SeekBar) +
+ * volume controls and the stage rect to measure.
  */
 export function VideoFullscreen() {
   const open = useUIStore((s) => s.videoFullscreen);

@@ -3,6 +3,24 @@
 All notable work is tracked here, grouped by the task breakdown in
 [`DESIGN.md`](./DESIGN.md) (T1–T15). Versions follow the task milestones.
 
+## [Unreleased]
+
+### Playback — download-time H.264 transcode removed, playback-time kept
+- Removed the **download-time** H.264/MP4 re-encode: videos now download in
+  their native format. Dropped the `transcode_on_download` setting (Rust + TS
+  type, default, and the Settings toggle) and `transcode_to_h264`.
+- Kept the **playback-time** on-the-fly transcode for codecs WebKitGTK cannot
+  decode (AV1/HEVC/etc.). `media_url` probes the codec and, when needed,
+  returns a `transcode_url_for(id)` URL; `serve_transcode` re-encodes to
+  H.264/AAC on first play and caches it in `<app_data>/transcodes/{id}.mp4`
+  (with a `{id}.done` marker) for instant, seekable repeats. The cached
+  machinery (`serve_transcode`, `stream_growing_raw`, `wait_for_done`,
+  `remove_transcoding`, `transcode_url_for`, `probe_video_codec`,
+  `is_web_playable_video`, per-id transcode lock) is restored.
+- Supported codecs play straight through the loopback streamer; genuinely
+  unsupported codecs still take the error-toast + `open_path` escape hatch
+  (DESIGN §5.6).
+
 ## [0.2.0] — 2026-08-26
 
 Player milestone: music/video playback tab with playlists and synced lyrics.
@@ -35,8 +53,10 @@ Player milestone: music/video playback tab with playlists and synced lyrics.
   repeat off/all/one, prev restart-if->3s, ended/advance logic skipping
   missing files, error toast + skip, seek nonce protocol.
 - `MediaHost` owns the single `<video>` element (plays audio-only files too)
-  and portals it between slots without unmounting — playback survives every
-  view switch; global hotkeys (Space / arrows).
+  and keeps it mounted at app root, **positioned over the active stage via CSS**
+  (no React-portal reparenting) — fixes WebKitGTK black-screen / dead-controls
+  failures where moving the node into a new DOM parent tore down the GStreamer
+  video surface; global hotkeys (Space / arrows).
 - Global `PlayerBar`: signal-meter hairline progress (MotionValue), compact
   transport, mono time readout, shuffle/repeat/volume/speed controls, caret
   nav into the Player tab; slides up only when queue non-empty.

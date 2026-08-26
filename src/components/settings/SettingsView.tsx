@@ -234,16 +234,6 @@ function PlaybackSection() {
           label="Hardware acceleration"
         />
       </Row>
-      <Row
-        label="Convert to H.264 on download"
-        hint="Re-encode videos to H.264 so they play natively. Slower downloads, but avoids playback issues with newer codecs (AV1/VP9)."
-      >
-        <Toggle
-          checked={settings?.transcode_on_download ?? true}
-          onChange={(v) => void update({ transcode_on_download: v })}
-          label="Convert to H.264 on download"
-        />
-      </Row>
     </Section>
   );
 }

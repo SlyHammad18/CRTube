@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import {
   selectCurrentEntry,
   usePlayerStore,
@@ -11,22 +10,38 @@ import { useSlotEls } from "./mediaSlots";
 import { useUIStore } from "../../stores/ui";
 
 /**
- * Owns the app's single <video> element (plays audio-only files too) and
- * portals it between slots without ever unmounting it — playback survives
- * every view switch. Also binds global player hotkeys (DESIGN §4.8).
+ * Owns the app's single <video> element (plays audio-only files too) and keeps
+ * it mounted in ONE stable place for the entire app lifetime. WebKitGTK's
+ * GStreamer video sink is a native surface bound to the element's DOM ancestor,
+ * so reparenting the node (the old portal approach) tore that surface down and
+ * caused black screens + dead controls on Linux.
+ *
+ * Instead of portaling the node between slots, we leave it where it is and
+ * *position* it over the active stage via CSS (top/left/width/height from the
+ * target slot's bounding rect). The node never reloads or reparents, so
+ * playback is continuous across every view and fullscreen. Playback hotkeys
+ * (DESIGN §4.8) are bound here too.
  */
 export function MediaHost() {
   const entry = usePlayerStore(selectCurrentEntry);
-  const [holder, setHolder] = useState<HTMLDivElement | null>(null);
-  const els = useSlotEls();
   const videoRef = useRef<HTMLVideoElement>(null);
   const seekNonceRef = useRef(-1);
   const videoFullscreen = useUIStore((s) => s.videoFullscreen);
 
   const isVideo = entry != null && entry.kind === "video" && entry.path !== "";
-  const dest: HTMLDivElement | null = videoFullscreen && isVideo
-    ? els.fullscreen
-    : (isVideo ? (els.primary ?? els.secondary) : null) ?? holder;
+
+  // Which stage the live video overlays, and whether it's visible at all.
+  const els = useSlotEls();
+  const stage: "fullscreen" | "primary" | "secondary" | "none" =
+    videoFullscreen && isVideo
+      ? "fullscreen"
+      : isVideo
+        ? els.primary
+          ? "primary"
+          : els.secondary
+            ? "secondary"
+            : "none"
+        : "none";
 
   // --- imperative sync: store -> element ----------------------------------
 
@@ -55,7 +70,18 @@ export function MediaHost() {
           el.src = url;
           el.load();
           if (usePlayerStore.getState().playing) {
-            void el.play().catch(() => {});
+            void el.play().catch((e) => {
+              if (e?.name !== "AbortError") {
+                // Surface resolved once metadata is ready.
+                const retry = () => {
+                  if (usePlayerStore.getState().playing) void el.play().catch(() => {});
+                  el.removeEventListener("loadeddata", retry);
+                  el.removeEventListener("canplay", retry);
+                };
+                el.addEventListener("loadeddata", retry);
+                el.addEventListener("canplay", retry);
+              }
+            });
           }
         })
         .catch(() => usePlayerStore.getState().onMediaError());
@@ -69,8 +95,21 @@ export function MediaHost() {
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !el.currentSrc) return;
-    if (playing) void el.play().catch(() => {});
-    else el.pause();
+    if (playing) {
+      void el.play().catch((e) => {
+        if (e?.name !== "AbortError") {
+          const retry = () => {
+            if (usePlayerStore.getState().playing) void el.play().catch(() => {});
+            el.removeEventListener("loadeddata", retry);
+            el.removeEventListener("canplay", retry);
+          };
+          el.addEventListener("loadeddata", retry);
+          el.addEventListener("canplay", retry);
+        }
+      });
+    } else {
+      el.pause();
+    }
   }, [playing]);
 
   const speed = usePlayerStore((s) => s.speed);
@@ -93,6 +132,99 @@ export function MediaHost() {
     seekNonceRef.current = seekNonce;
     if (Number.isFinite(seekTargetS)) el.currentTime = seekTargetS;
   }, [seekNonce, seekTargetS]);
+
+  // --- layout: keep the single node positioned over the active stage ------
+  // Runs whenever the stage could change, and via a rAF loop + observers so
+  // it tracks CSS transitions (PlayerBar spring, view slide) without ever
+  // reparenting the element.
+
+  const applyLayout = () => {
+    const el = videoRef.current;
+    if (!el) return;
+
+    let target: HTMLDivElement | null = null;
+    let objectFit: "cover" | "contain" = "cover";
+    let z = 10;
+    let radius = 10;
+
+    if (stage === "fullscreen") {
+      target = els.fullscreen;
+      objectFit = "contain";
+      z = 96;
+      radius = 0;
+    } else if (stage === "primary") {
+      target = els.primary;
+    } else if (stage === "secondary") {
+      target = els.secondary;
+    }
+
+    if (!target) {
+      // No visible stage (audio-only, or between view transitions): keep the
+      // element alive but invisible. Never display:none — that stalls media.
+      el.style.visibility = "hidden";
+      return;
+    }
+
+    const r = target.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) {
+      el.style.visibility = "hidden";
+      return;
+    }
+
+    el.style.position = "fixed";
+    el.style.top = `${r.top}px`;
+    el.style.left = `${r.left}px`;
+    el.style.width = `${r.width}px`;
+    el.style.height = `${r.height}px`;
+    el.style.objectFit = objectFit;
+    el.style.borderRadius = `${radius}px`;
+    el.style.zIndex = `${z}`;
+    el.style.visibility = "visible";
+  };
+
+  useLayoutEffect(() => {
+    applyLayout();
+  }, [stage, els.primary, els.secondary, els.fullscreen]);
+
+  useEffect(() => {
+    if (stage === "none") return;
+    const el = videoRef.current;
+    if (!el) return;
+
+    const onResize = () => applyLayout();
+    const onScroll = () => applyLayout();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+
+    let ro: ResizeObserver | null = null;
+    const target =
+      stage === "fullscreen"
+        ? els.fullscreen
+        : stage === "primary"
+          ? els.primary
+          : stage === "secondary"
+            ? els.secondary
+            : null;
+    if (target && "ResizeObserver" in window) {
+      ro = new ResizeObserver(() => applyLayout());
+      ro.observe(target);
+    }
+
+    // rAF loop tracks CSS transitions/animations of the stage box.
+    let raf = 0;
+    const tick = () => {
+      applyLayout();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+      ro?.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [stage, els.primary, els.secondary, els.fullscreen]);
 
   // --- global hotkeys (§4.8): space / arrows ------------------------------
 
@@ -139,7 +271,7 @@ export function MediaHost() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // --- element -> store (synthetic events follow the portaled node) -------
+  // --- element -> store (synthetic events follow the stable node) ---------
 
   const onTimeUpdate = () => {
     const el = videoRef.current;
@@ -177,30 +309,16 @@ export function MediaHost() {
   };
 
   return (
-    <>
-      {/* Hidden home for the element when nothing visual claims it.
-          Never `display:none` — that can stall some media pipelines. */}
-      <div
-        ref={setHolder}
-        aria-hidden
-        className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
-      />
-      {dest &&
-        createPortal(
-          <video
-            ref={videoRef}
-            playsInline
-            preload="auto"
-            className={`h-full w-full rounded-card bg-void ${
-              videoFullscreen && isVideo ? "object-contain" : "object-cover"
-            }`}
-            onTimeUpdate={onTimeUpdate}
-            onDurationChange={onDurationChange}
-            onEnded={onEnded}
-            onError={onError}
-          />,
-          dest,
-        )}
-    </>
+    <video
+      ref={videoRef}
+      playsInline
+      preload="auto"
+      className="pointer-events-none bg-void"
+      style={{ position: "fixed", top: 0, left: 0, width: 0, height: 0, visibility: "hidden" }}
+      onTimeUpdate={onTimeUpdate}
+      onDurationChange={onDurationChange}
+      onEnded={onEnded}
+      onError={onError}
+    />
   );
 }

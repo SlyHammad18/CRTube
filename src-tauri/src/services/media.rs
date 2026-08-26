@@ -87,11 +87,6 @@ pub fn content_type_for(path: &Path) -> &'static str {
     }
 }
 
-fn next_nonce() -> u64 {
-    static N: AtomicU64 = AtomicU64::new(0);
-    N.fetch_add(1, Ordering::Relaxed)
-}
-
 /// Probe the video codec of a file via ffprobe. Returns `None` when there is
 /// no *real* video stream (audio-only files, or embedded cover art reported as
 /// an attached-picture `video` stream) or ffprobe is unavailable/fails.
@@ -144,83 +139,9 @@ pub fn is_web_playable_video(codec: &str, container: &str) -> bool {
     is_h264 && good_container
 }
 
-/// Re-encode a video file to H.264/AAC in an MP4 container, in place, so it
-/// plays natively in WebKitGTK (which cannot decode AV1/VP9/HEVC). No-op —
-/// returns `src` unchanged — when the file is already a web-playable H.264/MP4.
-/// On success the original `src` is replaced (transcode to a temp file, then
-/// atomic rename); if the source container wasn't `.mp4`/`.m4v` the orphan
-/// original is removed. Returns the final path (an `.mp4`).
-pub async fn transcode_to_h264(
-    app: &AppHandle,
-    bin_dir: &Path,
-    src: &Path,
-) -> Result<String, String> {
-    let ffprobe = installer::ffprobe_path(bin_dir);
-    // Skip the heavy re-encode if it's already natively playable.
-    if let Some(codec) = probe_video_codec(src, &ffprobe) {
-        let container = src
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        if is_web_playable_video(&codec, &container) {
-            return Ok(src.to_string_lossy().to_string());
-        }
-    }
-
-    let _ = installer::ensure_ffmpeg(app, bin_dir).await;
-    let ffmpeg = installer::ffmpeg_path(bin_dir);
-    if !ffmpeg.exists() {
-        return Err("ffmpeg missing".into());
-    }
-
-    let stem = src
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("video")
-        .to_string();
-    let final_path = src.with_extension("mp4");
-    let tmp = final_path.with_file_name(format!("{stem}.h264.tmp"));
-    let _ = std::fs::remove_file(&tmp);
-
-    let src_arg = src.to_string_lossy().to_string();
-    let tmp_arg = tmp.to_string_lossy().to_string();
-    let status = TokioCommand::new(&ffmpeg)
-        .args([
-            "-hide_banner",
-            "-i",
-            &src_arg,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-movflags",
-            "+faststart",
-            "-f",
-            "mp4",
-            &tmp_arg,
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !status.success() {
-        let _ = std::fs::remove_file(&tmp);
-        return Err("transcode failed".into());
-    }
-
-    // Replace the original with the H.264 copy.
-    std::fs::rename(&tmp, &final_path).map_err(|e| e.to_string())?;
-    if final_path != src {
-        let _ = std::fs::remove_file(src);
-    }
-    Ok(final_path.to_string_lossy().to_string())
+fn next_nonce() -> u64 {
+    static N: AtomicU64 = AtomicU64::new(0);
+    N.fetch_add(1, Ordering::Relaxed)
 }
 
 pub fn generate_token() -> String {
