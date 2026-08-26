@@ -7,7 +7,6 @@ import {
   Play,
   Plus,
   Trash,
-  X,
 } from "@phosphor-icons/react";
 import { fmtBytes } from "../../lib/format";
 import { useLibraryStore } from "../../stores/library";
@@ -15,6 +14,7 @@ import { usePlayerStore } from "../../stores/player";
 import { usePlaylistsStore } from "../../stores/playlists";
 import { useUIStore } from "../../stores/ui";
 import { pushToast } from "../../stores/toast";
+import { confirm } from "../../stores/confirm";
 
 function SidebarLabel({ children }: { children: string }) {
   return (
@@ -103,7 +103,6 @@ export function PlaylistsPane() {
 
   const [composing, setComposing] = useState(false);
   const [renamingId, setRenamingId] = useState<number | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [menuFor, setMenuFor] = useState<number | null>(null);
 
   useEffect(() => {
@@ -178,34 +177,6 @@ export function PlaylistsPane() {
                       setRenamingId(null);
                     }}
                   />
-                </li>
-              );
-            }
-            if (deletingId === p.id) {
-              return (
-                <li key={p.id} className="flex items-center gap-1.5 px-1 py-0.5">
-                  <span className="min-w-0 flex-1 truncate font-mono text-11 text-signal">
-                    delete “{p.name}”?
-                  </span>
-                  <button
-                    aria-label="Confirm delete playlist"
-                    onClick={() => {
-                      void remove(p.id).catch((e) =>
-                        pushToast(`Delete failed — ${String(e)}`),
-                      );
-                      setDeletingId(null);
-                    }}
-                    className="rounded-card bg-signal px-2 py-1 text-11 font-semibold text-void active:scale-[0.98]"
-                  >
-                    yes
-                  </button>
-                  <button
-                    aria-label="Cancel delete"
-                    onClick={() => setDeletingId(null)}
-                    className="grid h-6 w-6 place-items-center rounded-card text-dim hover:bg-raise hover:text-ink"
-                  >
-                    <X size={12} weight="light" aria-hidden />
-                  </button>
                 </li>
               );
             }
@@ -286,7 +257,17 @@ export function PlaylistsPane() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setMenuFor(null);
-                          setDeletingId(p.id);
+                          void (async () => {
+                            const ok = await confirm({
+                              title: "Delete playlist?",
+                              message: `“${p.name}” and its track list will be removed.`,
+                              confirmLabel: "Delete",
+                            });
+                            if (ok)
+                              void remove(p.id).catch((err) =>
+                                pushToast(`Delete failed — ${String(err)}`),
+                              );
+                          })();
                         }}
                         className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-signal transition-colors duration-150 hover:bg-signal hover:text-void"
                       >

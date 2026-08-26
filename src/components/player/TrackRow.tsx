@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   FolderOpen,
   DotsSixVertical,
@@ -12,6 +11,7 @@ import { pushToast } from "../../stores/toast";
 import { ipc } from "../../lib/ipc";
 import { useLibraryStore } from "../../stores/library";
 import { usePlayerStore, selectCurrentEntry } from "../../stores/player";
+import { confirm } from "../../stores/confirm";
 import { AddToPlaylistMenu } from "./AddToPlaylistMenu";
 
 export function thumbSrcOf(entry: LibraryEntry): string | undefined {
@@ -51,19 +51,23 @@ export function TrackRow({
   /** Playlist variant: removes the row from the playlist (file untouched). */
   onRemoveFrom?: () => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
   const missing = entry.status === "missing";
   const isActive = usePlayerStore(
     (s) => selectCurrentEntry(s)?.id === entry.id,
   );
 
-  const onDelete = () => {
+  const onDelete = async () => {
+    const ok = await confirm({
+      title: "Delete file?",
+      message: `Removes “${entry.title}” from your library and disk.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     void ipc
       .deleteEntry(entry.id, entry.path)
       .then(() => useLibraryStore.getState().refresh())
       .then(() => pushToast(`Deleted — ${entry.title}`))
-      .catch((e) => pushToast(`Delete failed — ${String(e)}`))
-      .finally(() => setConfirming(false));
+      .catch((e) => pushToast(`Delete failed — ${String(e)}`));
   };
 
   return (
@@ -157,34 +161,23 @@ export function TrackRow({
           <button
             aria-label="Remove from playlist"
             title="Remove from playlist"
-            onClick={onRemoveFrom}
+            onClick={async () => {
+              const ok = await confirm({
+                title: "Remove from playlist?",
+                message: `Removes “${entry.title}” from this playlist (file stays in your library).`,
+                confirmLabel: "Remove",
+              });
+              if (ok) onRemoveFrom();
+            }}
             className="grid h-7 w-7 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-signal hover:text-void active:scale-[0.98]"
           >
             <X size={14} weight="light" aria-hidden />
           </button>
-        ) : confirming ? (
-          <>
-            <span className="font-mono text-11 text-signal">delete file?</span>
-            <button
-              aria-label="Confirm delete"
-              onClick={onDelete}
-              className="rounded-card bg-signal px-2 py-1 text-11 font-semibold text-void active:scale-[0.98]"
-            >
-              yes
-            </button>
-            <button
-              aria-label="Cancel delete"
-              onClick={() => setConfirming(false)}
-              className="grid h-6 w-6 place-items-center rounded-card text-dim hover:bg-raise hover:text-ink"
-            >
-              <X size={12} weight="light" aria-hidden />
-            </button>
-          </>
         ) : (
           <button
             aria-label="Delete entry and file"
             title="Delete"
-            onClick={() => setConfirming(true)}
+            onClick={() => void onDelete()}
             className="grid h-7 w-7 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-signal hover:text-void active:scale-[0.98]"
           >
             <Trash size={14} weight="light" aria-hidden />

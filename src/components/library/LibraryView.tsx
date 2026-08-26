@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   FilmStrip,
@@ -16,6 +16,7 @@ import { useLibraryStore, type LibraryFilter } from "../../stores/library";
 import { useUIStore } from "../../stores/ui";
 import { usePlayerStore } from "../../stores/player";
 import { pushToast } from "../../stores/toast";
+import { confirm } from "../../stores/confirm";
 import { ipc } from "../../lib/ipc";
 import { fmtBytes, fmtDuration } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
@@ -40,10 +41,15 @@ function TypeIcon({ kind }: { kind: string }) {
 
 function EntryActions({ entry }: { entry: LibraryEntry }) {
   const removeLocal = useLibraryStore((s) => s.removeLocal);
-  const [confirming, setConfirming] = useState(false);
   const missing = entry.status === "missing";
 
   const onDelete = async () => {
+    const ok = await confirm({
+      title: "Delete file?",
+      message: `Removes “${entry.title}” from your library and disk.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await ipc.deleteEntry(entry.id, entry.path);
       removeLocal(entry.id);
@@ -51,30 +57,7 @@ function EntryActions({ entry }: { entry: LibraryEntry }) {
     } catch (e) {
       pushToast(`Delete failed — ${String(e)}`);
     }
-    setConfirming(false);
   };
-
-  if (confirming) {
-    return (
-      <>
-        <span className="mr-auto truncate text-12 text-signal">delete file?</span>
-        <button
-          aria-label="Confirm delete"
-          onClick={() => void onDelete()}
-          className="rounded-card bg-signal px-2 py-1 text-12 font-semibold text-void active:scale-[0.98]"
-        >
-          yes
-        </button>
-        <button
-          aria-label="Cancel delete"
-          onClick={() => setConfirming(false)}
-          className="grid h-6 w-6 place-items-center rounded-card text-dim hover:bg-raise hover:text-ink"
-        >
-          <X size={12} weight="light" aria-hidden />
-        </button>
-      </>
-    );
-  }
 
   return (
     <>
@@ -107,7 +90,7 @@ function EntryActions({ entry }: { entry: LibraryEntry }) {
       <button
         aria-label="Delete entry and file"
         title="Delete"
-        onClick={() => setConfirming(true)}
+        onClick={() => void onDelete()}
         className="ml-auto grid h-7 w-7 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-signal hover:text-void active:scale-[0.98]"
       >
         <Trash size={14} weight="light" aria-hidden />

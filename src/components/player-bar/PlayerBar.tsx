@@ -1,19 +1,12 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "motion/react";
-import {
-  CaretUp,
-  Pause,
-  Play,
-  SkipBack,
-  SkipForward,
-  SpeakerHigh,
-  SpeakerSlash,
-} from "@phosphor-icons/react";
+import { CaretUp, Pause, Play, SkipBack, SkipForward } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { fmtDuration } from "../../lib/format";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 import { useUIStore } from "../../stores/ui";
 import { setSecondarySlot } from "./mediaSlots";
+import { VolumeSlider } from "../player/VolumeSlider";
 
 /**
  * Global player bar (DESIGN §4.9) — persistent across every view once the
@@ -30,7 +23,6 @@ export function PlayerBar() {
   const playing = usePlayerStore((s) => s.playing);
   const currentTimeS = usePlayerStore((s) => s.currentTimeS);
   const durationS = usePlayerStore((s) => s.durationS);
-  const volume = usePlayerStore((s) => s.volume);
 
   // Hairline progress driven by a MotionValue — no re-render per tick.
   const progress = useMotionValue(0);
@@ -140,30 +132,7 @@ export function PlayerBar() {
                 {fmtDuration(currentTimeS) ?? "0:00"} / {fmtDuration(durationS) ?? "0:00"}
               </span>
               <div className="h-4 w-px bg-line" />
-              <div className="flex items-center gap-1.5">
-                <span className="text-mute" aria-hidden>
-                  {volume > 0 ? (
-                    <SpeakerHigh size={15} weight="light" />
-                  ) : (
-                    <SpeakerSlash size={15} weight="light" />
-                  )}
-                </span>
-                <input
-                  aria-label="Volume"
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={volume}
-                  onChange={(e) => store.getState().setVolume(Number(e.target.value))}
-                  className="range-ice w-24"
-                  style={{
-                    background: `linear-gradient(to right, var(--color-ice) ${Math.round(
-                      volume * 100,
-                    )}%, var(--color-line) ${Math.round(volume * 100)}%)`,
-                  }}
-                />
-              </div>
+              <VolumeSlider />
               <IconBtn label="Expand player" onClick={() => setView("player")}>
                 <CaretUp size={16} weight="light" aria-hidden />
               </IconBtn>

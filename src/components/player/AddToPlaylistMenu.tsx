@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Plus } from "@phosphor-icons/react";
 import { usePlaylistsStore } from "../../stores/playlists";
 import { pushToast } from "../../stores/toast";
+import { confirm } from "../../stores/confirm";
 
 /**
  * `＋` row action → popover listing playlists with membership checkmarks.
@@ -58,11 +59,18 @@ export function AddToPlaylistMenu({ downloadId }: { downloadId: number }) {
                 <button
                   key={p.id}
                   role="menuitem"
-                  onClick={() =>
-                    itemId != null
-                      ? act(() => removeFrom(p.id, itemId))
-                      : act(() => addTo(p.id, downloadId))
-                  }
+                  onClick={async () => {
+                    if (itemId != null) {
+                      const ok = await confirm({
+                        title: "Remove from playlist?",
+                        message: `Removes this track from “${p.name}” (file stays in your library).`,
+                        confirmLabel: "Remove",
+                      });
+                      if (ok) act(() => removeFrom(p.id, itemId));
+                    } else {
+                      act(() => addTo(p.id, downloadId));
+                    }
+                  }}
                   className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left transition-colors duration-150 hover:bg-raise"
                 >
                   <span
