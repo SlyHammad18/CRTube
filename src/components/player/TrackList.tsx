@@ -219,9 +219,11 @@ export function TrackList() {
           (openTracks?.length ?? 0) === 0 &&
           !query.trim() &&
           filter === "all" ? (
-          <ConsolePrompt
-            lines={["> this playlist is empty_", "> add tracks with +_"]}
-          />
+          <div className="flex h-full items-center justify-center">
+            <ConsolePrompt
+              lines={["> this playlist is empty", "> add tracks with +"]}
+            />
+          </div>
         ) : displayed.length === 0 ? (
           <p className="mt-10 text-center font-mono text-15 text-mute">
             {"> no matches for \u201c"}
