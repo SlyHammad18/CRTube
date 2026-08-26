@@ -26,6 +26,7 @@
 
 ## Git
 - Remote: `git@github.com:SlyHammad18/CRTube.git`. Commit after completing each task (T1–T11), once its Verify gate passes.
+- Never add a `Co-Authored-By: opencode <opencode@anon.example>` trailer (or any `Co-Authored-By: opencode` line) to commit messages. Write the commit message body/subject only — do not append that trailer.
 
 ## Verification
 - Standing gates: `cargo clippy` clean, `npm run build` clean, plus each task's manual checks in §7.
