@@ -153,7 +153,18 @@ export function MediaHost() {
     usePlayerStore.getState().syncTime(el.currentTime, el.duration);
   };
 
-  const onEnded = () => usePlayerStore.getState().onEnded();
+  const onEnded = () => {
+    const store = usePlayerStore.getState();
+    const repeatOne = store.repeat === "one";
+    store.onEnded();
+    const el = videoRef.current;
+    // Repeat-one keeps `playing` true and the same entry, so neither the
+    // `playing` nor the entry effect re-fires to resume the paused element.
+    if (el && repeatOne && usePlayerStore.getState().playing) {
+      el.currentTime = 0;
+      void el.play().catch(() => {});
+    }
+  };
 
   const onError = () => {
     const el = videoRef.current;
@@ -176,7 +187,7 @@ export function MediaHost() {
           <video
             ref={videoRef}
             playsInline
-            preload="metadata"
+            preload="auto"
             className="h-full w-full bg-void object-cover"
             onTimeUpdate={onTimeUpdate}
             onDurationChange={onDurationChange}

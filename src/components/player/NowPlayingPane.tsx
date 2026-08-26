@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ArrowClockwise,
   MusicNotes,
   Pause,
   Play,
+  Repeat,
+  RepeatOnce,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -152,20 +153,23 @@ function TransportRow() {
       <IconBtn label="Next" onClick={() => store.getState().next()}>
         <SkipForward size={18} weight="light" aria-hidden />
       </IconBtn>
-      <span className="relative">
-        <IconBtn
-          label={`Repeat: ${repeat}`}
-          active={repeat !== "off"}
-          onClick={() => store.getState().cycleRepeat()}
-        >
-          <ArrowClockwise size={17} weight="light" aria-hidden />
-        </IconBtn>
-        {repeat === "one" && (
-          <span className="pointer-events-none absolute -right-0.5 -top-0.5 grid h-3 w-3 place-items-center rounded-full bg-ice font-mono text-[8px] leading-none text-void">
-            1
-          </span>
+      <IconBtn
+        label={
+          repeat === "off"
+            ? "Repeat off"
+            : repeat === "all"
+              ? "Repeat playlist"
+              : "Repeat one"
+        }
+        active={repeat !== "off"}
+        onClick={() => store.getState().cycleRepeat()}
+      >
+        {repeat === "one" ? (
+          <RepeatOnce size={17} weight="light" aria-hidden />
+        ) : (
+          <Repeat size={17} weight="light" aria-hidden />
         )}
-      </span>
+      </IconBtn>
     </div>
   );
 }
