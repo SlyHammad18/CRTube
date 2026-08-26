@@ -240,7 +240,10 @@ pub fn friendly_message(raw: &str) -> String {
         || lower.contains("botguard")
         || lower.contains("please log in to confirm")
     {
-        return "YouTube blocked this request — try again in a few minutes".to_string();
+        return "YouTube blocked this request. Set a cookies browser (e.g. chrome) or a cookies file in Settings → Engine → YouTube cookies, then retry.".to_string();
+    }
+    if lower.contains("secretstorage") || (lower.contains("cookies") && lower.contains("not installed")) {
+        return "Couldn't read browser cookies (missing Python `secretstorage`). Export a Netscape cookies.txt and set 'YouTube cookies file' in Settings → Engine, or run: python3 -m pip install secretstorage".to_string();
     }
     if lower.contains("not available in your country")
         || lower.contains("unavailable in your country")
@@ -484,9 +487,59 @@ pub fn normalize_info(payload: &Value) -> Result<VideoInfo> {
     })
 }
 
-async fn run_ytdlp(bin: &Path, args: &[String], timeout_secs: u64) -> Result<String> {
+/// Resolve a usable `node` binary. The GUI app often launches without node on
+/// its `PATH` (e.g. nvm isn't sourced), so we probe nvm's version dirs and
+/// common system locations explicitly.
+fn resolve_node() -> Option<String> {
+    if let Ok(home) = std::env::var("HOME") {
+        let nvm = std::path::Path::new(&home).join(".nvm/versions/node");
+        if let Ok(entries) = std::fs::read_dir(&nvm) {
+            for e in entries.flatten() {
+                let p = e.path().join("bin").join("node");
+                if p.is_file() {
+                    return Some(p.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    for c in ["/usr/bin/node", "/usr/local/bin/node", "/opt/node/bin/node"] {
+        if std::path::Path::new(c).is_file() {
+            return Some(c.to_string());
+        }
+    }
+    None
+}
+
+/// yt-dlp requires a JavaScript runtime to extract YouTube (recent YouTube
+/// changes). Returns the `--js-runtimes` arg pair when `node` is available.
+pub fn js_runtime_args() -> Vec<String> {
+    match resolve_node() {
+        Some(p) => vec!["--js-runtimes".to_string(), format!("node:{p}")],
+        None => Vec::new(),
+    }
+}
+
+async fn run_ytdlp(
+    bin: &Path,
+    args: &[String],
+    timeout_secs: u64,
+    cookie: &str,
+    cookie_file: &str,
+) -> Result<String> {
+    let mut full = args.to_vec();
+    full.extend(js_runtime_args());
+    let cookie = cookie.trim();
+    let cookie_file = cookie_file.trim();
+    if !cookie_file.is_empty() {
+        // Netscape cookies.txt — read directly, no browser keyring/secretstorage.
+        full.push("--cookies".to_string());
+        full.push(cookie_file.to_string());
+    } else if !cookie.is_empty() {
+        full.push("--cookies-from-browser".to_string());
+        full.push(cookie.to_string());
+    }
     let child = tokio::process::Command::new(ytdlp_path(bin))
-        .args(args)
+        .args(&full)
         .env("PATH", prepended_path(bin))
         .kill_on_drop(true)
         .output();
@@ -517,14 +570,17 @@ pub async fn search_youtube(
     bin: &Path,
     query: &str,
     page: u32,
+    cookie: &str,
+    cookie_file: &str,
 ) -> Result<Vec<SearchItem>> {
-    let stdout = run_ytdlp(bin, &search_args(query, page), SEARCH_TIMEOUT_SECS).await?;
+    let stdout =
+        run_ytdlp(bin, &search_args(query, page), SEARCH_TIMEOUT_SECS, cookie, cookie_file).await?;
     let all = parse_search_output(&stdout)?;
     Ok(page_slice(all, page))
 }
 
-pub async fn fetch_info(bin: &Path, url: &str) -> Result<VideoInfo> {
-    let stdout = run_ytdlp(bin, &probe_args(url), PROBE_TIMEOUT_SECS).await?;
+pub async fn fetch_info(bin: &Path, url: &str, cookie: &str, cookie_file: &str) -> Result<VideoInfo> {
+    let stdout = run_ytdlp(bin, &probe_args(url), PROBE_TIMEOUT_SECS, cookie, cookie_file).await?;
     let payload = serde_json::from_str::<Value>(&stdout)
         .map_err(|e| YtDlpError::Parse(e.to_string()))?;
     normalize_info(&payload)
@@ -863,7 +919,7 @@ mod tests {
         );
         assert_eq!(
             friendly_message("Sign in to confirm you're not a bot"),
-            "YouTube blocked this request — try again in a few minutes"
+            "YouTube blocked this request. Set a cookies browser (e.g. chrome) or a cookies file in Settings → Engine → YouTube cookies, then retry."
         );
         assert_eq!(
             friendly_message("This video is not available in your country"),

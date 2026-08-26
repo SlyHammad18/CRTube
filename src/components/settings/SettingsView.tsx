@@ -148,6 +148,30 @@ function EngineSection() {
           label="Auto-update on launch"
         />
       </Row>
+      <Row
+        label="YouTube cookies"
+        hint='Browser to pull cookies from, e.g. "chrome", "firefox", "edge". Leave empty unless YouTube blocks downloads or a video is restricted.'
+      >
+        <input
+          type="text"
+          value={settings?.youtube_cookies ?? ""}
+          placeholder="(none)"
+          onChange={(e) => void update({ youtube_cookies: e.target.value })}
+          className="w-40 rounded-card border border-line bg-raise px-2.5 py-1.5 font-mono text-12 text-ink outline-none transition-colors duration-150 placeholder:text-dim focus:border-ice"
+        />
+      </Row>
+      <Row
+        label="YouTube cookies file"
+        hint='Path to a Netscape cookies.txt exported from your browser. Read directly (no browser keyring needed) — the most reliable option when "YouTube cookies" fails.'
+      >
+        <input
+          type="text"
+          value={settings?.youtube_cookies_file ?? ""}
+          placeholder="(none)"
+          onChange={(e) => void update({ youtube_cookies_file: e.target.value })}
+          className="w-56 rounded-card border border-line bg-raise px-2.5 py-1.5 font-mono text-12 text-ink outline-none transition-colors duration-150 placeholder:text-dim focus:border-ice"
+        />
+      </Row>
     </Section>
   );
 }
@@ -194,6 +218,36 @@ function DownloadsSection() {
   );
 }
 
+function PlaybackSection() {
+  const settings = useSettingsStore((s) => s.settings);
+  const update = useSettingsStore((s) => s.update);
+
+  return (
+    <Section title="Playback">
+      <Row
+        label="Hardware acceleration"
+        hint="Use the GPU for video rendering. Requires an app restart to apply."
+      >
+        <Toggle
+          checked={settings?.hardware_accel ?? true}
+          onChange={(v) => void update({ hardware_accel: v })}
+          label="Hardware acceleration"
+        />
+      </Row>
+      <Row
+        label="Convert to H.264 on download"
+        hint="Re-encode videos to H.264 so they play natively. Slower downloads, but avoids playback issues with newer codecs (AV1/VP9)."
+      >
+        <Toggle
+          checked={settings?.transcode_on_download ?? true}
+          onChange={(v) => void update({ transcode_on_download: v })}
+          label="Convert to H.264 on download"
+        />
+      </Row>
+    </Section>
+  );
+}
+
 function AboutSection() {
   const [version, setVersion] = useState<string>("—");
   useEffect(() => {
@@ -228,6 +282,7 @@ export function SettingsView() {
       <StorageSection />
       <EngineSection />
       <DownloadsSection />
+      <PlaybackSection />
       <AboutSection />
     </div>
   );

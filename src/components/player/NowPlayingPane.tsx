@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  ArrowsOut,
   MusicNotes,
   Pause,
   Play,
@@ -11,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
+import { useUIStore } from "../../stores/ui";
 import { setPrimarySlot } from "./../player-bar/mediaSlots";
 import { useLyrics } from "../../hooks/useLyrics";
 import { SeekBar } from "./SeekBar";
@@ -38,6 +40,8 @@ export function NowPlayingPane() {
       ? entry.thumbUrl
       : convertFileSrc(entry.thumbUrl));
 
+  const isVideo = entry?.kind === "video" && entry.path !== "";
+
   if (!entry) {
     return (
       <aside className="flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-hidden border-l border-line bg-panel/50 p-4">
@@ -58,19 +62,29 @@ export function NowPlayingPane() {
     <aside className="flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-hidden border-l border-line bg-panel/50 p-4">
       {/* Artwork frame — poster (cached thumbnail) behind the portaled <video>
           for video tracks, so the frame is never an empty black box. */}
-      <div className="relative aspect-square w-full shrink-0 overflow-hidden rounded-card border border-line bg-raise">
+      <div className="relative aspect-square w-full shrink-0 rounded-card border border-line bg-raise">
         {thumb ? (
           <img
             src={thumb}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full rounded-card object-cover"
           />
         ) : (
-          <span className="absolute inset-0 grid place-items-center text-dim">
+          <span className="absolute inset-0 grid place-items-center rounded-card text-dim">
             <MusicNotes size={40} weight="light" aria-hidden />
           </span>
         )}
         <div ref={setSlotEl} id="nowplaying-media-slot" className="absolute inset-0" />
+        {isVideo && (
+          <button
+            aria-label="Fullscreen"
+            title="Fullscreen"
+            onClick={() => useUIStore.getState().setVideoFullscreen(true)}
+            className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-card bg-void/60 text-ink backdrop-blur-sm transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98]"
+          >
+            <ArrowsOut size={16} weight="light" aria-hidden />
+          </button>
+        )}
       </div>
 
       <div className="min-w-0 shrink-0">

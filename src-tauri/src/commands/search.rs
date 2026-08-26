@@ -14,12 +14,18 @@ pub async fn search_youtube(
         return Ok(Vec::new());
     }
     let bin = installer::bin_dir(&app).map_err(|e| e.to_string())?;
-    ytdlp::search_youtube(&bin, query, page).await.map_err(|e| e.to_string())
+    let settings = crate::commands::settings::load_settings(&app);
+    ytdlp::search_youtube(&bin, query, page, &settings.youtube_cookies, &settings.youtube_cookies_file)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn fetch_info(app: AppHandle, url: String) -> Result<VideoInfo, String> {
     let url = url.trim().to_string();
     let bin = installer::bin_dir(&app).map_err(|e| e.to_string())?;
-    ytdlp::fetch_info(&bin, &url).await.map_err(|e| e.to_string())
+    let settings = crate::commands::settings::load_settings(&app);
+    ytdlp::fetch_info(&bin, &url, &settings.youtube_cookies, &settings.youtube_cookies_file)
+        .await
+        .map_err(|e| e.to_string())
 }

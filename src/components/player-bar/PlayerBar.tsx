@@ -48,15 +48,15 @@ export function PlayerBar() {
     <AnimatePresence>
       {active && !paneOpen && (
         <motion.div
-          initial={reduce ? { opacity: 0 } : { y: 66 }}
-          animate={reduce ? { opacity: 1 } : { y: 0 }}
-          exit={reduce ? { opacity: 0 } : { y: 66 }}
+          initial={{ height: 0 }}
+          animate={{ height: "auto" }}
+          exit={{ height: 0 }}
           transition={
             reduce
               ? { duration: 0.01 }
-              : { type: "spring", stiffness: 300, damping: 26 }
+              : { type: "spring", stiffness: 300, damping: 30 }
           }
-          className="relative shrink-0 border-t border-line bg-panel"
+          className="relative shrink-0 overflow-hidden bg-panel"
         >
           {/* Click-to-seek hairline */}
           <button
@@ -72,7 +72,7 @@ export function PlayerBar() {
             </div>
           </button>
 
-          <div className="grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
+          <div className="grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-line px-4">
             {/* Left: thumb + title */}
             <div className="flex min-w-0 items-center gap-3">
               <button

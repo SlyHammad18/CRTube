@@ -10,21 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "CRTUBE",
-        "width": 1240,
-        "height": 760,
-        "minWidth": 1000,
-        "minHeight": 600,
-        "center": true,
-        "resizable": true,
-        "decorations": false,
-        "transparent": false,
-        "backgroundColor": "#07090C"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null,
       "assetProtocol": {

@@ -8,6 +8,7 @@ import {
 } from "../../stores/player";
 import { ipc } from "../../lib/ipc";
 import { useSlotEls } from "./mediaSlots";
+import { useUIStore } from "../../stores/ui";
 
 /**
  * Owns the app's single <video> element (plays audio-only files too) and
@@ -20,10 +21,12 @@ export function MediaHost() {
   const els = useSlotEls();
   const videoRef = useRef<HTMLVideoElement>(null);
   const seekNonceRef = useRef(-1);
+  const videoFullscreen = useUIStore((s) => s.videoFullscreen);
 
   const isVideo = entry != null && entry.kind === "video" && entry.path !== "";
-  const dest: HTMLDivElement | null =
-    (isVideo ? (els.primary ?? els.secondary) : null) ?? holder;
+  const dest: HTMLDivElement | null = videoFullscreen && isVideo
+    ? els.fullscreen
+    : (isVideo ? (els.primary ?? els.secondary) : null) ?? holder;
 
   // --- imperative sync: store -> element ----------------------------------
 
@@ -188,7 +191,9 @@ export function MediaHost() {
             ref={videoRef}
             playsInline
             preload="auto"
-            className="h-full w-full bg-void object-cover"
+            className={`h-full w-full rounded-card bg-void ${
+              videoFullscreen && isVideo ? "object-contain" : "object-cover"
+            }`}
             onTimeUpdate={onTimeUpdate}
             onDurationChange={onDurationChange}
             onEnded={onEnded}

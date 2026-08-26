@@ -21,6 +21,7 @@ import { SettingsView } from "./components/settings/SettingsView";
 import { PlayerTab } from "./components/player/PlayerTab";
 import { PlayerBar } from "./components/player-bar/PlayerBar";
 import { MediaHost } from "./components/player-bar/MediaHost";
+import { VideoFullscreen } from "./components/player/VideoFullscreen";
 import { PlaceholderView } from "./components/common/PlaceholderView";
 
 export default function App() {
@@ -108,6 +109,7 @@ export default function App() {
       <Scanlines />
       <Toasts />
       <ConfirmModal />
+      <VideoFullscreen />
     </>
   );
 }

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -6,8 +6,9 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::jobs::{JobEntry, JobRegistry};
 use crate::services::db::{self, Db, DownloadRecord};
-use crate::services::download::{self, DlEvent};
+use crate::services::download::{self, DlDone, DlEvent, DlProgress};
 use crate::services::installer;
+use crate::services::media;
 use crate::services::thumbs;
 use crate::services::ytdlp::{self, AudioQuality, DownloadKind, DownloadPlan};
 
@@ -136,7 +137,17 @@ pub async fn start_download(
         }
     }
 
-    let args = ytdlp::download_args(&bin_dir, &plan, &url);
+    let mut args = ytdlp::download_args(&bin_dir, &plan, &url);
+    args.extend(ytdlp::js_runtime_args());
+    let cookie = settings.youtube_cookies.trim();
+    let cookie_file = settings.youtube_cookies_file.trim();
+    if !cookie_file.is_empty() {
+        args.push("--cookies".to_string());
+        args.push(cookie_file.to_string());
+    } else if !cookie.is_empty() {
+        args.push("--cookies-from-browser".to_string());
+        args.push(cookie.to_string());
+    }
     let mut child = download::spawn_ytdlp(&bin_dir, &args)
         .map_err(|e| format!("failed to spawn yt-dlp: {e}"))?;
     let stdout = child.stdout.take().expect("stdout piped");
@@ -179,6 +190,7 @@ pub async fn start_download(
     let thumb_remote = opts.thumb_url.clone();
     let db = db.inner().clone();
     let app2 = app.clone();
+    let transcode_video = settings.transcode_on_download && matches!(kind, DownloadKind::Video);
 
     let registry = registry.inner().clone();
     tauri::async_runtime::spawn(download::run_download_job(
@@ -186,22 +198,52 @@ pub async fn start_download(
         stdout,
         registry,
         opts.expected_size,
-        move |event| {
-            if let DlEvent::Done(done) = &event {
-                let size_bytes = std::fs::metadata(&done.path).ok().map(|m| m.len());
-                let thumb_local = thumbs::thumbs_dir(&app2)
-                    .map(|p| p.join(format!("{video_id}.jpg")))
-                    .filter(|p| p.exists())
-                    .map(|p| p.to_string_lossy().to_string());
-                let mut record = record.clone();
-                record.path = done.path.clone();
-                record.size_bytes = size_bytes;
-                record.thumb_url = thumb_local.or_else(|| thumb_remote.clone());
-                if let Ok(conn) = db.0.lock() {
-                    let _ = db::insert_download(&conn, &record);
-                }
+        move |event| match event {
+            DlEvent::Done(done) => {
+                let app = app2.clone();
+                let db = db.clone();
+                let record = record.clone();
+                let thumb_remote = thumb_remote.clone();
+                let bin_dir = bin_dir.clone();
+                let video_id = video_id.clone();
+                let transcode = transcode_video;
+                tauri::async_runtime::spawn(async move {
+                    emit_event(
+                        &app,
+                        DlEvent::Progress(DlProgress {
+                            id: done.id,
+                            pct: 0.0,
+                            speed_bps: None,
+                            eta_s: None,
+                            downloaded: 0,
+                            total: None,
+                            stage: "transcoding".to_string(),
+                        }),
+                    );
+                    let mut final_path = done.path.clone();
+                    if transcode {
+                        if let Ok(out) =
+                            media::transcode_to_h264(&app, &bin_dir, Path::new(&final_path)).await
+                        {
+                            final_path = out;
+                        }
+                    }
+                    let size_bytes = std::fs::metadata(&final_path).ok().map(|m| m.len());
+                    let thumb_local = thumbs::thumbs_dir(&app)
+                        .map(|p| p.join(format!("{video_id}.jpg")))
+                        .filter(|p| p.exists())
+                        .map(|p| p.to_string_lossy().to_string());
+                    let mut record = record;
+                    record.path = final_path.clone();
+                    record.size_bytes = size_bytes;
+                    record.thumb_url = thumb_local.or_else(|| thumb_remote.clone());
+                    if let Ok(conn) = db.0.lock() {
+                        let _ = db::insert_download(&conn, &record);
+                    }
+                    emit_event(&app, DlEvent::Done(DlDone { id: done.id, path: final_path }));
+                });
             }
-            emit_event(&app2, event);
+            other => emit_event(&app2, other),
         },
     ));
 

@@ -10,9 +10,10 @@ import { useSyncExternalStore } from "react";
 type Slots = {
   primary: HTMLDivElement | null;
   secondary: HTMLDivElement | null;
+  fullscreen: HTMLDivElement | null;
 };
 
-const els: Slots = { primary: null, secondary: null };
+const els: Slots = { primary: null, secondary: null, fullscreen: null };
 const subs = new Set<() => void>();
 
 function notify() {
@@ -33,6 +34,13 @@ export function setSecondarySlot(el: HTMLDivElement | null) {
   }
 }
 
+export function setFullscreenSlot(el: HTMLDivElement | null) {
+  if (els.fullscreen !== el) {
+    els.fullscreen = el;
+    notify();
+  }
+}
+
 export function subscribeSlots(cb: () => void) {
   subs.add(cb);
   return () => {
@@ -42,7 +50,7 @@ export function subscribeSlots(cb: () => void) {
 
 /** Snapshot is a primitive so useSyncExternalStore can diff it. */
 export function slotsSnapshot(): string {
-  return `${els.primary ? "P" : "p"}${els.secondary ? "S" : "s"}`;
+  return `${els.primary ? "P" : "p"}${els.secondary ? "S" : "s"}${els.fullscreen ? "F" : "f"}`;
 }
 
 export function useSlotEls(): Slots {

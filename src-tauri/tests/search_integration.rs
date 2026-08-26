@@ -8,7 +8,7 @@ fn bin_dir() -> std::path::PathBuf {
 #[ignore = "requires network and an installed yt-dlp binary"]
 async fn search_known_query_returns_typed_items() {
     let bin = bin_dir();
-    let items = ytdlp::search_youtube(&bin, "lofi hip hop", 1)
+    let items = ytdlp::search_youtube(&bin, "lofi hip hop", 1, "", "")
         .await
         .expect("search succeeds");
 
@@ -30,7 +30,7 @@ async fn search_known_query_returns_typed_items() {
 #[ignore = "requires network and an installed yt-dlp binary"]
 async fn probe_known_url_returns_normalized_info() {
     let bin = bin_dir();
-    let info = ytdlp::fetch_info(&bin, "https://www.youtube.com/watch?v=jNQXAC9IVRw")
+    let info = ytdlp::fetch_info(&bin, "https://www.youtube.com/watch?v=jNQXAC9IVRw", "", "")
         .await
         .expect("probe succeeds");
 

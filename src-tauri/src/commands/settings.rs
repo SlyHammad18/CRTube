@@ -14,6 +14,20 @@ pub struct AppSettings {
     pub download_dir: String,
     pub concurrent: u32,
     pub autoupdate_ytdlp: bool,
+    pub hardware_accel: bool,
+    /// Re-encode video downloads to H.264/AAC at download time so they play
+    /// natively in WebKitGTK (which can't decode AV1/VP9). ON by default —
+    /// new downloads are stored as H.264/MP4 and need no playback-time transcode.
+    pub transcode_on_download: bool,
+    /// Browser to pull cookies from for yt-dlp (e.g. "chrome", "firefox",
+    /// "edge"). Empty by default. Needed when YouTube bot-walls extraction or
+    /// for age/restricted videos. Requires that browser to be installed and
+    /// logged into YouTube. Needs the `secretstorage` Python module on Linux.
+    pub youtube_cookies: String,
+    /// Path to a Netscape-format `cookies.txt` exported from a browser. Read
+    /// directly by yt-dlp (no browser keyring / `secretstorage` needed), so it
+    /// is the most reliable way to supply YouTube authentication. Empty by default.
+    pub youtube_cookies_file: String,
     pub filename_template: Option<String>,
     pub player_volume: f32,
     pub player_speed: f32,
@@ -25,6 +39,10 @@ impl Default for AppSettings {
             download_dir: String::new(),
             concurrent: DEFAULT_CONCURRENT,
             autoupdate_ytdlp: true,
+            hardware_accel: true,
+            transcode_on_download: true,
+            youtube_cookies: String::new(),
+            youtube_cookies_file: String::new(),
             filename_template: None,
             player_volume: 1.0,
             player_speed: 1.0,

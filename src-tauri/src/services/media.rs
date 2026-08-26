@@ -1,5 +1,7 @@
+use std::collections::HashSet;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -7,8 +9,10 @@ use rusqlite::params;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio::process::Command as TokioCommand;
 
 use super::db::Db;
+use crate::services::installer;
 
 /// Loopback-only streaming server that feeds the webview's media element
 /// (DESIGN §4.9/§5.6). WebKitGTK's GStreamer pipeline cannot fetch from
@@ -27,6 +31,10 @@ pub struct MediaServer {
     pub port: u16,
     pub token: String,
     pub roots: Arc<tokio::sync::RwLock<Vec<PathBuf>>>,
+    /// Guards in-flight transcodes so only one ffmpeg writes a given cache
+    /// file (prevents the double-encode / corruption race from concurrent
+    /// requests for the same video).
+    pub transcoding: Arc<tokio::sync::Mutex<HashSet<i64>>>,
 }
 
 /// Pure: parse a single-range `Range: bytes=...` header against a file length.
@@ -84,6 +92,137 @@ fn next_nonce() -> u64 {
     N.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Probe the video codec of a file via ffprobe. Returns `None` when there is
+/// no *real* video stream (audio-only files, or embedded cover art reported as
+/// an attached-picture `video` stream) or ffprobe is unavailable/fails.
+pub fn probe_video_codec(path: &Path, ffprobe: &Path) -> Option<String> {
+    if !ffprobe.exists() {
+        return None;
+    }
+    let out = std::process::Command::new(ffprobe)
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name,disposition:attached_pic",
+            "-of",
+            "csv=p=0",
+            &path.to_string_lossy(),
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    // `codec_name,attached_pic` — e.g. `h264,0` or `mjpeg,1` (cover art).
+    let line = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if line.is_empty() {
+        return None;
+    }
+    let mut parts = line.split(',');
+    let codec = parts.next()?.to_string();
+    let attached_pic = parts.next().unwrap_or("0").trim() == "1";
+    if attached_pic {
+        return None; // embedded cover art, not a playable video track
+    }
+    if codec.is_empty() {
+        None
+    } else {
+        Some(codec)
+    }
+}
+
+/// Whether a video stream + container can be played directly by WebKitGTK's
+/// `<video>` element. Only H.264 in an MP4/M4V container is reliably decodable
+/// on Linux; AV1/HEVC/ProRes/etc. must be transcoded.
+pub fn is_web_playable_video(codec: &str, container: &str) -> bool {
+    let c = codec.to_ascii_lowercase();
+    let is_h264 = c.starts_with("h264") || c.starts_with("avc");
+    let good_container = matches!(container, "mp4" | "m4v");
+    is_h264 && good_container
+}
+
+/// Re-encode a video file to H.264/AAC in an MP4 container, in place, so it
+/// plays natively in WebKitGTK (which cannot decode AV1/VP9/HEVC). No-op —
+/// returns `src` unchanged — when the file is already a web-playable H.264/MP4.
+/// On success the original `src` is replaced (transcode to a temp file, then
+/// atomic rename); if the source container wasn't `.mp4`/`.m4v` the orphan
+/// original is removed. Returns the final path (an `.mp4`).
+pub async fn transcode_to_h264(
+    app: &AppHandle,
+    bin_dir: &Path,
+    src: &Path,
+) -> Result<String, String> {
+    let ffprobe = installer::ffprobe_path(bin_dir);
+    // Skip the heavy re-encode if it's already natively playable.
+    if let Some(codec) = probe_video_codec(src, &ffprobe) {
+        let container = src
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if is_web_playable_video(&codec, &container) {
+            return Ok(src.to_string_lossy().to_string());
+        }
+    }
+
+    let _ = installer::ensure_ffmpeg(app, bin_dir).await;
+    let ffmpeg = installer::ffmpeg_path(bin_dir);
+    if !ffmpeg.exists() {
+        return Err("ffmpeg missing".into());
+    }
+
+    let stem = src
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("video")
+        .to_string();
+    let final_path = src.with_extension("mp4");
+    let tmp = final_path.with_file_name(format!("{stem}.h264.tmp"));
+    let _ = std::fs::remove_file(&tmp);
+
+    let src_arg = src.to_string_lossy().to_string();
+    let tmp_arg = tmp.to_string_lossy().to_string();
+    let status = TokioCommand::new(&ffmpeg)
+        .args([
+            "-hide_banner",
+            "-i",
+            &src_arg,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "mp4",
+            &tmp_arg,
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !status.success() {
+        let _ = std::fs::remove_file(&tmp);
+        return Err("transcode failed".into());
+    }
+
+    // Replace the original with the H.264 copy.
+    std::fs::rename(&tmp, &final_path).map_err(|e| e.to_string())?;
+    if final_path != src {
+        let _ = std::fs::remove_file(src);
+    }
+    Ok(final_path.to_string_lossy().to_string())
+}
+
 pub fn generate_token() -> String {
     let mut h = Sha256::new();
     h.update(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0).to_le_bytes());
@@ -104,19 +243,24 @@ impl MediaServer {
             port,
             token: generate_token(),
             roots: Arc::new(tokio::sync::RwLock::new(roots)),
+            transcoding: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
         };
 
         let token = server.token.clone();
         let roots_shared = server.roots.clone();
+        let transcoding = server.transcoding.clone();
         tauri::async_runtime::spawn(async move {
             loop {
                 match listener.accept().await {
                     Ok((stream, _addr)) => {
                         let token = token.clone();
                         let roots = roots_shared.clone();
+                        let transcoding = transcoding.clone();
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            if let Err(e) = serve_connection(stream, app, token, roots).await {
+                            if let Err(e) =
+                                serve_connection(stream, app, token, roots, transcoding).await
+                            {
                                 eprintln!("crtube media-server: {e}");
                             }
                         });
@@ -132,6 +276,12 @@ impl MediaServer {
         format!("http://127.0.0.1:{}/{}/{}", self.port, self.token, download_id)
     }
 
+    /// URL that triggers an on-the-fly ffmpeg transcode to H.264/AAC (used for
+    /// codecs WebKitGTK cannot decode, e.g. AV1/HEVC). Path: /{token}/t/{id}.
+    pub fn transcode_url_for(&self, download_id: i64) -> String {
+        format!("http://127.0.0.1:{}/{}/t/{}", self.port, self.token, download_id)
+    }
+
     pub async fn set_roots(&self, roots: Vec<PathBuf>) {
         *self.roots.write().await = roots;
     }
@@ -143,6 +293,8 @@ struct Request {
     /// First path segment — must equal the session token.
     token: String,
     id: Option<i64>,
+    /// `/{token}/t/{id}` requests an ffmpeg transcode instead of passthrough.
+    transcode: bool,
 }
 
 async fn read_request<S>(stream: &mut S) -> Result<Option<Request>, String>
@@ -182,18 +334,21 @@ where
         }
     }
 
-    // Target shape: /{token}/{id}
+    // Target shape: /{token}/{id}  or  /{token}/t/{id} (transcode)
     let segments: Vec<&str> = target.trim_matches('/').split('/').collect();
     let token = segments.first().copied().unwrap_or_default().to_string();
-    let id = segments
-        .get(1)
-        .and_then(|s| s.parse::<i64>().ok());
+    let (transcode, id) = match segments.len() {
+        3 if segments.get(1) == Some(&"t") => (true, segments.get(2).and_then(|s| s.parse::<i64>().ok())),
+        2 => (false, segments.get(1).and_then(|s| s.parse::<i64>().ok())),
+        _ => (false, None),
+    };
 
     Ok(Some(Request {
         want_body: method != "HEAD",
         range,
         token,
         id,
+        transcode,
     }))
 }
 
@@ -202,6 +357,7 @@ async fn serve_connection(
     app: AppHandle,
     token: String,
     roots: Arc<tokio::sync::RwLock<Vec<PathBuf>>>,
+    transcoding: Arc<tokio::sync::Mutex<HashSet<i64>>>,
 ) -> Result<(), String> {
     let Some(req) = read_request(&mut stream).await? else {
         return Ok(());
@@ -240,32 +396,48 @@ async fn serve_connection(
         return respond_text(&mut stream, 403, "forbidden").await;
     }
 
-    let file = tokio::fs::File::open(&resolved)
+    if req.transcode {
+        return serve_transcode(stream, app, id, resolved, req.range, req.want_body, transcoding)
+            .await;
+    }
+    serve_file(stream, resolved, req.range, req.want_body).await
+}
+
+/// Serve a file over HTTP with proper `Range` support (206 / 200).
+async fn serve_file<S>(
+    mut stream: S,
+    path: PathBuf,
+    range: Option<String>,
+    want_body: bool,
+) -> Result<(), String>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+{
+    let file = tokio::fs::File::open(&path)
         .await
         .map_err(|e| e.to_string())?;
-    let meta = file.metadata().await.map_err(|e| e.to_string())?;
-    let len = meta.len();
-    let ct = content_type_for(&resolved);
+    let len = file.metadata().await.map_err(|e| e.to_string())?.len();
+    let ct = content_type_for(&path);
 
-    match parse_range(req.range.as_deref(), len) {
+    match parse_range(range.as_deref(), len) {
         Some((start, end)) => {
             let mut file = file;
             file.seek(SeekFrom::Start(start)).await.map_err(|e| e.to_string())?;
             let nbytes = end - start + 1;
             let head = format!(
-                "HTTP/1.1 206 Partial Content\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{len}\r\nContent-Length: {nbytes}\r\nConnection: close\r\n\r\n"
+                "HTTP/1.1 206 Partial Content\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{len}\r\nContent-Length: {nbytes}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
             );
             stream.write_all(head.as_bytes()).await.ok();
-            if req.want_body {
+            if want_body {
                 copy_n(&mut file, &mut stream, nbytes).await;
             }
         }
         None => {
             let head = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n"
+                "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nContent-Length: {len}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
             );
             stream.write_all(head.as_bytes()).await.ok();
-            if req.want_body {
+            if want_body {
                 let mut file = file;
                 tokio::io::copy(&mut file, &mut stream).await.ok();
             }
@@ -273,6 +445,214 @@ async fn serve_connection(
     }
     stream.flush().await.ok();
     Ok(())
+}
+
+/// Transcode a download to H.264/AAC and serve it to the webview. The result
+/// is cached to `<app_data>/transcodes/{id}.mp4` (with a sibling `{id}.done`
+/// marker) so repeat plays are instant and fully seekable via `serve_file`'s
+/// Range support. WebKitGTK cannot decode AV1/HEVC, which is why this path
+/// exists (audio still plays, video is black otherwise).
+///
+/// Streaming strategy: the first request for an uncached id becomes the
+/// "owner", spawns a single ffmpeg that writes the cache file, and streams
+/// that *growing* file RAW (a `200` with no `Content-Length`) so playback
+/// starts immediately. Seeks (non-open-ended Range requests) wait for the
+/// `{id}.done` marker, then are served the completed file via `serve_file`
+/// (full `Range` support). This avoids both the old bare-`200` stall and the
+/// partial-cache `206` with a bogus total size.
+async fn serve_transcode<S>(
+    mut stream: S,
+    app: AppHandle,
+    id: i64,
+    path: PathBuf,
+    range: Option<String>,
+    want_body: bool,
+    transcoding: Arc<tokio::sync::Mutex<HashSet<i64>>>,
+) -> Result<(), String>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+{
+    let cache_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("transcodes");
+    std::fs::create_dir_all(&cache_dir).ok();
+    let cache = cache_dir.join(format!("{id}.mp4"));
+    let done = cache_dir.join(format!("{id}.done"));
+
+    // Fast path: a completed transcode already exists — serve it statically
+    // with full Range support (instant + seekable).
+    if cache.exists() && done.exists() {
+        return serve_file(stream, cache, range, want_body).await;
+    }
+
+    // HEAD: report availability without running a full transcode.
+    if !want_body {
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
+        stream.write_all(head.as_bytes()).await.ok();
+        stream.flush().await.ok();
+        return Ok(());
+    }
+
+    // Serialize transcodes per id: only the owner spawns ffmpeg.
+    let owner = {
+        let mut g = transcoding.lock().await;
+        if g.contains(&id) {
+            false
+        } else {
+            g.insert(id);
+            true
+        }
+    };
+
+    if !owner {
+        wait_for_done(&done, std::time::Duration::from_secs(600)).await;
+        return serve_file(stream, cache, range, want_body).await;
+    }
+
+    // Owner: drop any stale cache, then transcode to the cache file only
+    // (no second `-` stdout output — that double-encoded and produced the
+    // broken live stream).
+    let _ = std::fs::remove_file(&cache);
+    let _ = std::fs::remove_file(&done);
+
+    let bin = match installer::bin_dir(&app) {
+        Ok(b) => b,
+        Err(_) => {
+            remove_transcoding(&transcoding, id).await;
+            return respond_text(&mut stream, 500, "transcode unavailable").await;
+        }
+    };
+    let _ = installer::ensure_ffmpeg(&app, &bin).await;
+    let ffmpeg = installer::ffmpeg_path(&bin);
+    if !ffmpeg.exists() {
+        remove_transcoding(&transcoding, id).await;
+        return respond_text(&mut stream, 500, "ffmpeg missing").await;
+    }
+
+    let cache_arg = cache.to_str().unwrap_or("/dev/null").to_string();
+    let path_arg = path.to_str().unwrap_or("").to_string();
+    let mut child = TokioCommand::new(&ffmpeg)
+        .args([
+            "-hide_banner",
+            "-i",
+            &path_arg,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+frag_keyframes+empty_moov",
+            "-f",
+            "mp4",
+            &cache_arg,
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    // Stream the *growing* cache file RAW (a `200` with no `Content-Length`).
+    // This is what makes WebKitGTK start playback immediately; because we
+    // follow EOF and only close once ffmpeg has finished, the browser receives
+    // the entire file and plays to the end. Any Range request (incl. a size
+    // probe) is answered with this stream — WebKit falls back to full-stream
+    // playback and starts at once. Precise seeking works automatically once
+    // the `{id}.done` marker exists (the fast path serves a correct `206`).
+    // If the client disconnects mid-transcode we still let ffmpeg finish so the
+    // cache is populated for everyone else.
+    if let Err(e) = stream_growing_raw(&mut stream, &cache, &mut child).await {
+        let _ = child.wait().await;
+        remove_transcoding(&transcoding, id).await;
+        return Err(e);
+    }
+
+    let _ = child.wait().await;
+    let _ = std::fs::write(&done, b"1");
+    remove_transcoding(&transcoding, id).await;
+    stream.flush().await.ok();
+    Ok(())
+}
+
+/// Stream a file that is still being written (by ffmpeg) to the client as a
+/// raw `200` stream (no `Content-Length`, `Connection: close`). WebKitGTK
+/// starts playback on such a stream, and because we follow EOF and only close
+/// once ffmpeg has finished, the browser receives the entire file and plays to
+/// the end. (Chunked transfer encoding was tried but WebKitGTK's GStreamer
+/// source would not begin playback on it.)
+async fn stream_growing_raw<S>(
+    stream: &mut S,
+    cache: &Path,
+    child: &mut tokio::process::Child,
+) -> Result<(), String>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+{
+    let head = "HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nAccept-Ranges: bytes\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
+    stream.write_all(head.as_bytes()).await.map_err(|e| e.to_string())?;
+
+    // Wait for ffmpeg to create the cache file.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        if cache.exists() {
+            break;
+        }
+        if child.try_wait().map_err(|e| e.to_string())?.is_some() {
+            return Err("transcode produced no output".into());
+        }
+        if tokio::time::Instant::now() > deadline {
+            return Err("transcode start timed out".into());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    let mut file = tokio::fs::File::open(cache)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; CHUNK];
+    loop {
+        match file.read(&mut buf).await {
+            Ok(0) => {
+                // Reached the current end of file. If ffmpeg has finished, so
+                // have we; otherwise more bytes are coming — brief backoff.
+                if child.try_wait().map_err(|e| e.to_string())?.is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            }
+            Ok(n) => {
+                stream.write_all(&buf[..n]).await.map_err(|e| e.to_string())?;
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    stream.flush().await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Poll until the `{id}.done` marker appears or the timeout elapses.
+async fn wait_for_done(done: &Path, timeout: std::time::Duration) {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if done.exists() {
+            return;
+        }
+        if tokio::time::Instant::now() > deadline {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+}
+
+/// Release the per-id transcode lock.
+async fn remove_transcoding(set: &Arc<tokio::sync::Mutex<HashSet<i64>>>, id: i64) {
+    let mut g = set.lock().await;
+    g.remove(&id);
 }
 
 fn secure_eq(a: &[u8], b: &[u8]) -> bool {

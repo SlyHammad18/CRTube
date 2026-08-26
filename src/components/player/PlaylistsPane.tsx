@@ -281,7 +281,7 @@ export function PlaylistsPane() {
           })}
           {loaded && playlists.length === 0 && !composing && (
             <li className="px-2 py-1 font-mono text-11 leading-relaxed text-dim">
-              none yet — hit + or add tracks with ＋
+              No playlists yet
             </li>
           )}
         </ul>

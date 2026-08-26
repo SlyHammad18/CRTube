@@ -17,7 +17,8 @@ export function SeekBar() {
   const dragging = useRef(false);
   const [showRemaining, setShowRemaining] = useState(true);
 
-  const frac = durationS > 0 ? Math.min(1, Math.max(0, currentTimeS / durationS)) : 0;
+  const frac =
+    durationS > 0 ? Math.min(1, Math.max(0, currentTimeS / durationS)) : 0;
 
   const seekToClientX = (clientX: number) => {
     const el = barRef.current;
@@ -56,7 +57,7 @@ export function SeekBar() {
           }`}
         >
           <div
-            className="h-full rounded-full bg-ice"
+            className="h-full origin-left rounded-full bg-ice"
             style={{ width: `${frac * 100}%` }}
           />
         </div>
@@ -68,9 +69,11 @@ export function SeekBar() {
           className="rounded px-1 hover:text-ink"
           title="Toggle remaining / total"
         >
-          {showRemaining
-            ? `-${fmtDuration(Math.max(0, durationS - currentTimeS)) ?? "0:00"}`
-            : fmtDuration(durationS) ?? "0:00"}
+          <span>
+            {showRemaining
+              ? `-${fmtDuration(Math.max(0, durationS - currentTimeS)) ?? "0:00"}`
+              : fmtDuration(durationS) ?? "0:00"}
+          </span>
         </button>
       </div>
     </div>

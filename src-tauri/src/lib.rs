@@ -9,6 +9,50 @@ use commands::tools::ToolService;
 use jobs::JobRegistry;
 use services::db::Db;
 use tauri::Manager;
+use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
+use tauri::window::Color;
+
+/// Build the main window. Defined here (instead of tauri.conf.json) so the
+/// webview browser args can be toggled at launch from the persisted
+/// `hardware_accel` setting.
+///
+/// NOTE: on Wayland, WebKitGTK's hardware/DMABUF path paints a black video
+/// surface (audio still plays). `main.rs` already forces the legacy/CPU path
+/// via `WEBKIT_DISABLE_DMABUF_RENDERER`. So the *default* (hardware accel ON)
+/// applies NO extra browser args — that is the configuration that actually
+/// renders video here. Disabling hardware acceleration forces `--disable-gpu`
+/// (pure software compositing), which is also a safe, never-black fallback.
+///
+/// In `tauri dev` a code-created window must point at the dev server
+/// (`app.dev_url`); `WebviewUrl::App` would otherwise load the built
+/// `frontendDist` bundle and silently run a stale frontend. Release builds use
+/// the bundled `App("index.html")`.
+fn create_main_window(app: &AppHandle, hw_accel: bool) -> tauri::Result<()> {
+    let url = if cfg!(debug_assertions) {
+        app.config()
+            .build
+            .dev_url
+            .clone()
+            .map(WebviewUrl::External)
+            .unwrap_or_else(|| WebviewUrl::App("index.html".into()))
+    } else {
+        WebviewUrl::App("index.html".into())
+    };
+    let mut builder = WebviewWindowBuilder::new(app, "main", url)
+        .title("CRTUBE")
+        .inner_size(1240.0, 760.0)
+        .min_inner_size(1000.0, 600.0)
+        .resizable(true)
+        .decorations(false)
+        .center()
+        .transparent(false)
+        .background_color(Color(7, 9, 12, 255));
+    if !hw_accel {
+        builder = builder.additional_browser_args("--disable-gpu");
+    }
+    builder.build()?;
+    Ok(())
+}
 
 pub fn run() {
     tauri::Builder::default()
@@ -25,6 +69,10 @@ pub fn run() {
             app.manage(Arc::new(Db(Mutex::new(conn))));
             let settings =
                 commands::settings::load_settings(app.handle());
+            // Window is created here (not tauri.conf.json) so GPU browser args
+            // can follow the persisted `hardware_accel` setting (§settings).
+            create_main_window(app.handle(), settings.hardware_accel)
+                .map_err(|e| e.to_string())?;
             // §5.6 — asset protocol keeps serving thumbs/bin.
             commands::settings::allow_media_scope(app.handle(), &settings);
             // §5.6 — loopback media streamer serves downloaded audio/video
