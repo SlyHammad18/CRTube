@@ -29,6 +29,9 @@ export function VolumeSlider({ className = "" }: { className?: string }) {
           background: `linear-gradient(to right, var(--color-ice) ${pct}%, var(--color-line) ${pct}%)`,
         }}
       />
+      <span className="w-9 shrink-0 text-right font-mono text-11 tabular-nums text-mute">
+        {pct}%
+      </span>
     </div>
   );
 }
