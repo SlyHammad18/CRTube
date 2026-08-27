@@ -73,6 +73,7 @@ interface PlayerState {
   toggle: () => void;
   next: () => void;
   prev: () => void;
+  jumpTo: (orderIndex: number) => void;
   cycleRepeat: () => void;
   toggleShuffle: () => void;
   setSpeed: (v: number) => void;
@@ -211,6 +212,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         return;
       }
       if (!advance(-1, true)) get().seek(0);
+    },
+
+    jumpTo: (i: number) => {
+      applyPos(i);
     },
 
     cycleRepeat: () =>

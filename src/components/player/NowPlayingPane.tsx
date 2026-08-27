@@ -19,6 +19,7 @@ import { SeekBar } from "./SeekBar";
 import { VolumeSlider } from "./VolumeSlider";
 import { SpeedMenu } from "./SpeedMenu";
 import { CaptionDeck } from "./CaptionDeck";
+import { UpNext } from "./UpNext";
 
 /**
  * Right pane shell (§4.8). Artwork frame + primary media portal slot, SeekBar,
@@ -28,6 +29,7 @@ export function NowPlayingPane() {
   const entry = usePlayerStore(selectCurrentEntry);
   const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
   const lyrics = useLyrics(entry);
+  const lyricsFullscreen = useUIStore((s) => s.lyricsFullscreen);
 
   useEffect(() => {
     setPrimarySlot(slotEl);
@@ -105,7 +107,7 @@ export function NowPlayingPane() {
         <SpeedMenu />
       </div>
 
-      <CaptionDeck entry={entry} lyrics={lyrics} />
+      {lyricsFullscreen ? <UpNext /> : <CaptionDeck entry={entry} lyrics={lyrics} />}
     </aside>
   );
 }

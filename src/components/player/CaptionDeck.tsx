@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
+import { useUIStore } from "../../stores/ui";
 import { activeIndex } from "../../lib/lrc";
 import type { LyricsState } from "../../hooks/useLyrics";
 import type { LibraryEntry } from "../../types/library";
@@ -212,7 +213,10 @@ function Deck({
   }, [idx, lines]);
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div
+      onDoubleClick={() => useUIStore.getState().setLyricsFullscreen(true)}
+      className="relative flex min-h-0 flex-1 flex-col"
+    >
       <div
         ref={containerRef}
         onScroll={() => {
