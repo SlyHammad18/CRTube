@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
 import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
 import { activeIndex } from "../../lib/lrc";
@@ -173,34 +173,63 @@ function Deck({
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const idx = source === "synced" ? activeIndex(lines, currentTimeMs) : -1;
-  const [offset, setOffset] = useState(0);
+  // Whether the view is currently centered on the active line (drives the sync button).
+  const [synced, setSynced] = useState(true);
+  // Window during which programmatic smooth-scroll events should be ignored.
+  const programmaticUntil = useRef(0);
+  // Last user scroll time, used to pause auto-follow for a few seconds.
+  const userScrollRef = useRef(0);
 
-  useEffect(() => {
+  const scrollToActive = () => {
     const c = containerRef.current;
     const el = lineRefs.current[idx];
-    if (!c || !el) {
-      setOffset(0);
+    if (!c || !el) return;
+    programmaticUntil.current = Date.now() + 500;
+    setSynced(true);
+    c.scrollTo({
+      top: el.offsetTop - c.clientHeight / 2 + el.offsetHeight / 2,
+      behavior: reduce ? "auto" : "smooth",
+    });
+  };
+
+  const evaluateSync = () => {
+    const c = containerRef.current;
+    const el = lineRefs.current[idx];
+    if (!c || !el) return;
+    const target = el.offsetTop - c.clientHeight / 2 + el.offsetHeight / 2;
+    setSynced(Math.abs(c.scrollTop - target) <= 24);
+  };
+
+  // Auto-follow: keep the active line centered, unless the user recently scrolled.
+  useEffect(() => {
+    if (idx < 0) return;
+    if (Date.now() - userScrollRef.current < 2500) {
+      evaluateSync();
       return;
     }
-    setOffset(c.clientHeight / 2 - (el.offsetTop + el.offsetHeight / 2));
+    scrollToActive();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, lines]);
 
   return (
-    <div
-      ref={containerRef}
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
-      style={{
-        maskImage:
-          "linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)",
-        WebkitMaskImage:
-          "linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)",
-      }}
-    >
-      <motion.div
-        className="flex flex-col gap-1 px-4 py-8"
-        animate={{ y: offset }}
-        transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 200, damping: 30 }}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={containerRef}
+        onScroll={() => {
+          // Ignore the in-flight programmatic smooth-scroll; react to real user scrolls.
+          if (Date.now() < programmaticUntil.current) return;
+          userScrollRef.current = Date.now();
+          evaluateSync();
+        }}
+        className="relative flex min-h-0 flex-1 flex-col overflow-y-auto"
+        style={{
+          maskImage:
+            "linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)",
+          WebkitMaskImage:
+            "linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)",
+        }}
       >
+        <div className="flex flex-col gap-1 px-4 py-8">
         {lines.map((l, i) => {
           const active = i === idx;
           const urdu = isUrduScript(l.text);
@@ -245,7 +274,18 @@ function Deck({
             </p>
           );
         })}
-      </motion.div>
+      </div>
+      </div>
+      {!synced && source === "synced" && (
+        <button
+          aria-label="Sync to current lyric"
+          title="Sync to current lyric"
+          onClick={scrollToActive}
+          className="absolute bottom-4 left-1/2 z-10 flex h-9 -translate-x-1/2 items-center justify-center rounded-full border border-ice/40 bg-panel/90 px-4 text-13 font-semibold text-ice backdrop-blur-sm transition-all duration-150 hover:scale-[1.04] hover:shadow-[0_0_28px_8px_rgba(77,216,255,0.6)] active:scale-[0.98]"
+        >
+          <span>sync</span>
+        </button>
+      )}
     </div>
   );
 }
