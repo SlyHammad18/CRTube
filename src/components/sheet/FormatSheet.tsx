@@ -134,7 +134,7 @@ function VideoTab({
   if (!formats.length) {
     return (
       <p className="py-8 text-center font-mono text-13 text-mute">
-        {"> no video formats in source — try MP3"}
+        {"> no video formats in source — try Audio"}
       </p>
     );
   }
@@ -253,7 +253,7 @@ export function FormatSheet() {
   const setDownloadDir = useSettingsStore((s) => s.setDownloadDir);
   const reduce = useReducedMotion();
 
-  const [tab, setTab] = useState<DownloadKind>("video");
+  const [tab, setTab] = useState<DownloadKind>("audio");
   const [container, setContainer] = useState("mp4");
   const [height, setHeight] = useState<number | null>(null);
   const [quality, setQuality] = useState<AudioQualityPref>("best");
@@ -271,9 +271,16 @@ export function FormatSheet() {
     const first = containers[0];
     setContainer(first ?? "mp4");
     setHeight(videoFormats.find((f) => f.ext === first)?.height ?? null);
-    setTab(videoFormats.length ? "video" : "audio");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info?.videoId]);
+
+  // Reset to the Audio (MP3) default each time the sheet opens. Because the
+  // info-load effect no longer switches the tab, any tab the user picks during
+  // the probe survives once the formats finish loading.
+  useEffect(() => {
+    if (!open) return;
+    setTab("audio");
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -393,14 +400,14 @@ export function FormatSheet() {
                 active={tab === "video"}
                 onClick={() => setTab("video")}
                 icon={FileVideo}
-                label="MP4"
+                label="Video"
                 layoutId="sheet-seg"
               />
               <TabPill
                 active={tab === "audio"}
                 onClick={() => setTab("audio")}
                 icon={FileAudio}
-                label="MP3"
+                label="Audio"
                 layoutId="sheet-seg"
               />
             </div>
