@@ -54,7 +54,7 @@ export function NowPlayingPane() {
           </div>
           <div className="flex flex-col gap-1">
             <p className="font-mono text-12 text-dim">{"> nothing playing_"}</p>
-            <p className="font-mono text-12 text-dim">double-click a track</p>
+            <p className="font-mono text-12 text-dim">click a track</p>
           </div>
         </div>
       </aside>
