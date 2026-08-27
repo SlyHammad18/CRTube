@@ -35,6 +35,32 @@ queue downloads with live progress — everything runs locally through
   accent, monospaced numerics, and motion that collapses under
   `prefers-reduced-motion`.
 
+## What's new in v0.2.0
+
+v0.2.0 is a major update built around **in-app playback** — downloaded audio and
+video now play directly inside CRTube, alongside a full library, playlist, and
+lyrics experience. Highlights since v0.1.0:
+
+- **Music player** — a global player bar with play/pause, seek, volume (with an
+  on-screen percentage) and mute, plus playback-speed control. Audio and video
+  stream through a local loopback media server, so files never leave your machine.
+- **Video playback** — watch downloaded videos in a stable in-app surface with
+  fullscreen (including 1080p). Codecs WebKitGTK can't decode are transparently
+  re-encoded on the fly at playback time.
+- **Library & track lists** — All Tracks / Recently Added views, single-click to
+  play, filter by Audio/Video, and sort controls.
+- **Playlists** — create, rename, and drag-to-reorder playlists; add tracks via a
+  portaled popover and remove them with a confirm modal. Three-phase repeat:
+  off → loop playlist → loop one.
+- **Now Playing** — a dedicated pane with artwork, a caption deck, and track
+  metadata; the global bar auto-hides while Now Playing is open.
+- **Up Next** — a sidebar queue of upcoming tracks.
+- **Lyrics** — synced, scrollable lyrics from the LRCLIB service, a "jump to
+  current line" sync button, and a fullscreen lyrics overlay. Urdu/Nastaliq lines
+  render in Noto Nastaliq Urdu (right-aligned) for proper script support.
+- **Polish** — toast alerts moved to the top-right, delete confirmations, and a
+  refreshed app icon (device mark) across all platforms.
+
 ## Download
 
 Prebuilt installers for Linux are attached to the latest
