@@ -8,13 +8,13 @@ export function Toasts() {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed bottom-5 right-5 z-[110] flex flex-col items-end gap-2"
+      className="pointer-events-none fixed top-12 right-5 z-[110] flex flex-col items-end gap-2"
     >
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div
             key={t.id}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 10 }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: -10 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{

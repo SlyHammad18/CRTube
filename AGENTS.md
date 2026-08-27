@@ -25,7 +25,8 @@
 - Thumbnails cached to `{app_data}/thumbs/{video_id}.jpg`; binaries in `{app_data}/bin/` injected into child-process env.
 
 ## Git
-- Remote: `git@github.com:SlyHammad18/CRTube.git`. Commit after completing each task (T1–T11), once its Verify gate passes.
+- Remote: `git@github.com:SlyHammad18/CRTube.git`.
+- **Never commit or push without asking first.** Complete the task and its Verify gate, then surface the diff/summary and explicitly ask the user for permission before running any `git commit`/`git push`. Do not assume prior "commit after each task" workflow — always get a go-ahead.
 - Never add a `Co-Authored-By: opencode <opencode@anon.example>` trailer (or any `Co-Authored-By: opencode` line) to commit messages. Write the commit message body/subject only — do not append that trailer.
 
 ## Verification
