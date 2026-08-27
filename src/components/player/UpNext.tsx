@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { LibraryEntry } from "../../types/library";
 import { usePlayerStore } from "../../stores/player";
+import { stripMediaExt } from "../../lib/format";
 
 function thumbSrc(e: LibraryEntry): string | null {
   if (!e.thumbUrl) return null;
@@ -70,7 +71,7 @@ export function UpNext() {
                     <div className="min-w-0">
                       <p className="truncate text-13 text-ink">{e.title}</p>
                       <p className="truncate text-12 text-mute">
-                        {e.channel ?? "—"}
+                        {e.channel ? stripMediaExt(e.channel) : "—"}
                       </p>
                     </div>
                   </button>

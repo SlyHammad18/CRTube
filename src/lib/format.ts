@@ -42,3 +42,10 @@ export function fmtBytes(bytes?: number | null): string | null {
   const digits = value >= 100 || i === 0 ? 0 : value >= 10 ? 1 : 2;
   return `${value.toFixed(digits)} ${units[i]}`;
 }
+
+const MEDIA_EXT = /\.(mp3|mp4|webm|m4a|flac|ogg|wav|aac|opus)$/i;
+
+/** Strip a trailing media-file extension (e.g. `.mp3`, `.MP4`) from a name. */
+export function stripMediaExt(name: string): string {
+  return name.replace(MEDIA_EXT, "");
+}

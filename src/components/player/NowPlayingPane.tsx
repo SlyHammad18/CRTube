@@ -20,6 +20,7 @@ import { VolumeSlider } from "./VolumeSlider";
 import { SpeedMenu } from "./SpeedMenu";
 import { CaptionDeck } from "./CaptionDeck";
 import { UpNext } from "./UpNext";
+import { stripMediaExt } from "../../lib/format";
 
 /**
  * Right pane shell (§4.8). Artwork frame + primary media portal slot, SeekBar,
@@ -94,7 +95,7 @@ export function NowPlayingPane() {
           {entry.title}
         </h2>
         <p className="mt-1 truncate text-13 text-mute">
-          {entry.channel ?? "—"} · {entry.container.toUpperCase()}
+          {entry.channel ? stripMediaExt(entry.channel) : "—"}
         </p>
       </div>
 
