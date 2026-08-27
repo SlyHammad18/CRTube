@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "motion/react";
-import { CaretUp, Pause, Play, SkipBack, SkipForward } from "@phosphor-icons/react";
+import { CaretUp, Pause, Play, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { fmtDuration } from "../../lib/format";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
@@ -35,6 +35,8 @@ export function PlayerBar() {
   );
 
   const setView = useUIStore((s) => s.setView);
+  const lyricsDockOpen = useUIStore((s) => s.lyricsDockOpen);
+  const setLyricsDockOpen = useUIStore((s) => s.setLyricsDockOpen);
   const store = usePlayerStore;
 
   const handleSeek = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -132,6 +134,13 @@ export function PlayerBar() {
                 {fmtDuration(currentTimeS) ?? "0:00"} / {fmtDuration(durationS) ?? "0:00"}
               </span>
               <div className="h-4 w-px bg-line" />
+              <IconBtn
+                label="Lyrics"
+                active={lyricsDockOpen}
+                onClick={() => setLyricsDockOpen(!lyricsDockOpen)}
+              >
+                <TextAlignLeft size={16} weight="light" aria-hidden />
+              </IconBtn>
               <VolumeSlider />
               <IconBtn label="Expand player" onClick={() => setView("player")}>
                 <CaretUp size={16} weight="light" aria-hidden />

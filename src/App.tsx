@@ -19,6 +19,7 @@ import { DownloadsView } from "./components/downloads/DownloadsView";
 import { LibraryView } from "./components/library/LibraryView";
 import { SettingsView } from "./components/settings/SettingsView";
 import { PlayerTab } from "./components/player/PlayerTab";
+import { LyricsDock } from "./components/player/LyricsDock";
 import { PlayerBar } from "./components/player-bar/PlayerBar";
 import { MediaHost } from "./components/player-bar/MediaHost";
 import { VideoFullscreen } from "./components/player/VideoFullscreen";
@@ -56,7 +57,7 @@ export default function App() {
         <Titlebar />
         <div className="flex min-h-0 flex-1">
           <Rail />
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative flex min-w-0 flex-1 flex-col">
             <main className="relative min-h-0 flex-1 overflow-hidden">
               <AnimatePresence mode="wait">
               <motion.div
@@ -97,6 +98,7 @@ export default function App() {
               </AnimatePresence>
             </main>
             {/* Global player bar — visible in every view once the queue is non-empty */}
+            <LyricsDock />
             <PlayerBar />
           </div>
         </div>
