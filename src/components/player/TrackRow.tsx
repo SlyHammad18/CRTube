@@ -78,8 +78,12 @@ export function TrackRow({
       onKeyDown={(e) => {
         if (e.key === "Enter" && !missing) onPlay();
       }}
-      onDoubleClick={() => !missing && onPlay()}
-      className={`group flex cursor-default items-center gap-2.5 rounded-card border px-2.5 py-1.5 transition-colors duration-150 ${
+      onClick={(e) => {
+        if (missing) return;
+        if ((e.target as HTMLElement).closest("button")) return;
+        onPlay();
+      }}
+      className={`group flex cursor-pointer items-center gap-2.5 rounded-card border px-2.5 py-1.5 transition-colors duration-150 ${
         missing
           ? "border-amber/40 opacity-70"
           : isActive
