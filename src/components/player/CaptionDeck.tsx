@@ -212,7 +212,7 @@ function Deck({
                   lineRefs.current[i] = el;
                 }}
                 onClick={() => onSeek(l.tMs)}
-                className={`flex items-start gap-2 rounded-card py-0.5 text-left transition-colors duration-200 ${
+                className={`flex items-start gap-2 rounded-card py-0.5 ${urdu ? "text-right" : "text-left"} transition-colors duration-200 ${
                   active
                     ? `${urdu ? "font-urdu text-18 font-semibold leading-[2.6]" : "font-display text-15 font-semibold text-ink"}`
                     : i < idx
@@ -237,7 +237,7 @@ function Deck({
           return (
             <p
               key={i}
-              className={`px-3 py-0.5 text-mute${urdu ? " font-urdu text-18 leading-[2.6]" : ""}`}
+              className={`px-3 py-0.5 text-mute${urdu ? " font-urdu text-18 leading-[2.6] text-right" : ""}`}
               dir={urdu ? "auto" : undefined}
             >
               {l.text}
