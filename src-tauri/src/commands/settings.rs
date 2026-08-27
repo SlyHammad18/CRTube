@@ -14,7 +14,6 @@ pub struct AppSettings {
     pub download_dir: String,
     pub concurrent: u32,
     pub autoupdate_ytdlp: bool,
-    pub hardware_accel: bool,
     /// Browser to pull cookies from for yt-dlp (e.g. "chrome", "firefox",
     /// "edge"). Empty by default. Needed when YouTube bot-walls extraction or
     /// for age/restricted videos. Requires that browser to be installed and
@@ -35,7 +34,6 @@ impl Default for AppSettings {
             download_dir: String::new(),
             concurrent: DEFAULT_CONCURRENT,
             autoupdate_ytdlp: true,
-            hardware_accel: true,
             youtube_cookies: String::new(),
             youtube_cookies_file: String::new(),
             filename_template: None,

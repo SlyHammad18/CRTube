@@ -218,26 +218,6 @@ function DownloadsSection() {
   );
 }
 
-function PlaybackSection() {
-  const settings = useSettingsStore((s) => s.settings);
-  const update = useSettingsStore((s) => s.update);
-
-  return (
-    <Section title="Playback">
-      <Row
-        label="Hardware acceleration"
-        hint="Use the GPU for video rendering. Requires an app restart to apply."
-      >
-        <Toggle
-          checked={settings?.hardware_accel ?? true}
-          onChange={(v) => void update({ hardware_accel: v })}
-          label="Hardware acceleration"
-        />
-      </Row>
-    </Section>
-  );
-}
-
 function AboutSection() {
   const [version, setVersion] = useState<string>("—");
   useEffect(() => {
@@ -272,7 +252,6 @@ export function SettingsView() {
       <StorageSection />
       <EngineSection />
       <DownloadsSection />
-      <PlaybackSection />
       <AboutSection />
     </div>
   );

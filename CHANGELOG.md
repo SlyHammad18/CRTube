@@ -21,6 +21,14 @@ All notable work is tracked here, grouped by the task breakdown in
   unsupported codecs still take the error-toast + `open_path` escape hatch
   (DESIGN §5.6).
 
+### Settings — removed inert "Hardware acceleration" toggle
+- Removed the `hardware_accel` setting (Rust struct + default, TS type, and the
+  Settings toggle) and the now-empty Playback section. It was a no-op on
+  Linux/WebKitGTK: the real video-render safeguard is the unconditionally
+  forced `WEBKIT_DISABLE_DMABUF_RENDERER=1` env var in `main.rs`, and the
+  toggle's OFF state only appended `--disable-gpu` (a Chromium flag WebKitGTK
+  ignores). Window creation no longer takes a hardware-accel parameter.
+
 ## [0.2.0] — 2026-08-26
 
 Player milestone: music/video playback tab with playlists and synced lyrics.
