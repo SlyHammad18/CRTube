@@ -6,6 +6,24 @@ import { activeIndex } from "../../lib/lrc";
 import type { LyricsState } from "../../hooks/useLyrics";
 import type { LibraryEntry } from "../../types/library";
 
+/// True when `text` contains Arabic-script characters (incl. all Urdu letters).
+/// Used to render lyric lines in the Nastaliq Urdu font with correct RTL flow.
+function isUrduScript(text: string): boolean {
+  for (const ch of text) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (
+      (c >= 0x0600 && c <= 0x06ff) || // Arabic
+      (c >= 0x0750 && c <= 0x077f) || // Arabic Supplement
+      (c >= 0x08a0 && c <= 0x08ff) || // Arabic Extended-A
+      (c >= 0xfb50 && c <= 0xfdff) || // Arabic Presentation Forms-A
+      (c >= 0xfe70 && c <= 0xfeff) // Arabic Presentation Forms-B
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Caption Deck — the Player's signature motif (§4.8). Renders synced lyrics
  * with the active line held at center (spring scroll, masked edges), click a
@@ -185,6 +203,7 @@ function Deck({
       >
         {lines.map((l, i) => {
           const active = i === idx;
+          const urdu = isUrduScript(l.text);
           if (source === "synced") {
             return (
               <button
@@ -195,7 +214,7 @@ function Deck({
                 onClick={() => onSeek(l.tMs)}
                 className={`flex items-start gap-2 rounded-card py-0.5 text-left transition-colors duration-200 ${
                   active
-                    ? "font-display text-15 font-semibold text-ink"
+                    ? `${urdu ? "font-urdu" : "font-display"} text-15 font-semibold text-ink`
                     : i < idx
                       ? "text-dim"
                       : "text-mute"
@@ -206,12 +225,21 @@ function Deck({
                   style={{ visibility: active ? "visible" : "hidden" }}
                   aria-hidden
                 />
-                <span className="min-w-0">{l.text}</span>
+                <span
+                  className={`min-w-0${urdu ? " font-urdu leading-relaxed" : ""}`}
+                  dir={urdu ? "auto" : undefined}
+                >
+                  {l.text}
+                </span>
               </button>
             );
           }
           return (
-            <p key={i} className="px-3 py-0.5 text-mute">
+            <p
+              key={i}
+              className={`px-3 py-0.5 text-mute${urdu ? " font-urdu leading-relaxed" : ""}`}
+              dir={urdu ? "auto" : undefined}
+            >
               {l.text}
             </p>
           );
