@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Check, Plus } from "@phosphor-icons/react";
 import { usePlaylistsStore } from "../../stores/playlists";
 import { pushToast } from "../../stores/toast";
@@ -18,6 +19,40 @@ export function AddToPlaylistMenu({ downloadId }: { downloadId: number }) {
   const [open, setOpen] = useState(false);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
+
+  const place = () => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    const menuH = menuRef.current?.offsetHeight ?? 240;
+    const flipDown = r.top < menuH + 8;
+    const top = flipDown ? r.bottom + 4 : r.top - menuH - 4;
+    const right = window.innerWidth - r.right;
+    setCoords({ top, right });
+  };
+
+  useLayoutEffect(() => {
+    if (open) place();
+  }, [open, composing]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onScrollResize = () => place();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("scroll", onScrollResize, true);
+    window.addEventListener("resize", onScrollResize);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", onScrollResize, true);
+      window.removeEventListener("resize", onScrollResize);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   const act = (fn: () => Promise<unknown>) => {
     void fn()
@@ -26,8 +61,9 @@ export function AddToPlaylistMenu({ downloadId }: { downloadId: number }) {
   };
 
   return (
-    <div className="relative">
+    <>
       <button
+        ref={btnRef}
         aria-label="Add to playlist"
         title="Add to playlist"
         onClick={() => setOpen((v) => !v)}
@@ -35,19 +71,26 @@ export function AddToPlaylistMenu({ downloadId }: { downloadId: number }) {
       >
         <Plus size={14} weight="light" aria-hidden />
       </button>
-      {open && (
-        <>
-          <button
-            aria-label="Close add-to-playlist menu"
-            tabIndex={-1}
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40 cursor-default"
-          />
-          <div
-            role="menu"
-            aria-label="Playlists"
-            className="absolute bottom-full right-0 z-50 mb-1 w-56 rounded-card border border-line bg-panel p-1 shadow-panel"
-          >
+      {open &&
+        createPortal(
+          <>
+            <button
+              aria-label="Close add-to-playlist menu"
+              tabIndex={-1}
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 z-40 cursor-default"
+            />
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label="Playlists"
+              style={
+                coords
+                  ? { position: "fixed", top: coords.top, right: coords.right, zIndex: 50 }
+                  : { position: "fixed", visibility: "hidden" }
+              }
+              className="w-56 rounded-card border border-line bg-panel p-1 shadow-panel"
+            >
             {playlists.length === 0 && !composing && (
               <p className="px-2.5 py-2 font-mono text-12 text-dim">
                 no playlists yet
@@ -133,8 +176,9 @@ export function AddToPlaylistMenu({ downloadId }: { downloadId: number }) {
               </button>
             )}
           </div>
-        </>
-      )}
-    </div>
+          </>,
+          document.body,
+        )}
+    </>
   );
 }
