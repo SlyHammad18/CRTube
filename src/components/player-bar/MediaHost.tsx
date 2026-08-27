@@ -119,10 +119,13 @@ export function MediaHost() {
   }, [speed]);
 
   const volume = usePlayerStore((s) => s.volume);
+  const muted = usePlayerStore((s) => s.muted);
   useEffect(() => {
     const el = videoRef.current;
-    if (el) el.volume = volume;
-  }, [volume]);
+    if (!el) return;
+    el.muted = muted;
+    el.volume = volume;
+  }, [volume, muted]);
 
   const seekNonce = usePlayerStore((s) => s.seekNonce);
   const seekTargetS = usePlayerStore((s) => s.seekTargetS);

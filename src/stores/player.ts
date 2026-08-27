@@ -62,6 +62,7 @@ interface PlayerState {
   repeat: RepeatMode;
   shuffle: boolean;
   volume: number;
+  muted: boolean;
   speed: number;
   context: PlayContext | null;
   /** Monotonic counter so MediaHost applies seek requests exactly once. */
@@ -78,6 +79,7 @@ interface PlayerState {
   toggleShuffle: () => void;
   setSpeed: (v: number) => void;
   setVolume: (v: number) => void;
+  setMuted: (m: boolean) => void;
   seek: (t: number) => void;
   /** Fed by MediaHost's timeupdate listener. */
   syncTime: (t: number, d: number) => void;
@@ -132,6 +134,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     repeat: "off",
     shuffle: false,
     volume: 1,
+    muted: false,
     speed: 1,
     context: null,
     seekNonce: 0,
@@ -253,6 +256,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       set({ volume });
       persistPlayerSetting({ player_volume: volume });
     },
+
+    setMuted: (m) => set({ muted: m }),
 
     seek: (t) =>
       set((s) => ({
