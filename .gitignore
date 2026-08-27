@@ -5,3 +5,7 @@ src-tauri/gen/
 *.log
 .DS_Store
 ISSUES.md
+
+# Agent tooling — local only, not project source
+.agents/
+skills-lock.json
