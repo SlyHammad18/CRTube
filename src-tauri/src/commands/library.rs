@@ -81,8 +81,23 @@ pub async fn delete_entry(
 
 #[tauri::command]
 pub fn reveal_path(app: AppHandle, path: String) -> Result<(), String> {
+    let path = path.trim().to_string();
+    #[cfg(target_os = "linux")]
+    {
+        // Force Nautilus instead of the system default (e.g. Thunar).
+        if let Ok(status) = std::process::Command::new("nautilus")
+            .arg("--select")
+            .arg(&path)
+            .status()
+        {
+            if status.success() {
+                return Ok(());
+            }
+        }
+        // Fall through to the default opener if Nautilus is unavailable.
+    }
     app.opener()
-        .reveal_item_in_dir(path.trim())
+        .reveal_item_in_dir(&path)
         .map_err(|e| e.to_string())
 }
 
