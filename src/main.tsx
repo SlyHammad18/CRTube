@@ -7,8 +7,8 @@ import "@fontsource/manrope/500.css";
 import "@fontsource/manrope/600.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
-import "@fontsource/noto-nastaliq-urdu/400.css";
-import "@fontsource/noto-nastaliq-urdu/700.css";
+import "@fontsource/noto-naskh-arabic/400.css";
+import "@fontsource/noto-naskh-arabic/700.css";
 import "./theme.css";
 import App from "./App";
 

@@ -197,7 +197,7 @@ function Deck({
       }}
     >
       <motion.div
-        className="flex flex-col gap-3 px-4 py-8"
+        className="flex flex-col gap-1 px-4 py-8"
         animate={{ y: offset }}
         transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 200, damping: 30 }}
       >
@@ -212,9 +212,10 @@ function Deck({
                   lineRefs.current[i] = el;
                 }}
                 onClick={() => onSeek(l.tMs)}
+                dir={urdu ? "rtl" : undefined}
                 className={`flex items-start gap-2 rounded-card py-0.5 ${urdu ? "text-right" : "text-left"} transition-colors duration-200 ${
                   active
-                    ? `${urdu ? "font-urdu text-18 font-semibold leading-[2.6]" : "font-display text-15 font-semibold text-ink"}`
+                    ? `${urdu ? "font-urdu" : "font-display"} text-15 font-semibold text-ink`
                     : i < idx
                       ? "text-dim"
                       : "text-mute"
@@ -226,7 +227,7 @@ function Deck({
                   aria-hidden
                 />
                 <span
-                  className={`min-w-0${urdu ? " font-urdu text-18 leading-[2.6]" : ""}`}
+                  className={`min-w-0${urdu ? " font-urdu" : ""}`}
                   dir={urdu ? "auto" : undefined}
                 >
                   {l.text}
@@ -237,7 +238,7 @@ function Deck({
           return (
             <p
               key={i}
-              className={`px-3 py-0.5 text-mute${urdu ? " font-urdu text-18 leading-[2.6] text-right" : ""}`}
+              className={`px-3 py-0.5 text-mute${urdu ? " font-urdu text-right" : ""}`}
               dir={urdu ? "auto" : undefined}
             >
               {l.text}
