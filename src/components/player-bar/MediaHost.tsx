@@ -137,9 +137,18 @@ export function MediaHost() {
   }, [seekNonce, seekTargetS]);
 
   // --- layout: keep the single node positioned over the active stage ------
-  // Runs whenever the stage could change, and via a rAF loop + observers so
-  // it tracks CSS transitions (PlayerBar spring, view slide) without ever
-  // reparenting the element.
+  // The node is `position: fixed`, so it does NOT move with page scroll and
+  // only needs re-positioning when (a) the stage changes, (b) the window
+  // resizes, or (c) an ancestor is mid-transition (PlayerBar spring, view
+  // slide). We therefore run the getBoundingClientRect layout loop for a
+  // *bounded* window after each of those triggers instead of every frame
+  // forever — a perpetual rAF read forces a synchronous reflow that starves
+  // the compositor and makes every other animation stutter.
+
+  // Latest stage in a ref so the single scheduled rAF tick never reads a stale
+  // closure value (a previously-scheduled frame from an earlier render).
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
 
   const applyLayout = () => {
     const el = videoRef.current;
@@ -150,14 +159,15 @@ export function MediaHost() {
     let z = 10;
     let radius = 10;
 
-    if (stage === "fullscreen") {
+    const s = stageRef.current;
+    if (s === "fullscreen") {
       target = els.fullscreen;
       objectFit = "contain";
       z = 96;
       radius = 0;
-    } else if (stage === "primary") {
+    } else if (s === "primary") {
       target = els.primary;
-    } else if (stage === "secondary") {
+    } else if (s === "secondary") {
       target = els.secondary;
     }
 
@@ -185,47 +195,73 @@ export function MediaHost() {
     el.style.visibility = "visible";
   };
 
+  // Bounded rAF tracker: keeps the node glued to the stage only while an
+  // ancestor transition is actually in flight, then idles (zero main-thread
+  // cost). Always (re)schedules the latest tick so no stale closure survives.
+  const trackUntilRef = useRef(0);
+  const rafRef = useRef(0);
+
+  const tick = () => {
+    const el = videoRef.current;
+    if (el && performance.now() < trackUntilRef.current && stageRef.current !== "none") {
+      applyLayout();
+      el.style.willChange = "top, left, width, height";
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      rafRef.current = 0;
+      if (el) el.style.willChange = "auto";
+    }
+  };
+
+  const kick = (ms: number) => {
+    trackUntilRef.current = Math.max(
+      trackUntilRef.current,
+      performance.now() + ms,
+    );
+    if (rafRef.current !== 0) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
   useLayoutEffect(() => {
     applyLayout();
+    if (stageRef.current !== "none") kick(450);
   }, [stage, els.primary, els.secondary, els.fullscreen]);
 
   useEffect(() => {
-    if (stage === "none") return;
+    if (stageRef.current === "none") return;
     const el = videoRef.current;
     if (!el) return;
 
-    const onResize = () => applyLayout();
-    const onScroll = () => applyLayout();
+    const onResize = () => {
+      applyLayout();
+      kick(450);
+    };
     window.addEventListener("resize", onResize);
-    window.addEventListener("scroll", onScroll, true);
 
     let ro: ResizeObserver | null = null;
     const target =
-      stage === "fullscreen"
+      stageRef.current === "fullscreen"
         ? els.fullscreen
-        : stage === "primary"
+        : stageRef.current === "primary"
           ? els.primary
-          : stage === "secondary"
+          : stageRef.current === "secondary"
             ? els.secondary
             : null;
     if (target && "ResizeObserver" in window) {
-      ro = new ResizeObserver(() => applyLayout());
+      ro = new ResizeObserver(() => {
+        applyLayout();
+        kick(450);
+      });
       ro.observe(target);
     }
 
-    // rAF loop tracks CSS transitions/animations of the stage box.
-    let raf = 0;
-    const tick = () => {
-      applyLayout();
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-
     return () => {
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", onScroll, true);
       ro?.disconnect();
-      cancelAnimationFrame(raf);
+      if (rafRef.current !== 0) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
     };
   }, [stage, els.primary, els.secondary, els.fullscreen]);
 

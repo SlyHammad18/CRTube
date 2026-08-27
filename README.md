@@ -66,8 +66,8 @@ lyrics experience. Highlights since v0.1.0:
 Prebuilt installers for Linux are attached to the latest
 [GitHub release](https://github.com/SlyHammad18/CRTube/releases):
 
-- **Debian / Ubuntu** — `CRTube_0.2.0_amd64.deb`
-- **Portable Linux** — `CRTube_0.2.0_amd64.AppImage` (make executable, then run)
+- **Debian / Ubuntu** — `CRTube_0.2.1_amd64.deb`
+- **Portable Linux** — `CRTube_0.2.1_amd64.AppImage` (make executable, then run)
 
 Windows (NSIS) installers are produced automatically when built on Windows.
 

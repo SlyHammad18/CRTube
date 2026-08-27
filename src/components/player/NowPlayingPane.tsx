@@ -83,7 +83,7 @@ export function NowPlayingPane() {
             aria-label="Fullscreen"
             title="Fullscreen"
             onClick={() => useUIStore.getState().setVideoFullscreen(true)}
-            className="absolute right-2 top-2 z-20 grid h-8 w-8 place-items-center rounded-card bg-void/60 text-ink backdrop-blur-sm transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98]"
+            className="absolute right-2 top-2 z-20 grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98]"
           >
             <ArrowsOut size={16} weight="light" aria-hidden />
           </button>

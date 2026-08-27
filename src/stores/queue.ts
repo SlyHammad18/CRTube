@@ -38,11 +38,38 @@ interface QueueStore {
 let nextLocalId = 1;
 let attached = false;
 
+// Coalesce the high-frequency dl://progress stream into at most one React
+// state commit per animation frame. Only the numeric speed/eta readout waits
+// for this batched flush, so a fast download no longer re-renders the whole
+// queue list on every event. The smooth progress bar reads its value from the
+// MotionValue set immediately in the handler below.
+const pending = new Map<number, Partial<QueueItem>>();
+let rafScheduled = false;
+
 function countActive(items: QueueItem[]): number {
   return items.filter((i) => i.status === "active").length;
 }
 
 export const useQueueStore = create<QueueStore>((set, get) => {
+  // Flush the coalesced progress updates at most once per animation frame.
+  function scheduleFlush() {
+    if (rafScheduled) return;
+    rafScheduled = true;
+    requestAnimationFrame(() => {
+      rafScheduled = false;
+      if (pending.size === 0) return;
+      const updates = pending;
+      pending.clear();
+      set((s) => {
+        const items = s.items.map((i) => {
+          const u = updates.get(i.localId);
+          return u ? { ...i, ...u } : i;
+        });
+        return { items, activeCount: countActive(items) };
+      });
+    });
+  }
+
   function patchItem(localId: number, part: Partial<QueueItem>) {
     set((s) => {
       const items = s.items.map((i) =>
@@ -136,8 +163,10 @@ export const useQueueStore = create<QueueStore>((set, get) => {
           console.warn("[dl] progress for unknown backend id", p.id);
           return;
         }
+        // Immediate: drives the smooth MotionValue progress bar.
         progressMvs.get(item.localId)?.set(Math.min(p.pct, 100) / 100);
-        patchItem(item.localId, {
+        // Batched: numeric readout commits at most once per frame.
+        pending.set(item.localId, {
           pct: p.pct,
           speedBps: p.speed_bps,
           etaS: p.eta_s,
@@ -145,6 +174,7 @@ export const useQueueStore = create<QueueStore>((set, get) => {
           total: p.total,
           stage: p.stage,
         });
+        scheduleFlush();
       });
 
       void ipc.onDlDone((d) => {

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Reorder, useDragControls, useReducedMotion } from "motion/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { MagnifyingGlass, SidebarSimple, Play, X } from "@phosphor-icons/react";
 import { fmtDuration } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
@@ -112,6 +113,17 @@ export function TrackList() {
 
   const totalS = displayed.reduce((acc, e) => acc + (e.durationS ?? 0), 0);
   const isManualDrag = selection.type === "playlist" && sort.key === "manual";
+
+  // Virtualize the (potentially very long) track list so only the visible rows
+  // are in the DOM — keeps scrolling and hover animations smooth at 1k+ tracks.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: displayed.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 56,
+    overscan: 10,
+  });
+
   const activePlaylist =
     selection.type === "playlist"
       ? playlists.find((p) => p.id === selection.id)
@@ -204,7 +216,10 @@ export function TrackList() {
       </div>
 
       {/* List */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
+      >
         {libEntries.length === 0 && selection.type === "library" ? (
           <div className="flex flex-col items-center justify-center gap-4 pt-[18vh]">
             <p className="font-mono text-15 text-mute">{"> awaiting media_"}</p>
@@ -258,12 +273,31 @@ export function TrackList() {
             ))}
           </Reorder.Group>
         ) : (
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-            {displayed.map((e, i) => (
-              <li key={`${e.id}-${i}`} className="list-none">
-                <TrackRow entry={e} index={i} onPlay={() => playAt(i)} />
-              </li>
-            ))}
+          <ul
+            className="m-0 list-none p-0"
+            style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}
+          >
+            {rowVirtualizer.getVirtualItems().map((vi) => {
+              const e = displayed[vi.index];
+              if (!e) return null;
+              return (
+                <li
+                  key={e.id}
+                  data-index={vi.index}
+                  ref={rowVirtualizer.measureElement}
+                  className="list-none pb-1.5"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${vi.start}px)`,
+                  }}
+                >
+                  <TrackRow entry={e} index={vi.index} onPlay={() => playAt(vi.index)} />
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

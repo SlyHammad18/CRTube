@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   FilmStrip,
   FolderOpen,
@@ -99,15 +100,20 @@ function EntryActions({ entry }: { entry: LibraryEntry }) {
   );
 }
 
-function EntryCard({ entry }: { entry: LibraryEntry }) {
+function EntryCard({ entry, animated = true }: { entry: LibraryEntry; animated?: boolean }) {
   const missing = entry.status === "missing";
+  const Wrapper = animated ? motion.article : "article";
   return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+    <Wrapper
+      {...(animated
+        ? {
+            layout: true,
+            initial: { opacity: 0, y: 8 },
+            animate: { opacity: 1, y: 0 },
+            exit: { opacity: 0 },
+            transition: { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const },
+          }
+        : {})}
       className={`group overflow-hidden rounded-card border bg-panel shadow-panel transition-colors duration-150 hover:bg-raise ${
         missing ? "border-amber/40 opacity-70" : "border-line"
       }`}
@@ -150,23 +156,28 @@ function EntryCard({ entry }: { entry: LibraryEntry }) {
           <EntryActions entry={entry} />
         </div>
       </div>
-    </motion.article>
+    </Wrapper>
   );
 }
 
-function EntryRow({ entry }: { entry: LibraryEntry }) {
+function EntryRow({ entry, animated = true }: { entry: LibraryEntry; animated?: boolean }) {
   const missing = entry.status === "missing";
   const date = new Date(entry.createdAt * 1000).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
+  const Wrapper = animated ? motion.div : "div";
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+    <Wrapper
+      {...(animated
+        ? {
+            layout: true,
+            initial: { opacity: 0, y: 6 },
+            animate: { opacity: 1, y: 0 },
+            exit: { opacity: 0 },
+            transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] as const },
+          }
+        : {})}
       className={`flex items-center gap-3 rounded-card border bg-panel p-2 transition-colors duration-150 hover:bg-raise ${
         missing ? "border-amber/40 opacity-70" : "border-line"
       }`}
@@ -194,7 +205,7 @@ function EntryRow({ entry }: { entry: LibraryEntry }) {
       <div className="flex shrink-0 items-center gap-1">
         <EntryActions entry={entry} />
       </div>
-    </motion.div>
+    </Wrapper>
   );
 }
 
@@ -336,6 +347,90 @@ function ControlsRow() {
   );
 }
 
+/**
+ * Windowed renderer for the library so only on-screen cards/rows are mounted —
+ * large libraries (1k+ items, DESIGN §8 risk) would otherwise balloon the DOM
+ * and make every store change re-resolve `layout` animations across all nodes.
+ * Grid measures its column count from the container width; rows are measured
+ * dynamically so variable card heights stay aligned.
+ */
+function VirtualResults({
+  entries,
+  density,
+}: {
+  entries: LibraryEntry[];
+  density: "grid" | "list";
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(1);
+  const GAP = density === "grid" ? 16 : 8;
+
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (density === "grid") {
+        setCols(Math.max(1, Math.floor((w + GAP) / (210 + GAP))));
+      } else {
+        setCols(1);
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [density, GAP]);
+
+  const rowCount = Math.ceil(entries.length / cols);
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => (density === "grid" ? 220 : 60),
+    overscan: 6,
+  });
+
+  return (
+    <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        {virtualizer.getVirtualItems().map((vi) => {
+          const start = vi.index * cols;
+          const rowItems = entries.slice(start, start + cols);
+          return (
+            <div
+              key={vi.key}
+              data-index={vi.index}
+              ref={virtualizer.measureElement}
+              className={
+                density === "grid"
+                  ? "absolute left-0 top-0 grid w-full gap-4 pb-4"
+                  : "absolute left-0 top-0 flex w-full flex-col gap-2 pb-2"
+              }
+              style={{
+                transform: `translateY(${vi.start}px)`,
+                gridTemplateColumns:
+                  density === "grid"
+                    ? `repeat(${cols}, minmax(0, 1fr))`
+                    : undefined,
+              }}
+            >
+              {rowItems.map((entry) => (
+                <div key={entry.id}>
+                  {density === "grid" ? (
+                    <EntryCard entry={entry} animated={false} />
+                  ) : (
+                    <EntryRow entry={entry} animated={false} />
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function LibraryView() {
   const entries = useLibraryStore((s) => s.entries);
   const loaded = useLibraryStore((s) => s.loaded);
@@ -353,7 +448,7 @@ export function LibraryView() {
   const gb = (totalBytes / 1024 ** 3).toFixed(1);
 
   return (
-    <div className="mx-auto flex w-full max-w-[960px] flex-col pt-[6vh]">
+    <div className="mx-auto flex h-full w-full max-w-[960px] flex-col pt-[6vh]">
       <header className="mb-4 flex items-baseline justify-between">
         <h1 className="font-display text-18 font-semibold tracking-tight">Library</h1>
         {entries.length > 0 && (
@@ -378,22 +473,8 @@ export function LibraryView() {
           <ControlsRow />
           {filtered.length === 0 ? (
             <NoMatches />
-          ) : density === "grid" ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-4">
-              <AnimatePresence initial={false}>
-                {filtered.map((entry) => (
-                  <EntryCard key={entry.id} entry={entry} />
-                ))}
-              </AnimatePresence>
-            </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              <AnimatePresence initial={false}>
-                {filtered.map((entry) => (
-                  <EntryRow key={entry.id} entry={entry} />
-                ))}
-              </AnimatePresence>
-            </div>
+            <VirtualResults entries={filtered} density={density} />
           )}
         </>
       )}

@@ -52,6 +52,7 @@
 
 .animate-caret {
   animation: caret 1.1s step-end infinite;
+  will-change: opacity;
 }
 
 @keyframes sheen {
@@ -65,6 +66,7 @@
 
 .animate-sheen {
   animation: sheen 1.8s linear infinite;
+  will-change: transform;
 }
 
 @keyframes pulse-dot {
@@ -79,6 +81,7 @@
 
 .animate-pulse-dot {
   animation: pulse-dot 1.6s ease-in-out infinite;
+  will-change: opacity;
 }
 
 /* §4.8 — EQ glyph on the active track row (transform-only; frozen by the
@@ -96,6 +99,7 @@
 .eq-bar {
   transform-origin: bottom;
   animation: eq-bar 0.9s ease-in-out infinite;
+  will-change: transform;
 }
 
 /* §4.9 — custom volume slider (no native widget look). Track fill is set
@@ -150,7 +154,7 @@
     overflow: hidden;
     user-select: none;
     -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
+    text-rendering: optimizeSpeed;
   }
 
   input,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
@@ -158,6 +158,69 @@ function ManualForm({
   );
 }
 
+/**
+ * One lyric line. Memoized so that on each playback tick only the line whose
+ * `active`/`past` state actually changed re-renders — the other ~N-2 lines pass
+ * `React.memo` and skip the DOM diff entirely. Without this, every `timeupdate`
+ * (~4 Hz) re-rendered the whole lyric list.
+ */
+const Line = memo(function Line({
+  line,
+  synced,
+  active,
+  past,
+  urdu,
+  onSeek,
+  registerRef,
+}: {
+  line: { tMs: number; text: string };
+  synced: boolean;
+  active: boolean;
+  past: boolean;
+  urdu: boolean;
+  onSeek: (ms: number) => void;
+  registerRef: (el: HTMLButtonElement | null) => void;
+}) {
+  if (!synced) {
+    return (
+      <p
+        className={`px-3 py-0.5 text-mute${urdu ? " font-urdu text-right" : ""}`}
+        dir={urdu ? "auto" : undefined}
+      >
+        {line.text}
+      </p>
+    );
+  }
+  return (
+    <button
+      ref={registerRef}
+      onClick={() => onSeek(line.tMs)}
+      dir={urdu ? "rtl" : undefined}
+      className={`flex items-start gap-2 rounded-card py-0.5 ${
+        urdu ? "font-urdu" : "text-left"
+      } transition-colors duration-200 ${
+        active
+          ? `${urdu ? "font-urdu" : "font-display"} text-15 font-semibold text-ink`
+          : past
+            ? "text-dim"
+            : "text-mute"
+      }`}
+    >
+      <span
+        className="mt-1 h-4 w-1 shrink-0 rounded-full bg-ice"
+        style={{ visibility: active ? "visible" : "hidden" }}
+        aria-hidden
+      />
+      <span
+        className={`min-w-0${urdu ? " font-urdu" : ""}`}
+        dir={urdu ? "auto" : undefined}
+      >
+        {line.text}
+      </span>
+    </button>
+  );
+});
+
 function Deck({
   lines,
   source,
@@ -173,7 +236,12 @@ function Deck({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const idx = source === "synced" ? activeIndex(lines, currentTimeMs) : -1;
+  // Recompute the active line only when the time actually moves to a new line,
+  // not on every parent re-render.
+  const idx = useMemo(
+    () => (source === "synced" ? activeIndex(lines, currentTimeMs) : -1),
+    [source, lines, currentTimeMs],
+  );
   // Whether the view is currently centered on the active line (drives the sync button).
   const [synced, setSynced] = useState(true);
   // Window during which programmatic smooth-scroll events should be ignored.
@@ -234,50 +302,20 @@ function Deck({
         }}
       >
         <div className="flex flex-col gap-1 px-4 py-8">
-        {lines.map((l, i) => {
-          const active = i === idx;
-          const urdu = isUrduScript(l.text);
-          if (source === "synced") {
-            return (
-              <button
-                key={i}
-                ref={(el) => {
-                  lineRefs.current[i] = el;
-                }}
-                onClick={() => onSeek(l.tMs)}
-                dir={urdu ? "rtl" : undefined}
-                className={`flex items-start gap-2 rounded-card py-0.5 ${urdu ? "text-right" : "text-left"} transition-colors duration-200 ${
-                  active
-                    ? `${urdu ? "font-urdu" : "font-display"} text-15 font-semibold text-ink`
-                    : i < idx
-                      ? "text-dim"
-                      : "text-mute"
-                }`}
-              >
-                <span
-                  className="mt-1 h-4 w-1 shrink-0 rounded-full bg-ice"
-                  style={{ visibility: active ? "visible" : "hidden" }}
-                  aria-hidden
-                />
-                <span
-                  className={`min-w-0${urdu ? " font-urdu" : ""}`}
-                  dir={urdu ? "auto" : undefined}
-                >
-                  {l.text}
-                </span>
-              </button>
-            );
-          }
-          return (
-            <p
-              key={i}
-              className={`px-3 py-0.5 text-mute${urdu ? " font-urdu text-right" : ""}`}
-              dir={urdu ? "auto" : undefined}
-            >
-              {l.text}
-            </p>
-          );
-        })}
+        {lines.map((l, i) => (
+          <Line
+            key={i}
+            line={l}
+            synced={source === "synced"}
+            active={i === idx}
+            past={i < idx}
+            urdu={isUrduScript(l.text)}
+            onSeek={onSeek}
+            registerRef={(el) => {
+              lineRefs.current[i] = el;
+            }}
+          />
+        ))}
       </div>
       </div>
       {!synced && source === "synced" && (
@@ -285,7 +323,7 @@ function Deck({
           aria-label="Sync to current lyric"
           title="Sync to current lyric"
           onClick={scrollToActive}
-          className="absolute bottom-4 left-1/2 z-10 flex h-9 -translate-x-1/2 items-center justify-center rounded-full border border-ice/40 bg-panel/90 px-4 text-13 font-semibold text-ice backdrop-blur-sm transition-all duration-150 hover:scale-[1.04] hover:shadow-[0_0_28px_8px_rgba(77,216,255,0.6)] active:scale-[0.98]"
+          className="absolute bottom-4 left-1/2 z-10 flex h-9 -translate-x-1/2 items-center justify-center rounded-full border border-ice/40 bg-panel px-4 text-13 font-semibold text-ice transition-all duration-150 hover:scale-[1.04] hover:shadow-[0_0_28px_8px_rgba(77,216,255,0.6)] active:scale-[0.98]"
         >
           <span>sync</span>
         </button>

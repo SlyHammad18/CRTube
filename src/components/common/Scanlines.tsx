@@ -7,6 +7,10 @@ export function Scanlines() {
       style={{
         backgroundImage:
           "repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(7,9,12,0.9) 3px)",
+        // Promote to its own compositing layer so it never forces repaints of
+        // the content scrolling/below it (cheap on WebKitGTK).
+        transform: "translateZ(0)",
+        backfaceVisibility: "hidden",
       }}
     />
   );
