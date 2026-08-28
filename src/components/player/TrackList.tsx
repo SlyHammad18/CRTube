@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Reorder, useDragControls, useReducedMotion } from "motion/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MagnifyingGlass, SidebarSimple, Play, X } from "@phosphor-icons/react";
-import { fmtDuration } from "../../lib/format";
+import { fmtDuration, parseArtists } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
 import type { PlaylistTrack } from "../../types/player";
 import { useLibraryStore } from "../../stores/library";
@@ -81,7 +81,9 @@ export function TrackList() {
       ? (openTracks ?? [])
       : selection.type === "favourites"
         ? libEntries.filter((e) => e.favourite)
-        : libEntries;
+        : selection.type === "artist"
+          ? libEntries.filter((e) => parseArtists(e.channel).includes(selection.name))
+          : libEntries;
 
   /** Rows after filter + search, before sorting. */
   const filtered = useMemo(() => {
@@ -110,7 +112,7 @@ export function TrackList() {
     if (!displayed[i]) return;
     const ctx = usePlaylistsStore.getState().selection;
     const playCtx =
-      ctx.type === "favourites"
+      ctx.type === "favourites" || ctx.type === "artist"
         ? { type: "library" as const }
         : {
             type: ctx.type,
@@ -147,9 +149,11 @@ export function TrackList() {
               ? (activePlaylist?.name ?? "Playlist")
               : selection.type === "favourites"
                 ? "Favourites"
-                : selection.recent
-                  ? "Recently Added"
-                  : "All Tracks"}
+                : selection.type === "artist"
+                  ? selection.name
+                  : selection.recent
+                    ? "Recently Added"
+                    : "All Tracks"}
           </h1>
           <p className="mt-0.5 font-mono text-12 text-mute">
             {displayed.length} {displayed.length === 1 ? "track" : "tracks"}
@@ -168,7 +172,7 @@ export function TrackList() {
           >
             <SidebarSimple size={16} weight="light" aria-hidden />
           </button>
-          {selection.type === "playlist" || selection.type === "favourites" ? (
+          {selection.type === "playlist" || selection.type === "favourites" || selection.type === "artist" ? (
             <button
               aria-label="Play all"
               disabled={displayed.length === 0}

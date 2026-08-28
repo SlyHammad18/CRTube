@@ -7,7 +7,8 @@ import { useLibraryStore } from "./library";
 export type PlayerSelection =
   | { type: "library"; recent: boolean }
   | { type: "playlist"; id: number }
-  | { type: "favourites" };
+  | { type: "favourites" }
+  | { type: "artist"; name: string };
 
 /** playlistId → (downloadId → itemId) membership index for checkmark UI. */
 type Membership = Record<number, Record<number, number>>;
@@ -23,6 +24,7 @@ interface PlaylistsState {
   refresh: () => Promise<void>;
   openLibrary: (recent?: boolean) => void;
   openFavourites: () => void;
+  openArtist: (name: string) => void;
   openPlaylist: (id: number) => Promise<void>;
   patchOpenTrack: (id: number, patch: { title?: string; channel?: string }) => void;
   create: (name: string) => Promise<Playlist>;
@@ -83,6 +85,8 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       void useLibraryStore.getState().refresh();
     }
   },
+
+  openArtist: (name) => set({ selection: { type: "artist", name }, openTracks: null }),
 
   openPlaylist: async (id) => {
     set({ selection: { type: "playlist", id } });

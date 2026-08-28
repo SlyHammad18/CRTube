@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  CaretDown,
+  CaretRight,
   ClockCounterClockwise,
   DotsThreeVertical,
   Heart,
@@ -9,7 +11,7 @@ import {
   Plus,
   Trash,
 } from "@phosphor-icons/react";
-import { fmtBytes } from "../../lib/format";
+import { fmtBytes, parseArtists } from "../../lib/format";
 import { useLibraryStore } from "../../stores/library";
 import { usePlayerStore } from "../../stores/player";
 import { usePlaylistsStore } from "../../stores/playlists";
@@ -88,12 +90,42 @@ function NameInput({
   );
 }
 
+function SectionHeader({
+  label,
+  open,
+  onToggle,
+  action,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mt-5 flex items-center justify-between">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-1 px-1 font-mono text-11 uppercase tracking-wide text-dim transition-colors duration-150 hover:text-ink"
+      >
+        {open ? (
+          <CaretDown size={12} weight="bold" aria-hidden />
+        ) : (
+          <CaretRight size={12} weight="bold" aria-hidden />
+        )}
+        {label}
+      </button>
+      {action}
+    </div>
+  );
+}
+
 export function PlaylistsPane() {
   const playlists = usePlaylistsStore((s) => s.playlists);
   const loaded = usePlaylistsStore((s) => s.loaded);
   const selection = usePlaylistsStore((s) => s.selection);
   const openLibrary = usePlaylistsStore((s) => s.openLibrary);
   const openFavourites = usePlaylistsStore((s) => s.openFavourites);
+  const openArtist = usePlaylistsStore((s) => s.openArtist);
   const openPlaylist = usePlaylistsStore((s) => s.openPlaylist);
   const create = usePlaylistsStore((s) => s.create);
   const rename = usePlaylistsStore((s) => s.rename);
@@ -106,6 +138,20 @@ export function PlaylistsPane() {
   const [composing, setComposing] = useState(false);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [menuFor, setMenuFor] = useState<number | null>(null);
+  const [playlistsOpen, setPlaylistsOpen] = useState(true);
+  const [artistsOpen, setArtistsOpen] = useState(true);
+
+  const artistCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of libEntries) {
+      for (const a of parseArtists(e.channel)) {
+        counts.set(a, (counts.get(a) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries()).sort((x, y) =>
+      x[0].localeCompare(y[0]),
+    );
+  }, [libEntries]);
 
   useEffect(() => {
     if (!loaded) void usePlaylistsStore.getState().refresh();
@@ -141,17 +187,21 @@ export function PlaylistsPane() {
           onClick={() => openFavourites()}
         />
 
-        <div className="mt-5 flex items-center justify-between">
-          <SidebarLabel>Playlists</SidebarLabel>
-          <button
-            aria-label="New playlist"
-            title="New playlist"
-            onClick={() => setComposing(true)}
-            className="mr-1 grid h-6 w-6 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ice active:scale-[0.98]"
-          >
-            <Plus size={13} weight="light" aria-hidden />
-          </button>
-        </div>
+        <SectionHeader
+          label="Playlists"
+          open={playlistsOpen}
+          onToggle={() => setPlaylistsOpen((v) => !v)}
+          action={
+            <button
+              aria-label="New playlist"
+              title="New playlist"
+              onClick={() => setComposing(true)}
+              className="mr-1 grid h-6 w-6 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ice active:scale-[0.98]"
+            >
+              <Plus size={13} weight="light" aria-hidden />
+            </button>
+          }
+        />
 
         {composing && (
           <div className="mb-1.5 px-1">
@@ -169,7 +219,8 @@ export function PlaylistsPane() {
           </div>
         )}
 
-        <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+        {playlistsOpen && (
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
           {playlists.map((p) => {
             const active = selection.type === "playlist" && selection.id === p.id;
             if (renamingId === p.id) {
@@ -294,7 +345,33 @@ export function PlaylistsPane() {
               No playlists yet
             </li>
           )}
-        </ul>
+          </ul>
+        )}
+
+        <SectionHeader
+          label="Artists"
+          open={artistsOpen}
+          onToggle={() => setArtistsOpen((v) => !v)}
+        />
+        {artistsOpen && (
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+            {artistCounts.map(([name, count]) => (
+              <LibraryItem
+                key={name}
+                label={name}
+                icon={<MusicNote size={14} weight="light" />}
+                active={selection.type === "artist" && selection.name === name}
+                count={count}
+                onClick={() => openArtist(name)}
+              />
+            ))}
+            {artistCounts.length === 0 && (
+              <li className="px-2 py-1 font-mono text-11 leading-relaxed text-dim">
+                No artists yet
+              </li>
+            )}
+          </ul>
+        )}
       </div>
 
       {/* Storage footer — mono per §2.2 */}

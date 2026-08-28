@@ -88,24 +88,31 @@ export const useLibraryStore = create<LibraryStore>((set) => ({
       title: nextTitle,
       channel: nextChannel,
     });
-    void ipc.renameEntry(id, nextTitle, nextArtists).catch((e) => {
-      console.error("renameEntry failed", e);
-      pushToast(`Rename failed — ${String(e)}`);
-      set((s) => ({
-        entries: s.entries.map((e) =>
-          e.id === id
-            ? {
-                ...e,
-                title: title.trim(),
-                channel: joinArtists(artists) || undefined,
-              }
-            : e,
-        ),
-      }));
-      usePlaylistsStore.getState().patchOpenTrack(id, {
-        title: title.trim(),
-        channel: joinArtists(artists) || undefined,
+    void ipc
+      .renameEntry(id, nextTitle, nextArtists)
+      .then(() => {
+        void useLibraryStore.getState().refresh();
+        const sel = usePlaylistsStore.getState().selection;
+        if (sel.type === "playlist") void usePlaylistsStore.getState().refresh();
+      })
+      .catch((e) => {
+        console.error("renameEntry failed", e);
+        pushToast(`Rename failed — ${String(e)}`);
+        set((s) => ({
+          entries: s.entries.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  title: title.trim(),
+                  channel: joinArtists(artists) || undefined,
+                }
+              : e,
+          ),
+        }));
+        usePlaylistsStore.getState().patchOpenTrack(id, {
+          title: title.trim(),
+          channel: joinArtists(artists) || undefined,
+        });
       });
-    });
   },
 }));
