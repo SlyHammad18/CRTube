@@ -24,6 +24,7 @@ interface PlaylistsState {
   openLibrary: (recent?: boolean) => void;
   openFavourites: () => void;
   openPlaylist: (id: number) => Promise<void>;
+  patchOpenTrack: (id: number, patch: { title?: string; channel?: string }) => void;
   create: (name: string) => Promise<Playlist>;
   rename: (id: number, name: string) => Promise<void>;
   remove: (id: number) => Promise<void>;
@@ -169,6 +170,17 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       };
     });
   },
+
+  patchOpenTrack: (id, patch) =>
+    set((s) =>
+      s.openTracks
+        ? {
+            openTracks: s.openTracks.map((t) =>
+              t.id === id ? { ...t, ...patch } : t,
+            ),
+          }
+        : {},
+    ),
 
   reorder: async (orderedItemIds) => {
     const sel = get().selection;

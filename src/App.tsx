@@ -12,6 +12,7 @@ import { BootOverlay } from "./components/boot/BootOverlay";
 import { Scanlines } from "./components/common/Scanlines";
 import { Toasts } from "./components/common/Toasts";
 import { ConfirmModal } from "./components/common/ConfirmModal";
+import { RenameTrackModal } from "./components/player/RenameTrackModal";
 import { FirstRunOverlay } from "./components/setup/FirstRunOverlay";
 import { FormatSheet } from "./components/sheet/FormatSheet";
 import { HomeSearch } from "./components/search/HomeSearch";
@@ -111,6 +112,7 @@ export default function App() {
       <Scanlines />
       <Toasts />
       <ConfirmModal />
+      <RenameTrackModal />
       <VideoFullscreen />
     </>
   );

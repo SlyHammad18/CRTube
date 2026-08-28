@@ -49,3 +49,20 @@ const MEDIA_EXT = /\.(mp3|mp4|webm|m4a|flac|ogg|wav|aac|opus)$/i;
 export function stripMediaExt(name: string): string {
   return name.replace(MEDIA_EXT, "");
 }
+
+/** Split a stored `channel` string into individual artist names. */
+export function parseArtists(channel?: string | null): string[] {
+  if (!channel) return [];
+  return channel
+    .split(",")
+    .map((a) => a.trim())
+    .filter((a) => a.length > 0);
+}
+
+/** Join artist names into the single `channel` display string. */
+export function joinArtists(artists: string[]): string {
+  return artists
+    .map((a) => a.trim())
+    .filter((a) => a.length > 0)
+    .join(", ");
+}

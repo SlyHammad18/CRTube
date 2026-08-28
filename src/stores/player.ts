@@ -86,6 +86,11 @@ interface PlayerState {
   onEnded: () => void;
   onMediaError: () => void;
   hydrateFromSettings: () => void;
+  /** Patch a queue entry's metadata in place (e.g. after a library rename). */
+  patchEntry: (
+    id: number,
+    patch: Partial<Pick<LibraryEntry, "title" | "channel">>,
+  ) => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
@@ -300,6 +305,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         speed: Math.min(SPEED_MAX, Math.max(SPEED_MIN, st.player_speed)),
       });
     },
+
+    patchEntry: (id, patch) =>
+      set((s) => ({
+        queue: s.queue.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+      })),
   };
 });
 

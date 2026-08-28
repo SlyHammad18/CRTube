@@ -40,6 +40,27 @@ const MIGRATIONS: &[&str] = &[
     );",
     // v3 — favourites flag on library entries
     "ALTER TABLE downloads ADD COLUMN favourite INTEGER NOT NULL DEFAULT 0;",
+    // v4 — normalized artists: many-to-many track ↔ artist
+    "CREATE TABLE IF NOT EXISTS artists (
+        id INTEGER PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL
+    );",
+    "CREATE TABLE IF NOT EXISTS track_artists (
+        id INTEGER PRIMARY KEY,
+        track_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
+        artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        UNIQUE(track_id, artist_id)
+    );",
+    // Backfill: each existing channel becomes a single artist (position 1).
+    "INSERT OR IGNORE INTO artists(name)
+        SELECT DISTINCT channel FROM downloads
+        WHERE channel IS NOT NULL AND TRIM(channel) <> '';",
+    "INSERT OR IGNORE INTO track_artists(track_id, artist_id, position)
+        SELECT d.id, a.id, 1
+        FROM downloads d
+        JOIN artists a ON a.name = d.channel
+        WHERE d.channel IS NOT NULL AND TRIM(d.channel) <> '';",
 ];
 
 pub fn open(path: &Path) -> Result<Connection, rusqlite::Error> {
@@ -125,14 +146,23 @@ pub fn insert_download(conn: &Connection, rec: &DownloadRecord) -> Result<i64, r
             now,
         ],
     )?;
-    if conn.changes() == 0 {
-        return conn.query_row(
+    let new_id = if conn.changes() > 0 {
+        Some(conn.last_insert_rowid())
+    } else {
+        None
+    };
+    if let Some(id) = new_id {
+        if let Some(ch) = rec.channel.as_deref().filter(|c| !c.trim().is_empty()) {
+            link_artist(conn, id, ch, 1)?;
+        }
+        Ok(id)
+    } else {
+        conn.query_row(
             "SELECT id FROM downloads WHERE video_id = ?1",
             params![rec.video_id],
             |r| r.get(0),
-        );
+        )
     }
-    Ok(conn.last_insert_rowid())
 }
 
 pub fn has_download(conn: &Connection, video_id: &str) -> Result<bool, rusqlite::Error> {
@@ -165,7 +195,20 @@ fn row_to_entry(r: &rusqlite::Row) -> Result<LibraryEntry, rusqlite::Error> {
 }
 
 pub fn list_and_sync_statuses(conn: &Connection) -> Result<Vec<LibraryEntry>, rusqlite::Error> {
-    let mut stmt = conn.prepare("SELECT * FROM downloads ORDER BY created_at DESC, id DESC")?;
+    let mut stmt = conn.prepare(
+        "SELECT
+            d.id, d.video_id, d.url, d.title, d.duration_s, d.kind,
+            d.quality, d.container, d.path, d.size_bytes, d.thumb_url,
+            d.status, d.created_at, d.favourite,
+            (SELECT GROUP_CONCAT(name, ', ') FROM (
+                SELECT a.name AS name FROM track_artists ta
+                JOIN artists a ON a.id = ta.artist_id
+                WHERE ta.track_id = d.id
+                ORDER BY ta.position
+            )) AS channel
+        FROM downloads d
+        ORDER BY d.created_at DESC, d.id DESC",
+    )?;
     let mut entries: Vec<LibraryEntry> =
         stmt.query_map([], row_to_entry)?.collect::<Result<_, _>>()?;
 
@@ -202,6 +245,74 @@ pub fn set_favourite(conn: &Connection, id: i64, favourite: bool) -> Result<(), 
         params![id, favourite as i64],
     )?;
     Ok(())
+}
+
+/// Ensure an artist exists and link it to a track at the given position.
+fn link_artist(
+    conn: &Connection,
+    track_id: i64,
+    name: &str,
+    position: i64,
+) -> Result<(), rusqlite::Error> {
+    conn.execute("INSERT OR IGNORE INTO artists(name) VALUES (?1)", params![name])?;
+    let artist_id: i64 = conn.query_row(
+        "SELECT id FROM artists WHERE name = ?1",
+        params![name],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO track_artists(track_id, artist_id, position) VALUES (?1, ?2, ?3)",
+        params![track_id, artist_id, position],
+    )?;
+    Ok(())
+}
+
+/// Replace a track's artist list (ordered, deduped). Also keeps the redundant
+/// `downloads.channel` cache in sync with the joined names.
+pub fn set_track_artists(
+    conn: &Connection,
+    track_id: i64,
+    artists: &[String],
+) -> Result<(), rusqlite::Error> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "DELETE FROM track_artists WHERE track_id = ?1",
+        params![track_id],
+    )?;
+    let mut seen = std::collections::HashSet::new();
+    let mut ordered: Vec<String> = Vec::new();
+    let mut pos = 1i64;
+    for a in artists {
+        let trimmed = a.trim();
+        if !trimmed.is_empty() && seen.insert(trimmed.to_string()) {
+            link_artist(&tx, track_id, trimmed, pos)?;
+            ordered.push(trimmed.to_string());
+            pos += 1;
+        }
+    }
+    let joined = if ordered.is_empty() {
+        None
+    } else {
+        Some(ordered.join(", "))
+    };
+    tx.execute(
+        "UPDATE downloads SET channel = ?2 WHERE id = ?1",
+        params![track_id, joined],
+    )?;
+    tx.commit()
+}
+
+pub fn rename_entry(
+    conn: &Connection,
+    id: i64,
+    title: &str,
+    artists: &[String],
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE downloads SET title = ?2 WHERE id = ?1",
+        params![id, title],
+    )?;
+    set_track_artists(conn, id, artists)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -313,7 +424,17 @@ pub fn list_playlist_items(
     playlist_id: i64,
 ) -> Result<Vec<PlaylistTrack>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT pi.id AS item_id, pi.position AS position, pi.added_at AS added_at, d.*
+        "SELECT
+            pi.id AS item_id, pi.position AS position, pi.added_at AS added_at,
+            d.id, d.video_id, d.url, d.title, d.duration_s, d.kind,
+            d.quality, d.container, d.path, d.size_bytes, d.thumb_url,
+            d.status, d.created_at, d.favourite,
+            (SELECT GROUP_CONCAT(name, ', ') FROM (
+                SELECT a.name AS name FROM track_artists ta
+                JOIN artists a ON a.id = ta.artist_id
+                WHERE ta.track_id = d.id
+                ORDER BY ta.position
+            )) AS channel
          FROM playlist_items pi JOIN downloads d ON d.id = pi.download_id
          WHERE pi.playlist_id = ?1
          ORDER BY pi.position ASC, pi.id ASC",
@@ -469,13 +590,54 @@ mod tests {
         let renamed = list_playlists(&conn).unwrap();
         assert_eq!(renamed[0].name, "Deep Focus");
 
-        delete_playlist(&conn, p.id).unwrap();
-        assert!(list_playlists(&conn).unwrap().is_empty());
-        assert!(list_playlist_items(&conn, p.id).unwrap().is_empty());
-    }
+    delete_playlist(&conn, p.id).unwrap();
+    assert!(list_playlists(&conn).unwrap().is_empty());
+    assert!(list_playlist_items(&conn, p.id).unwrap().is_empty());
+  }
 
-    #[test]
-    fn deleting_download_cascades_playlist_items() {
+  #[test]
+  fn multi_artist_round_trip() {
+    let conn = mem();
+    let id = insert_download(&conn, &rec("abc12345678", "/tmp/a.mp4")).unwrap();
+    // insert_download links the single channel "Ch" as one artist.
+    let first = list_and_sync_statuses(&conn)
+      .unwrap()
+      .into_iter()
+      .find(|e| e.id == id)
+      .unwrap();
+    assert_eq!(first.channel.as_deref(), Some("Ch"));
+
+    // Replace with two artists via set_track_artists.
+    set_track_artists(&conn, id, &["Alpha".into(), "Beta".into()]).unwrap();
+    let e = list_and_sync_statuses(&conn)
+      .unwrap()
+      .into_iter()
+      .find(|e| e.id == id)
+      .unwrap();
+    assert_eq!(e.channel.as_deref(), Some("Alpha, Beta"));
+
+    // Dedup + trim: a repeated/whitespace name collapses to one entry.
+    set_track_artists(&conn, id, &[" Gamma ".into(), "Gamma".into()]).unwrap();
+    let dedup = list_and_sync_statuses(&conn)
+      .unwrap()
+      .into_iter()
+      .find(|e| e.id == id)
+      .unwrap();
+    assert_eq!(dedup.channel.as_deref(), Some("Gamma"));
+
+    // rename_entry updates title and the artist list together.
+    rename_entry(&conn, id, "New Title", &["Delta".into()]).unwrap();
+    let e2 = list_and_sync_statuses(&conn)
+      .unwrap()
+      .into_iter()
+      .find(|e| e.id == id)
+      .unwrap();
+    assert_eq!(e2.title, "New Title");
+    assert_eq!(e2.channel.as_deref(), Some("Delta"));
+  }
+
+  #[test]
+  fn deleting_download_cascades_playlist_items() {
         let conn = mem();
         let p = create_playlist(&conn, "Mix").unwrap();
         let a = insert_download(&conn, &rec("ccc33333333", "/tmp/c.mp3")).unwrap();

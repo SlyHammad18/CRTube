@@ -58,6 +58,8 @@ export const ipc = {
   hasDownload: (videoId: string) => invoke<boolean>("has_download", { videoId }),
   setFavourite: (id: number, favourite: boolean) =>
     invoke<void>("set_favourite", { id, favourite }),
+  renameEntry: (id: number, title: string, artists: string[]) =>
+    invoke<void>("rename_entry", { id, title, artists }),
   deleteEntry: (id: number, path: string) =>
     invoke<void>("delete_entry", { id, path }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),

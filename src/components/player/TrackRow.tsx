@@ -1,11 +1,12 @@
 import {
   FolderOpen,
   DotsSixVertical,
+  PencilSimple,
   Trash,
   X,
 } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { fmtDuration } from "../../lib/format";
+import { fmtDuration, parseArtists } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
 import { pushToast } from "../../stores/toast";
 import { ipc } from "../../lib/ipc";
@@ -14,6 +15,7 @@ import { usePlayerStore, selectCurrentEntry } from "../../stores/player";
 import { confirm } from "../../stores/confirm";
 import { AddToPlaylistMenu } from "./AddToPlaylistMenu";
 import { FavouriteButton } from "./FavouriteButton";
+import { useRenameStore } from "../../stores/rename";
 
 export function thumbSrcOf(entry: LibraryEntry): string | undefined {
   if (!entry.thumbUrl) return undefined;
@@ -149,6 +151,22 @@ export function TrackRow({
       {/* Actions */}
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
         <FavouriteButton entryId={entry.id} />
+        <button
+          aria-label="Rename"
+          title="Rename"
+          onClick={() =>
+            useRenameStore
+              .getState()
+              .open({
+                id: entry.id,
+                title: entry.title,
+                artists: parseArtists(entry.channel),
+              })
+          }
+          className="grid h-7 w-7 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
+        >
+          <PencilSimple size={14} weight="light" aria-hidden />
+        </button>
         {!missing && <AddToPlaylistMenu downloadId={entry.id} />}
         <button
           aria-label="Reveal in file manager"

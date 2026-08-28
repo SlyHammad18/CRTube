@@ -67,6 +67,17 @@ pub fn set_favourite(
 }
 
 #[tauri::command]
+pub fn rename_entry(
+    db: State<'_, Arc<Db>>,
+    id: i64,
+    title: String,
+    artists: Vec<String>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::rename_entry(&conn, id, title.trim(), &artists).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn has_download(db: State<'_, Arc<Db>>, video_id: String) -> Result<bool, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::has_download(&conn, video_id.trim()).map_err(|e| e.to_string())
