@@ -76,6 +76,7 @@ interface PlayerState {
   prev: () => void;
   jumpTo: (orderIndex: number) => void;
   cycleRepeat: () => void;
+  setRepeat: (mode: RepeatMode) => void;
   toggleShuffle: () => void;
   setSpeed: (v: number) => void;
   setVolume: (v: number) => void;
@@ -231,6 +232,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         repeat:
           s.repeat === "off" ? "all" : s.repeat === "all" ? "one" : "off",
       })),
+
+    setRepeat: (mode) => set({ repeat: mode }),
 
     toggleShuffle: () => {
       const s = get();

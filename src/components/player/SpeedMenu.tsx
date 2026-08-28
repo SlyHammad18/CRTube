@@ -5,7 +5,7 @@ import { usePlayerStore, fmtSpeed } from "../../stores/player";
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
 /** Compact playback-speed popover; current value renders as a mono pill. */
-export function SpeedMenu({ up = true }: { up?: boolean }) {
+export function SpeedMenu({ up = true, zClass = "z-50" }: { up?: boolean; zClass?: string }) {
   const speed = usePlayerStore((s) => s.speed);
   const setSpeed = usePlayerStore((s) => s.setSpeed);
   const [open, setOpen] = useState(false);
@@ -59,18 +59,18 @@ export function SpeedMenu({ up = true }: { up?: boolean }) {
         rect &&
         createPortal(
           <>
-            <button
-              aria-label="Close speed menu"
-              tabIndex={-1}
-              onClick={() => setOpen(false)}
-              className="fixed inset-0 z-40 cursor-default"
-            />
-            <div
-              role="menu"
-              aria-label="Playback speed options"
-              style={menuStyle}
-              className="z-50 flex flex-col gap-0.5 rounded-card border border-line bg-panel p-1 shadow-panel"
-            >
+             <button
+               aria-label="Close speed menu"
+               tabIndex={-1}
+               onClick={() => setOpen(false)}
+               className={`fixed inset-0 cursor-default ${zClass}`}
+             />
+             <div
+               role="menu"
+               aria-label="Playback speed options"
+               style={menuStyle}
+               className={`${zClass} flex flex-col gap-0.5 rounded-card border border-line bg-panel p-1 shadow-panel`}
+             >
               {SPEEDS.map((v) => (
                 <button
                   key={v}

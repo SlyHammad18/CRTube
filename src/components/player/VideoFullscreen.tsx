@@ -1,10 +1,12 @@
 import { useEffect } from "react";
-import { ArrowsIn, Pause, Play, X } from "@phosphor-icons/react";
+import { Pause, Play, RepeatOnce, X } from "@phosphor-icons/react";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 import { useUIStore } from "../../stores/ui";
 import { setFullscreenSlot } from "../player-bar/mediaSlots";
 import { SeekBar } from "./SeekBar";
 import { VolumeSlider } from "./VolumeSlider";
+import { FavouriteButton } from "./FavouriteButton";
+import { SpeedMenu } from "./SpeedMenu";
 
 /**
  * In-app fullscreen video overlay (§requested): the single <video> element is
@@ -21,6 +23,8 @@ export function VideoFullscreen() {
   const entry = usePlayerStore(selectCurrentEntry);
   const playing = usePlayerStore((s) => s.playing);
   const toggle = usePlayerStore((s) => s.toggle);
+  const repeat = usePlayerStore((s) => s.repeat);
+  const setRepeat = usePlayerStore((s) => s.setRepeat);
 
   const isVideo = entry?.kind === "video" && entry.path !== "";
   const videoDisabled = useUIStore((s) => s.videoDisabled);
@@ -94,13 +98,22 @@ export function VideoFullscreen() {
             )}
           </button>
           <VolumeSlider />
-          <button
-            aria-label="Exit fullscreen"
-            onClick={() => setOpen(false)}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
-          >
-            <ArrowsIn size={18} weight="light" aria-hidden />
-          </button>
+          <div className="flex items-center gap-2.5">
+            {entry && <FavouriteButton entryId={entry.id} size={18} />}
+            <SpeedMenu zClass="z-[100]" />
+            <button
+              aria-label="Loop one"
+              title="Loop one"
+              onClick={() => setRepeat(repeat === "one" ? "off" : "one")}
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-card transition-colors duration-150 active:scale-[0.98] ${
+                repeat === "one"
+                  ? "text-ice"
+                  : "text-mute hover:bg-raise hover:text-ink"
+              }`}
+            >
+              <RepeatOnce size={18} weight="light" aria-hidden />
+            </button>
+          </div>
         </div>
       </div>
     </div>
