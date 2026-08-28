@@ -37,6 +37,7 @@ export function PlayerBar() {
   const setView = useUIStore((s) => s.setView);
   const lyricsDockOpen = useUIStore((s) => s.lyricsDockOpen);
   const setLyricsDockOpen = useUIStore((s) => s.setLyricsDockOpen);
+  const videoDisabled = useUIStore((s) => s.videoDisabled);
   const store = usePlayerStore;
 
   const handleSeek = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -89,7 +90,7 @@ export function PlayerBar() {
                   id="playerbar-media-slot"
                   className="absolute inset-0"
                 />
-                {entry?.kind !== "video" && thumbSrc(entry)}
+                {(entry?.kind !== "video" || videoDisabled) && thumbSrc(entry)}
                 {entry == null && (
                   <span className="grid h-full w-full place-items-center font-mono text-11 text-dim">
                     ——

@@ -8,6 +8,7 @@ import {
 import { ipc } from "../../lib/ipc";
 import { useSlotEls } from "./mediaSlots";
 import { useUIStore } from "../../stores/ui";
+import { useSettingsStore } from "../../stores/settings";
 
 /**
  * Owns the app's single <video> element (plays audio-only files too) and keeps
@@ -27,15 +28,43 @@ export function MediaHost() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const seekNonceRef = useRef(-1);
   const videoFullscreen = useUIStore((s) => s.videoFullscreen);
+  const videoDisabled = useUIStore((s) => s.videoDisabled);
+  const autoDisableVideo = useSettingsStore(
+    (s) => s.settings?.disable_video_playback ?? false,
+  );
 
   const isVideo = entry != null && entry.kind === "video" && entry.path !== "";
+
+  // When video playback is disabled, the picture is hidden (thumbnail shows
+  // behind the slot) but the element keeps decoding/playing audio. We force the
+  // "none" stage so the overlay is never positioned — applyLayout hides it via
+  // visibility without pausing the media.
+  const showVideo = isVideo && !videoDisabled;
+
+  // Auto-disable per track: when the "Disable video playback" setting is on,
+  // reset `videoDisabled` to true for each new video track (and immediately when
+  // the setting is toggled on). The in-player button stays enabled and toggles
+  // `videoDisabled` freely within a track, so clicking it plays video that one
+  // time; the next track re-applies the setting.
+  const lastVideoId = useRef<number | null>(null);
+  const prevAuto = useRef(autoDisableVideo);
+  useEffect(() => {
+    const id = entry?.id ?? null;
+    const trackChanged = id !== lastVideoId.current;
+    const settingJustOn = autoDisableVideo && !prevAuto.current;
+    lastVideoId.current = id;
+    prevAuto.current = autoDisableVideo;
+    if (autoDisableVideo && (trackChanged || settingJustOn)) {
+      if (isVideo) useUIStore.getState().setVideoDisabled(true);
+    }
+  }, [entry, isVideo, autoDisableVideo]);
 
   // Which stage the live video overlays, and whether it's visible at all.
   const els = useSlotEls();
   const stage: "fullscreen" | "primary" | "secondary" | "none" =
-    videoFullscreen && isVideo
+    videoFullscreen && showVideo
       ? "fullscreen"
-      : isVideo
+      : showVideo
         ? els.primary
           ? "primary"
           : els.secondary

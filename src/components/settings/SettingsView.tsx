@@ -218,6 +218,26 @@ function DownloadsSection() {
   );
 }
 
+function PlaybackSection() {
+  const settings = useSettingsStore((s) => s.settings);
+  const update = useSettingsStore((s) => s.update);
+
+  return (
+    <Section title="Playback">
+      <Row
+        label="Disable video playback"
+        hint="Play video files as audio only — show the thumbnail instead of the picture. Auto-applies to each track; you can still toggle it per-track from the player."
+      >
+        <Toggle
+          checked={settings?.disable_video_playback ?? false}
+          onChange={(v) => void update({ disable_video_playback: v })}
+          label="Disable video playback"
+        />
+      </Row>
+    </Section>
+  );
+}
+
 function AboutSection() {
   const [version, setVersion] = useState<string>("—");
   useEffect(() => {
@@ -251,6 +271,7 @@ export function SettingsView() {
       </h1>
       <StorageSection />
       <EngineSection />
+      <PlaybackSection />
       <DownloadsSection />
       <AboutSection />
     </div>

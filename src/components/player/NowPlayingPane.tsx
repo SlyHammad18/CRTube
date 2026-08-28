@@ -9,6 +9,8 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  VideoCamera,
+  VideoCameraSlash,
 } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
@@ -44,6 +46,8 @@ export function NowPlayingPane() {
       : convertFileSrc(entry.thumbUrl));
 
   const isVideo = entry?.kind === "video" && entry.path !== "";
+  const videoDisabled = useUIStore((s) => s.videoDisabled);
+  const setVideoDisabled = useUIStore((s) => s.setVideoDisabled);
 
   if (!entry) {
     return (
@@ -79,14 +83,32 @@ export function NowPlayingPane() {
         )}
         <div ref={setSlotEl} id="nowplaying-media-slot" className="absolute inset-0" />
         {isVideo && (
-          <button
-            aria-label="Fullscreen"
-            title="Fullscreen"
-            onClick={() => useUIStore.getState().setVideoFullscreen(true)}
-            className="absolute right-2 top-2 z-20 grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98]"
-          >
-            <ArrowsOut size={16} weight="light" aria-hidden />
-          </button>
+          <div className="absolute right-2 top-2 z-20 flex items-center gap-1.5">
+            <button
+              aria-label={videoDisabled ? "Show video" : "Disable video (play audio only)"}
+              title={videoDisabled ? "Show video" : "Disable video (play audio only)"}
+              onClick={() => setVideoDisabled(!videoDisabled)}
+              className={`grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98] ${
+                videoDisabled ? "text-ice" : ""
+              }`}
+            >
+              {videoDisabled ? (
+                <VideoCameraSlash size={16} weight="light" aria-hidden />
+              ) : (
+                <VideoCamera size={16} weight="light" aria-hidden />
+              )}
+            </button>
+            {!videoDisabled && (
+              <button
+                aria-label="Fullscreen"
+                title="Fullscreen"
+                onClick={() => useUIStore.getState().setVideoFullscreen(true)}
+                className="grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98]"
+              >
+                <ArrowsOut size={16} weight="light" aria-hidden />
+              </button>
+            )}
+          </div>
         )}
       </div>
 

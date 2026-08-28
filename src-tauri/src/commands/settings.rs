@@ -23,6 +23,10 @@ pub struct AppSettings {
     /// directly by yt-dlp (no browser keyring / `secretstorage` needed), so it
     /// is the most reliable way to supply YouTube authentication. Empty by default.
     pub youtube_cookies_file: String,
+    /// When true, video tracks play audio-only (picture hidden, cached thumbnail
+    /// shown). Auto-applied per track; can still be toggled per-track from the
+    /// player. Set from Settings → Playback.
+    pub disable_video_playback: bool,
     pub filename_template: Option<String>,
     pub player_volume: f32,
     pub player_speed: f32,
@@ -36,6 +40,7 @@ impl Default for AppSettings {
             autoupdate_ytdlp: true,
             youtube_cookies: String::new(),
             youtube_cookies_file: String::new(),
+            disable_video_playback: false,
             filename_template: None,
             player_volume: 1.0,
             player_speed: 1.0,

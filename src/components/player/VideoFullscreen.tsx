@@ -23,10 +23,11 @@ export function VideoFullscreen() {
   const toggle = usePlayerStore((s) => s.toggle);
 
   const isVideo = entry?.kind === "video" && entry.path !== "";
+  const videoDisabled = useUIStore((s) => s.videoDisabled);
 
   // Escape closes fullscreen; auto-close if there's no video to show.
   useEffect(() => {
-    if (!open || !isVideo) {
+    if (!open || !isVideo || videoDisabled) {
       if (open) setOpen(false);
       return;
     }
@@ -38,7 +39,7 @@ export function VideoFullscreen() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, isVideo, setOpen]);
+  }, [open, isVideo, videoDisabled, setOpen]);
 
   const registerSlot = (el: HTMLDivElement | null) => {
     setFullscreenSlot(el);

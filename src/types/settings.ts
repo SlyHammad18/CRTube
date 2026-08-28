@@ -4,6 +4,7 @@ export interface AppSettings {
   autoupdate_ytdlp: boolean;
   youtube_cookies: string;
   youtube_cookies_file: string;
+  disable_video_playback: boolean;
   filename_template?: string | null;
   player_volume: number;
   player_speed: number;
