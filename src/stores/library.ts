@@ -17,6 +17,7 @@ interface LibraryStore {
   setDensity: (density: LibraryDensity) => void;
   refresh: () => Promise<void>;
   removeLocal: (id: number) => void;
+  setFavourite: (id: number, favourite: boolean) => void;
 }
 
 export const useLibraryStore = create<LibraryStore>((set) => ({
@@ -45,4 +46,17 @@ export const useLibraryStore = create<LibraryStore>((set) => ({
       const entries = s.entries.filter((e) => e.id !== id);
       return { entries, ids: new Set(entries.map((e) => e.videoId)) };
     }),
+
+  setFavourite: (id, favourite) => {
+    set((s) => ({
+      entries: s.entries.map((e) => (e.id === id ? { ...e, favourite } : e)),
+    }));
+    void ipc.setFavourite(id, favourite).catch(() => {
+      set((s) => ({
+        entries: s.entries.map((e) =>
+          e.id === id ? { ...e, favourite: !favourite } : e,
+        ),
+      }));
+    });
+  },
 }));

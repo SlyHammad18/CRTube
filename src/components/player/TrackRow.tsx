@@ -13,6 +13,7 @@ import { useLibraryStore } from "../../stores/library";
 import { usePlayerStore, selectCurrentEntry } from "../../stores/player";
 import { confirm } from "../../stores/confirm";
 import { AddToPlaylistMenu } from "./AddToPlaylistMenu";
+import { FavouriteButton } from "./FavouriteButton";
 
 export function thumbSrcOf(entry: LibraryEntry): string | undefined {
   if (!entry.thumbUrl) return undefined;
@@ -147,6 +148,7 @@ export function TrackRow({
 
       {/* Actions */}
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
+        <FavouriteButton entryId={entry.id} />
         {!missing && <AddToPlaylistMenu downloadId={entry.id} />}
         <button
           aria-label="Reveal in file manager"

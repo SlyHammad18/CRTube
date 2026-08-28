@@ -2,10 +2,12 @@ import { create } from "zustand";
 import { ipc } from "../lib/ipc";
 import type { Playlist, PlaylistTrack } from "../types/player";
 import { pushToast } from "./toast";
+import { useLibraryStore } from "./library";
 
 export type PlayerSelection =
   | { type: "library"; recent: boolean }
-  | { type: "playlist"; id: number };
+  | { type: "playlist"; id: number }
+  | { type: "favourites" };
 
 /** playlistId → (downloadId → itemId) membership index for checkmark UI. */
 type Membership = Record<number, Record<number, number>>;
@@ -20,6 +22,7 @@ interface PlaylistsState {
 
   refresh: () => Promise<void>;
   openLibrary: (recent?: boolean) => void;
+  openFavourites: () => void;
   openPlaylist: (id: number) => Promise<void>;
   create: (name: string) => Promise<Playlist>;
   rename: (id: number, name: string) => Promise<void>;
@@ -72,6 +75,13 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
 
   openLibrary: (recent = false) =>
     set({ selection: { type: "library", recent }, openTracks: null }),
+
+  openFavourites: () => {
+    set({ selection: { type: "favourites" }, openTracks: null });
+    if (!useLibraryStore.getState().loaded) {
+      void useLibraryStore.getState().refresh();
+    }
+  },
 
   openPlaylist: async (id) => {
     set({ selection: { type: "playlist", id } });

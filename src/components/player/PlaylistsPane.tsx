@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ClockCounterClockwise,
   DotsThreeVertical,
+  Heart,
   MusicNote,
   PencilSimple,
   Play,
@@ -92,6 +93,7 @@ export function PlaylistsPane() {
   const loaded = usePlaylistsStore((s) => s.loaded);
   const selection = usePlaylistsStore((s) => s.selection);
   const openLibrary = usePlaylistsStore((s) => s.openLibrary);
+  const openFavourites = usePlaylistsStore((s) => s.openFavourites);
   const openPlaylist = usePlaylistsStore((s) => s.openPlaylist);
   const create = usePlaylistsStore((s) => s.create);
   const rename = usePlaylistsStore((s) => s.rename);
@@ -112,6 +114,7 @@ export function PlaylistsPane() {
   }, [loaded]);
 
   const totalBytes = libEntries.reduce((acc, e) => acc + (e.sizeBytes ?? 0), 0);
+  const favCount = libEntries.filter((e) => e.favourite).length;
 
   return (
     <aside className="flex h-full w-[216px] shrink-0 flex-col border-r border-line bg-panel/50">
@@ -129,6 +132,13 @@ export function PlaylistsPane() {
           icon={<ClockCounterClockwise size={14} weight="light" />}
           active={selection.type === "library" && selection.recent}
           onClick={() => openLibrary(true)}
+        />
+        <LibraryItem
+          label="Favourites"
+          icon={<Heart size={14} weight="fill" />}
+          active={selection.type === "favourites"}
+          count={favCount}
+          onClick={() => openFavourites()}
         />
 
         <div className="mt-5 flex items-center justify-between">

@@ -56,6 +56,8 @@ export const ipc = {
     invoke<number>("add_entry", { entry }),
   listLibrary: () => invoke<LibraryEntry[]>("list_library"),
   hasDownload: (videoId: string) => invoke<boolean>("has_download", { videoId }),
+  setFavourite: (id: number, favourite: boolean) =>
+    invoke<void>("set_favourite", { id, favourite }),
   deleteEntry: (id: number, path: string) =>
     invoke<void>("delete_entry", { id, path }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),

@@ -38,6 +38,8 @@ const MIGRATIONS: &[&str] = &[
         added_at INTEGER NOT NULL,
         UNIQUE(playlist_id, download_id)
     );",
+    // v3 — favourites flag on library entries
+    "ALTER TABLE downloads ADD COLUMN favourite INTEGER NOT NULL DEFAULT 0;",
 ];
 
 pub fn open(path: &Path) -> Result<Connection, rusqlite::Error> {
@@ -80,6 +82,7 @@ pub struct LibraryEntry {
     pub thumb_url: Option<String>,
     pub status: String,
     pub created_at: i64,
+    pub favourite: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +160,7 @@ fn row_to_entry(r: &rusqlite::Row) -> Result<LibraryEntry, rusqlite::Error> {
         thumb_url: r.get("thumb_url")?,
         status: r.get("status")?,
         created_at: r.get("created_at")?,
+        favourite: r.get::<_, i64>("favourite")? != 0,
     })
 }
 
@@ -189,6 +193,14 @@ pub fn list_and_sync_statuses(conn: &Connection) -> Result<Vec<LibraryEntry>, ru
 
 pub fn delete_download(conn: &Connection, id: i64) -> Result<(), rusqlite::Error> {
     conn.execute("DELETE FROM downloads WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn set_favourite(conn: &Connection, id: i64, favourite: bool) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE downloads SET favourite = ?2 WHERE id = ?1",
+        params![id, favourite as i64],
+    )?;
     Ok(())
 }
 

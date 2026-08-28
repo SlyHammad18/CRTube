@@ -77,7 +77,11 @@ export function TrackList() {
   }, [selection]);
 
   const source: LibraryEntry[] =
-    selection.type === "playlist" ? (openTracks ?? []) : libEntries;
+    selection.type === "playlist"
+      ? (openTracks ?? [])
+      : selection.type === "favourites"
+        ? libEntries.filter((e) => e.favourite)
+        : libEntries;
 
   /** Rows after filter + search, before sorting. */
   const filtered = useMemo(() => {
@@ -105,10 +109,14 @@ export function TrackList() {
   const playAt = (i: number) => {
     if (!displayed[i]) return;
     const ctx = usePlaylistsStore.getState().selection;
-    usePlayerStore.getState().playAll(displayed, i, {
-      type: ctx.type,
-      id: ctx.type === "playlist" ? ctx.id : undefined,
-    });
+    const playCtx =
+      ctx.type === "favourites"
+        ? { type: "library" as const }
+        : {
+            type: ctx.type,
+            id: ctx.type === "playlist" ? ctx.id : undefined,
+          };
+    usePlayerStore.getState().playAll(displayed, i, playCtx);
   };
 
   const totalS = displayed.reduce((acc, e) => acc + (e.durationS ?? 0), 0);
@@ -137,9 +145,11 @@ export function TrackList() {
           <h1 className="truncate font-display text-18 font-semibold tracking-tight">
             {selection.type === "playlist"
               ? (activePlaylist?.name ?? "Playlist")
-              : selection.recent
-                ? "Recently Added"
-                : "All Tracks"}
+              : selection.type === "favourites"
+                ? "Favourites"
+                : selection.recent
+                  ? "Recently Added"
+                  : "All Tracks"}
           </h1>
           <p className="mt-0.5 font-mono text-12 text-mute">
             {displayed.length} {displayed.length === 1 ? "track" : "tracks"}
@@ -158,7 +168,7 @@ export function TrackList() {
           >
             <SidebarSimple size={16} weight="light" aria-hidden />
           </button>
-          {selection.type === "playlist" && (
+          {selection.type === "playlist" || selection.type === "favourites" ? (
             <button
               aria-label="Play all"
               disabled={displayed.length === 0}
@@ -168,7 +178,7 @@ export function TrackList() {
               <Play size={13} weight="fill" aria-hidden />
               PLAY ALL
             </button>
-          )}
+          ) : null}
         </div>
       </header>
 
@@ -237,6 +247,15 @@ export function TrackList() {
           <div className="flex h-full items-center justify-center">
             <ConsolePrompt
               lines={["> this playlist is empty", "> add tracks with +"]}
+            />
+          </div>
+        ) : selection.type === "favourites" &&
+          displayed.length === 0 &&
+          !query.trim() &&
+          filter === "all" ? (
+          <div className="flex h-full items-center justify-center">
+            <ConsolePrompt
+              lines={["> no favourites yet", "> tap the heart to add one"]}
             />
           </div>
         ) : displayed.length === 0 ? (

@@ -8,6 +8,7 @@ import { useUIStore } from "../../stores/ui";
 import { setSecondarySlot } from "./mediaSlots";
 import { VolumeSlider } from "../player/VolumeSlider";
 import { SpeedMenu } from "../player/SpeedMenu";
+import { FavouriteButton } from "../player/FavouriteButton";
 
 /**
  * Global player bar (DESIGN §4.9) — persistent across every view once the
@@ -169,6 +170,7 @@ export function PlayerBar() {
               >
                 <TextAlignLeft size={16} weight="light" aria-hidden />
               </IconBtn>
+              {entry && <FavouriteButton entryId={entry.id} size={16} />}
               <VolumeSlider />
               <SpeedMenu />
               <IconBtn label="Expand player" onClick={() => setView("player")}>

@@ -88,6 +88,7 @@ pub fn run() {
             commands::library::add_entry,
             commands::library::list_library,
             commands::library::has_download,
+            commands::library::set_favourite,
             commands::library::delete_entry,
             commands::library::reveal_path,
             commands::library::open_path,

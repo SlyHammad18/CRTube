@@ -13,4 +13,5 @@ export interface LibraryEntry {
   thumbUrl?: string;
   status: string;
   createdAt: number;
+  favourite: boolean;
 }

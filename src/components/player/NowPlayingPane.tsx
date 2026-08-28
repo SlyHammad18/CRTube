@@ -22,6 +22,7 @@ import { VolumeSlider } from "./VolumeSlider";
 import { SpeedMenu } from "./SpeedMenu";
 import { CaptionDeck } from "./CaptionDeck";
 import { UpNext } from "./UpNext";
+import { FavouriteButton } from "./FavouriteButton";
 import { stripMediaExt } from "../../lib/format";
 
 /**
@@ -112,13 +113,16 @@ export function NowPlayingPane() {
         )}
       </div>
 
-      <div className="min-w-0 shrink-0">
-        <h2 className="line-clamp-2 font-display text-24 font-semibold leading-tight tracking-tight">
-          {entry.title}
-        </h2>
-        <p className="mt-1 truncate text-13 text-mute">
-          {entry.channel ? stripMediaExt(entry.channel) : "—"}
-        </p>
+      <div className="flex min-w-0 shrink-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="line-clamp-2 font-display text-24 font-semibold leading-tight tracking-tight">
+            {entry.title}
+          </h2>
+          <p className="mt-1 truncate text-13 text-mute">
+            {entry.channel ? stripMediaExt(entry.channel) : "—"}
+          </p>
+        </div>
+        <FavouriteButton entryId={entry.id} size={18} className="mt-1" />
       </div>
 
       <SeekBar />
