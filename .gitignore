@@ -9,3 +9,4 @@ ISSUES.md
 # Agent tooling — local only, not project source
 .agents/
 skills-lock.json
+.opencode
