@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "motion/react";
-import { CaretUp, Pause, Play, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
+import { CaretUp, Pause, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { fmtDuration } from "../../lib/format";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 import { useUIStore } from "../../stores/ui";
 import { setSecondarySlot } from "./mediaSlots";
 import { VolumeSlider } from "../player/VolumeSlider";
+import { SpeedMenu } from "../player/SpeedMenu";
 
 /**
  * Global player bar (DESIGN §4.9) — persistent across every view once the
@@ -23,6 +24,8 @@ export function PlayerBar() {
   const playing = usePlayerStore((s) => s.playing);
   const currentTimeS = usePlayerStore((s) => s.currentTimeS);
   const durationS = usePlayerStore((s) => s.durationS);
+  const shuffle = usePlayerStore((s) => s.shuffle);
+  const repeat = usePlayerStore((s) => s.repeat);
 
   // Hairline progress driven by a MotionValue — no re-render per tick.
   const progress = useMotionValue(0);
@@ -110,6 +113,13 @@ export function PlayerBar() {
 
             {/* Center: transport only */}
             <div className="flex shrink-0 items-center gap-1">
+              <IconBtn
+                label="Shuffle"
+                active={shuffle}
+                onClick={() => store.getState().toggleShuffle()}
+              >
+                <Shuffle size={17} weight="light" aria-hidden />
+              </IconBtn>
               <IconBtn label="Previous" onClick={() => store.getState().prev()}>
                 <SkipBack size={17} weight="light" aria-hidden />
               </IconBtn>
@@ -127,6 +137,23 @@ export function PlayerBar() {
               <IconBtn label="Next" onClick={() => store.getState().next()}>
                 <SkipForward size={17} weight="light" aria-hidden />
               </IconBtn>
+              <IconBtn
+                label={
+                  repeat === "off"
+                    ? "Repeat off"
+                    : repeat === "all"
+                      ? "Repeat all"
+                      : "Repeat one"
+                }
+                active={repeat !== "off"}
+                onClick={() => store.getState().cycleRepeat()}
+              >
+                {repeat === "one" ? (
+                  <RepeatOnce size={17} weight="light" aria-hidden />
+                ) : (
+                  <Repeat size={17} weight="light" aria-hidden />
+                )}
+              </IconBtn>
             </div>
 
             {/* Right: time, volume, expand */}
@@ -143,6 +170,7 @@ export function PlayerBar() {
                 <TextAlignLeft size={16} weight="light" aria-hidden />
               </IconBtn>
               <VolumeSlider />
+              <SpeedMenu />
               <IconBtn label="Expand player" onClick={() => setView("player")}>
                 <CaretUp size={16} weight="light" aria-hidden />
               </IconBtn>
