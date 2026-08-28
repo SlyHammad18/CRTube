@@ -69,21 +69,6 @@
   will-change: transform;
 }
 
-@keyframes pulse-dot {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.3;
-  }
-}
-
-.animate-pulse-dot {
-  animation: pulse-dot 1.6s ease-in-out infinite;
-  will-change: opacity;
-}
-
 /* §4.8 — EQ glyph on the active track row (transform-only; frozen by the
    global reduced-motion collapse). */
 @keyframes eq-bar {
