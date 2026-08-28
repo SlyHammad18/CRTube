@@ -1,10 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
-import { MagnifyingGlass, X } from "@phosphor-icons/react";
+import { PencilSimple } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
 import { activeIndex } from "../../lib/lrc";
 import type { LyricsState } from "../../hooks/useLyrics";
 import type { LibraryEntry } from "../../types/library";
+import { LyricsSearchModal } from "./LyricsSearchModal";
 
 /// True when `text` contains Arabic-script characters (incl. all Urdu letters).
 /// Used to render lyric lines in the Nastaliq Urdu font with correct RTL flow.
@@ -28,7 +29,9 @@ function isUrduScript(text: string): boolean {
  * Caption Deck — the Player's signature motif (§4.8). Renders synced lyrics
  * with the active line held at center (spring scroll, masked edges), click a
  * line to seek, and a fallback ladder for plain / instrumental / no-result
- * states with a manual artist/title override form.
+ * states. When lyrics are missing or wrong, a modal LRCLIB search (opened via
+ * the pencil on the loaded deck, or a "Search lyrics" CTA when none are found)
+ * lets the user pick the right track (or reset to auto-fetch).
  */
 export function CaptionDeck({
   entry,
@@ -40,43 +43,61 @@ export function CaptionDeck({
   const reduce = useReducedMotion();
   const currentTimeS = usePlayerStore((s) => s.currentTimeS);
   const seek = usePlayerStore((s) => s.seek);
+  const [lyricsModal, setLyricsModal] = useState<null | "edit" | "find">(null);
 
   if (lyrics.status === "idle") return null;
+
+  let content: ReactNode;
   if (lyrics.status === "loading") {
-    return (
+    content = (
       <div className="px-4 py-6 font-mono text-12 text-dim">{"> loading lyrics_"}</div>
     );
-  }
-  if (lyrics.status === "instrumental") {
-    return <CenteredTag>INSTRUMENTAL</CenteredTag>;
-  }
-  if (lyrics.status === "error") {
-    return (
-      <div className="px-4 py-6 font-mono text-12 text-dim">
-        {"> lyrics service error_"}
-        <br />
-        try the manual search below
-        <ManualForm entry={entry} lyrics={lyrics} />
+  } else if (lyrics.status === "instrumental") {
+    content = <CenteredTag>INSTRUMENTAL</CenteredTag>;
+  } else if (lyrics.status === "none" || lyrics.status === "error") {
+    content = (
+      <LyricsMissing
+        prompt={
+          lyrics.status === "error" ? "> lyrics service error_" : "> no lyrics found_"
+        }
+        onSearch={() => setLyricsModal("find")}
+      />
+    );
+  } else {
+    content = (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex items-center px-4 pt-3">
+          <button
+            aria-label="Edit lyrics"
+            title="Change lyrics"
+            onClick={() => setLyricsModal("edit")}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ice active:scale-[0.98]"
+          >
+            <PencilSimple size={13} weight="light" aria-hidden />
+          </button>
+        </div>
+        <Deck
+          lines={lyrics.lines}
+          source={lyrics.source}
+          currentTimeMs={currentTimeS * 1000}
+          onSeek={(ms) => seek(ms / 1000)}
+          reduce={!!reduce}
+        />
       </div>
     );
   }
-  if (lyrics.status === "none") {
-    return (
-      <div className="px-4 py-6 font-mono text-12 text-dim">
-        {"> no lyrics found_ try manual search"}
-        <ManualForm entry={entry} lyrics={lyrics} />
-      </div>
-    );
-  }
-  // loaded
+
   return (
-    <Deck
-      lines={lyrics.lines}
-      source={lyrics.source}
-      currentTimeMs={currentTimeS * 1000}
-      onSeek={(ms) => seek(ms / 1000)}
-      reduce={!!reduce}
-    />
+    <>
+      {content}
+      <LyricsSearchModal
+        open={lyricsModal !== null}
+        mode={lyricsModal ?? "find"}
+        entry={entry}
+        lyrics={lyrics}
+        onClose={() => setLyricsModal(null)}
+      />
+    </>
   );
 }
 
@@ -90,70 +111,25 @@ function CenteredTag({ children }: { children: ReactNode }) {
   );
 }
 
-function ManualForm({
-  entry,
-  lyrics,
+/// Shown when no lyrics are found (or the service errored): a console prompt
+/// plus an ice CTA that opens the search modal.
+function LyricsMissing({
+  prompt,
+  onSearch,
 }: {
-  entry: LibraryEntry | null;
-  lyrics: LyricsState;
+  prompt: string;
+  onSearch: () => void;
 }) {
-  const [title, setTitle] = useState(entry?.title ?? "");
-  const [artist, setArtist] = useState(entry?.channel ?? "");
-  const [open, setOpen] = useState(false);
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="mt-3 flex items-center gap-1.5 rounded-card border border-line px-3 py-1.5 text-12 text-mute transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
-      >
-        <MagnifyingGlass size={13} weight="light" />
-        manual search
-      </button>
-    );
-  }
-
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        lyrics.refetch({ title: title.trim(), artist: artist.trim() });
-        setOpen(false);
-      }}
-      className="mt-3 flex flex-col gap-2"
-    >
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Track title"
-        aria-label="Track title"
-        className="rounded-card border border-line bg-panel px-3 py-1.5 text-12 text-ink outline-none placeholder:text-dim focus:border-ice"
-      />
-      <input
-        value={artist}
-        onChange={(e) => setArtist(e.target.value)}
-        placeholder="Artist"
-        aria-label="Artist"
-        className="rounded-card border border-line bg-panel px-3 py-1.5 text-12 text-ink outline-none placeholder:text-dim focus:border-ice"
-      />
-      <div className="flex items-center gap-2">
-        <button
-          type="submit"
-          className="flex items-center gap-1.5 rounded-card bg-ice px-3 py-1.5 text-12 font-semibold text-void transition-colors duration-150 hover:bg-ink active:scale-[0.98]"
-        >
-          <MagnifyingGlass size={13} weight="light" />
-          search
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          aria-label="Cancel"
-          className="grid h-7 w-7 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ink"
-        >
-          <X size={13} weight="bold" />
-        </button>
-      </div>
-    </form>
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+      <p className="font-mono text-12 text-dim">{prompt}</p>
+      <button
+        onClick={onSearch}
+        className="rounded-card bg-ice px-3 py-1.5 text-13 font-semibold text-void transition-colors duration-150 hover:bg-ink active:scale-[0.98]"
+      >
+        Search lyrics
+      </button>
+    </div>
   );
 }
 

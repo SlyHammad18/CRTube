@@ -5,7 +5,7 @@ use tauri::{AppHandle, State};
 
 use crate::services::db::{self, Db, Playlist, PlaylistTrack};
 use crate::services::installer;
-use crate::services::lyrics::{self, LyricsPayload};
+use crate::services::lyrics::{self, LyricsCandidate, LyricsPayload};
 use crate::services::media;
 
 const PLAYLIST_NAME_MAX: usize = 80;
@@ -165,4 +165,22 @@ pub async fn fetch_lyrics(
         duration_s,
     )
     .await
+}
+
+/// LRCLIB search — returns all candidate matches so the UI can offer multiple.
+#[tauri::command]
+pub async fn search_lyrics(query: String) -> Result<Vec<LyricsCandidate>, String> {
+    lyrics::search_lyrics(&query).await
+}
+
+/// Persist a user-selected/edited lyric set for a track (sticky per-song override).
+#[tauri::command]
+pub fn set_lyrics(app: AppHandle, video_id: String, payload: LyricsPayload) -> Result<(), String> {
+    lyrics::set_lyrics(&app, &video_id, &payload)
+}
+
+/// Remove a stored lyric override so auto-fetch resumes.
+#[tauri::command]
+pub fn clear_lyrics(app: AppHandle, video_id: String) -> Result<(), String> {
+    lyrics::clear_lyrics(&app, &video_id)
 }

@@ -8,7 +8,7 @@ const USER_AGENT: &str = concat!("CRTube/", env!("CARGO_PKG_VERSION"), " (Tauri 
 /// Max allowed distance between the track duration and a search result's duration.
 const DURATION_TOLERANCE_S: u64 = 3;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LyricsPayload {
     pub synced: Option<String>,
@@ -17,6 +17,21 @@ pub struct LyricsPayload {
     pub track_name: String,
     pub artist_name: String,
     pub cached: bool,
+}
+
+/// A single LRCLIB search hit surfaced to the UI so the user can pick the best
+/// match. Carries the raw lyric text so applying a choice is one IPC call.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricsCandidate {
+    pub track_name: String,
+    pub artist_name: String,
+    pub synced: bool,
+    pub plain: bool,
+    pub instrumental: bool,
+    pub duration_s: Option<u64>,
+    pub synced_lyrics: Option<String>,
+    pub plain_lyrics: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -273,6 +288,67 @@ pub async fn fetch_lyrics(
     };
     write_cache(&dir, video_id, &payload);
     Ok(Some(payload))
+}
+
+/// Return every LRCLIB `/api/search` hit for `query` (not just the single best
+/// one) so the UI can offer multiple candidates. Each candidate carries its raw
+/// synced/plain text so the chosen one can be persisted directly. Near-duplicate
+/// (track, artist) rows are collapsed, keeping the synced/plain-richest variant.
+pub async fn search_lyrics(query: &str) -> Result<Vec<LyricsCandidate>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let results = lrclib_search(&client, query).await?;
+    let mut out: Vec<LyricsCandidate> = results
+        .into_iter()
+        .map(|t| {
+            let synced = t.synced_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty());
+            let plain = t.plain_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty());
+            LyricsCandidate {
+                track_name: t.track_name,
+                artist_name: t.artist_name,
+                synced,
+                plain,
+                instrumental: t.instrumental,
+                duration_s: t.duration.map(|d| d.round().max(0.0) as u64),
+                synced_lyrics: t.synced_lyrics,
+                plain_lyrics: t.plain_lyrics,
+            }
+        })
+        .collect();
+    // Prefer synced/plain-richest variant per (track, artist) before collapsing.
+    out.sort_by(|a, b| {
+        let score = |c: &LyricsCandidate| -> u8 { (c.synced as u8) << 1 | (c.plain as u8) };
+        score(b).cmp(&score(a))
+    });
+    out.dedup_by(|a, b| a.track_name == b.track_name && a.artist_name == b.artist_name);
+    Ok(out)
+}
+
+/// Persist a user-chosen (or user-fixed) lyric set for a track. Reuses the cache
+/// so the next `fetch_lyrics` returns this override first — i.e. it sticks per
+/// song across restarts.
+pub fn set_lyrics(
+    app: &AppHandle,
+    video_id: &str,
+    payload: &LyricsPayload,
+) -> Result<(), String> {
+    let dir = lyrics_dir(app).ok_or("cannot resolve app data dir")?;
+    write_cache(&dir, video_id, payload).ok_or("failed to write lyrics cache")?;
+    Ok(())
+}
+
+/// Drop any stored override for a track so auto-fetch resumes ("Reset to automatic").
+pub fn clear_lyrics(app: &AppHandle, video_id: &str) -> Result<(), String> {
+    let dir = lyrics_dir(app).ok_or("cannot resolve app data dir")?;
+    for flag in [true, false] {
+        let p = cached_path(&dir, video_id, flag);
+        if p.exists() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

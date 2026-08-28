@@ -11,7 +11,7 @@ import type { SearchItem, VideoInfo } from "../types/search";
 import type { LibraryEntry } from "../types/library";
 import type { AppSettings } from "../types/settings";
 import type { Playlist, PlaylistTrack } from "../types/player";
-import type { LyricsPayload } from "../types/lyrics";
+import type { LyricsPayload, LyricsCandidate } from "../types/lyrics";
 import type {
   DlDonePayload,
   DlErrorPayload,
@@ -82,6 +82,12 @@ export const ipc = {
       channel,
       durationS,
     }),
+  searchLyrics: (query: string) =>
+    invoke<LyricsCandidate[]>("search_lyrics", { query }),
+  setLyrics: (videoId: string, payload: LyricsPayload) =>
+    invoke<void>("set_lyrics", { videoId, payload }),
+  clearLyrics: (videoId: string) =>
+    invoke<void>("clear_lyrics", { videoId }),
 
   listPlaylists: () => invoke<Playlist[]>("list_playlists"),
   createPlaylist: (name: string) => invoke<Playlist>("create_playlist", { name }),

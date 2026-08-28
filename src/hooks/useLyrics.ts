@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ipc } from "../lib/ipc";
-import type { LyricsPayload } from "../types/lyrics";
+import type { LyricsPayload, LyricsCandidate } from "../types/lyrics";
 import { parseLrc, type LrcLine } from "../lib/lrc";
 import type { LibraryEntry } from "../types/library";
 
@@ -21,7 +21,12 @@ export interface LyricsState {
   artistName: string;
   cached: boolean;
   override: boolean;
-  refetch: (o?: { title: string; artist: string }) => void;
+  /** LRCLIB search — returns candidate matches so the user can pick one. */
+  search: (query: string) => Promise<LyricsCandidate[]>;
+  /** Persist a chosen/edited lyric set for this track (sticky per-song override). */
+  apply: (payload: LyricsPayload) => void;
+  /** Drop any stored override for this track so auto-fetch resumes. */
+  clearLyrics: (videoId: string) => void;
 }
 
 const IDLE: LyricsState = {
@@ -33,7 +38,9 @@ const IDLE: LyricsState = {
   artistName: "",
   cached: false,
   override: false,
-  refetch: () => {},
+  search: async () => [],
+  apply: () => {},
+  clearLyrics: () => {},
 };
 
 interface Resolved {
@@ -99,7 +106,8 @@ function resolve(p: LyricsPayload): Resolved {
 /**
  * Lazy LRCLIB-backed lyrics for the current track. Fetches when the active
  * entry changes (≈ first play); Rust caches hits so re-plays are instant.
- * `refetch` supports a manual artist/title override (the fallback ladder).
+ * `search` lists candidate matches and `apply` persists a chosen/edited set as
+ * a sticky per-song override (the fallback ladder for missing/wrong lyrics).
  */
 export function useLyrics(entry: LibraryEntry | null): LyricsState {
   const [state, setState] = useState<LyricsState>(IDLE);
@@ -141,12 +149,43 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
     load(e);
   }, [entry?.id, load]);
 
-  const refetch = useCallback(
-    (o?: { title: string; artist: string }) => {
-      if (entry) load(entry, o);
+  const search = useCallback(
+    (query: string) => ipc.searchLyrics(query.trim()),
+    [],
+  );
+
+  const apply = useCallback(
+    (payload: LyricsPayload) => {
+      if (!entry) return;
+      const myReq = reqId.current;
+      const id = entry.videoId;
+      ipc
+        .setLyrics(id, payload)
+        .then(() => {
+          if (reqId.current !== myReq) return;
+          setState({ ...IDLE, ...resolve(payload), override: true });
+        })
+        .catch(() => {
+          if (reqId.current !== myReq) return;
+          setState({ ...IDLE, status: "error", override: true });
+        });
+    },
+    [entry],
+  );
+
+  const clearLyrics = useCallback(
+    (videoId: string) => {
+      const myReq = reqId.current;
+      ipc
+        .clearLyrics(videoId)
+        .then(() => {
+          if (reqId.current !== myReq) return;
+          if (entry) load(entry);
+        })
+        .catch(() => {});
     },
     [entry, load],
   );
 
-  return { ...state, refetch };
+  return { ...state, search, apply, clearLyrics };
 }
