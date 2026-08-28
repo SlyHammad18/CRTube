@@ -35,9 +35,6 @@ export function LyricsFullscreen({ nowPlayingOpen }: { nowPlayingOpen: boolean }
     <div
       className="absolute inset-y-0 left-0 z-30 flex flex-col bg-void"
       style={{ right: nowPlayingOpen ? 320 : 0 }}
-      onDoubleClick={(e) => {
-        if (e.target === e.currentTarget) setOpen(false);
-      }}
     >
       <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-3">
         <p className="truncate text-14 font-semibold text-ink">
@@ -51,10 +48,7 @@ export function LyricsFullscreen({ nowPlayingOpen }: { nowPlayingOpen: boolean }
           <X size={18} weight="light" aria-hidden />
         </button>
       </div>
-      <div
-        className="mx-auto flex min-h-0 flex-1 w-full max-w-[900px] flex-col px-8 py-6"
-        onDoubleClick={(e) => e.stopPropagation()}
-      >
+      <div className="mx-auto flex min-h-0 flex-1 w-full max-w-[900px] flex-col px-8 py-6">
         <CaptionDeck entry={entry} lyrics={lyrics} />
       </div>
     </div>

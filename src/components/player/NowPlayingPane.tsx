@@ -130,7 +130,21 @@ export function NowPlayingPane() {
         <SpeedMenu />
       </div>
 
-      {lyricsFullscreen ? <UpNext /> : <CaptionDeck entry={entry} lyrics={lyrics} />}
+      {lyricsFullscreen ? (
+        <UpNext />
+      ) : (
+        <div className="group relative flex min-h-0 flex-1 flex-col">
+          <button
+            aria-label="Expand lyrics"
+            title="Expand lyrics"
+            onClick={() => useUIStore.getState().setLyricsFullscreen(true)}
+            className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-card bg-void/80 text-mute opacity-0 transition-opacity duration-150 hover:bg-raise hover:text-ice focus-visible:opacity-100 group-hover:opacity-100 active:scale-[0.98]"
+          >
+            <ArrowsOut size={16} weight="light" aria-hidden />
+          </button>
+          <CaptionDeck entry={entry} lyrics={lyrics} />
+        </div>
+      )}
     </aside>
   );
 }
