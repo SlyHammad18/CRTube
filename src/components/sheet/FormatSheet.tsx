@@ -87,13 +87,6 @@ function FormatRow({
           : "border-line hover:bg-raise hover:border-mute"
       }`}
     >
-      <span
-        className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
-          selected ? "border-ice" : "border-dim"
-        }`}
-      >
-        {selected && <span className="h-2 w-2 rounded-full bg-ice" />}
-      </span>
       {children}
     </button>
   );
@@ -143,19 +136,21 @@ function VideoTab({
     <div className="flex flex-col gap-2">
       {containers.length > 1 && (
         <div className="flex items-center gap-1.5">
-          <span className="mr-1 text-12 text-dim">container:</span>
+          <span className="mr-1 font-mono text-11 uppercase tracking-wide text-dim">
+            container
+          </span>
           {containers.map((c) => (
             <button
               key={c}
               onClick={() => setContainer(c)}
               aria-pressed={container === c}
-              className={`rounded-full border px-2.5 py-0.5 font-mono text-12 transition-colors duration-150 active:scale-[0.98] ${
+              className={`rounded-full border px-2.5 py-0.5 font-mono text-12 uppercase transition-colors duration-150 active:scale-[0.98] ${
                 container === c
                   ? "border-ice bg-ice text-void"
                   : "border-line text-mute hover:bg-raise hover:text-ink"
               }`}
             >
-              ({c})
+              {c}
             </button>
           ))}
         </div>
@@ -168,7 +163,7 @@ function VideoTab({
             onSelect={() => f.height != null && setHeight(f.height)}
             ariaLabel={`${f.height}p ${f.ext}`}
           >
-            <Chip tone="ink">{f.height}p</Chip>
+            <span className="font-mono text-14 font-semibold text-ink">{f.height}p</span>
             {f.fps != null && f.fps > 30 && <Chip>{f.fps}fps</Chip>}
             {f.dynamicRange && <Chip tone="amber">{f.dynamicRange}</Chip>}
             <span className="ml-auto font-mono text-12 text-mute">
