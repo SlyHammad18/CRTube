@@ -7,6 +7,8 @@ import { SeekBar } from "./SeekBar";
 import { VolumeSlider } from "./VolumeSlider";
 import { FavouriteButton } from "./FavouriteButton";
 import { SpeedMenu } from "./SpeedMenu";
+import { useLyrics } from "../../hooks/useLyrics";
+import { activeIndex } from "../../lib/lrc";
 
 /**
  * In-app fullscreen video overlay (§requested): the single <video> element is
@@ -28,6 +30,16 @@ export function VideoFullscreen() {
 
   const isVideo = entry?.kind === "video" && entry.path !== "";
   const videoDisabled = useUIStore((s) => s.videoDisabled);
+
+  const lyrics = useLyrics(entry);
+  const currentTimeS = usePlayerStore((s) => s.currentTimeS);
+  const seek = usePlayerStore((s) => s.seek);
+
+  const activeIdx =
+    lyrics.status === "loaded"
+      ? activeIndex(lyrics.lines, currentTimeS * 1000)
+      : -1;
+  const activeLine = activeIdx >= 0 ? lyrics.lines[activeIdx] : null;
 
   // Escape closes fullscreen; auto-close if there's no video to show.
   useEffect(() => {
@@ -52,12 +64,14 @@ export function VideoFullscreen() {
   if (!open || !isVideo) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[95] flex flex-col bg-void"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) setOpen(false);
-      }}
-    >
+    <>
+      <div aria-hidden className="fixed inset-0 z-[94] bg-void" />
+      <div
+        className="fixed inset-0 z-[97] flex flex-col"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setOpen(false);
+        }}
+      >
       {/* Top bar */}
       <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-3">
         <div className="min-w-0">
@@ -80,6 +94,26 @@ export function VideoFullscreen() {
       {/* Video stage — the portaled <video> lands here (object-contain). */}
       <div className="relative min-h-0 flex-1">
         <div ref={registerSlot} className="absolute inset-0" />
+        {activeLine && (
+          <button
+            key={activeIdx}
+            aria-label="Seek to this lyric"
+            onClick={(e) => {
+              e.stopPropagation();
+              seek(activeLine.tMs / 1000);
+            }}
+            className="absolute inset-x-0 bottom-6 flex justify-center px-4"
+          >
+            <span
+              className={`max-w-[80%] rounded-card bg-void/70 px-3 py-1.5 text-center text-15 font-semibold text-ink shadow-[0_2px_12px_rgba(0,0,0,0.5)] ${
+                isUrduScript(activeLine.text) ? "font-urdu" : ""
+              }`}
+              dir={isUrduScript(activeLine.text) ? "auto" : undefined}
+            >
+              {activeLine.text}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Controls */}
@@ -116,6 +150,26 @@ export function VideoFullscreen() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
+}
+
+/** True when `text` contains Arabic-script characters (incl. Urdu). Mirrors the
+ *  same helper in CaptionDeck so lyric subtitles render in the Urdu Nastaliq
+ *  font with correct RTL flow. */
+function isUrduScript(text: string): boolean {
+  for (const ch of text) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (
+      (c >= 0x0600 && c <= 0x06ff) || // Arabic
+      (c >= 0x0750 && c <= 0x077f) || // Arabic Supplement
+      (c >= 0x08a0 && c <= 0x08ff) || // Arabic Extended-A
+      (c >= 0xfb50 && c <= 0xfdff) || // Arabic Presentation Forms-A
+      (c >= 0xfe70 && c <= 0xfeff) // Arabic Presentation Forms-B
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
