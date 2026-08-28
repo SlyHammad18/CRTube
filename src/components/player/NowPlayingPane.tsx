@@ -125,15 +125,6 @@ export function NowPlayingPane() {
         <FavouriteButton entryId={entry.id} size={18} className="mt-1" />
       </div>
 
-      <SeekBar />
-
-      <TransportRow />
-
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        <VolumeSlider />
-        <SpeedMenu />
-      </div>
-
       {lyricsFullscreen ? (
         <UpNext />
       ) : (
@@ -149,6 +140,15 @@ export function NowPlayingPane() {
           <CaptionDeck entry={entry} lyrics={lyrics} />
         </div>
       )}
+
+      <SeekBar />
+
+      <TransportRow />
+
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        <VolumeSlider />
+        <SpeedMenu />
+      </div>
     </aside>
   );
 }
