@@ -6,7 +6,7 @@ import { fmtDuration, parseArtists } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
 import type { PlaylistTrack } from "../../types/player";
 import { useLibraryStore } from "../../stores/library";
-import { usePlayerStore } from "../../stores/player";
+import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 import { usePlaylistsStore } from "../../stores/playlists";
 import { useUIStore } from "../../stores/ui";
 import { ConsolePrompt } from "../common/ConsolePrompt";
@@ -35,6 +35,7 @@ function DragRow({
       dragListener={false}
       dragControls={controls}
       as="div"
+      data-track-id={track.id}
       className="list-none"
     >
       <TrackRow
@@ -138,6 +139,53 @@ export function TrackList() {
     selection.type === "playlist"
       ? playlists.find((p) => p.id === selection.id)
       : undefined;
+
+  // Keep the latest list + manual flag reachable from the scroll effect without
+  // making it re-run on every filter/sort/search keystroke.
+  const displayedRef = useRef(displayed);
+  displayedRef.current = displayed;
+  const isManualRef = useRef(isManualDrag);
+  isManualRef.current = isManualDrag;
+
+  // On opening a Playlist/Artist, land at the top — unless a track is currently
+  // playing and belongs to this list, in which case center on it. Keyed on the
+  // selection only, so it fires when the view opens (and tolerates async playlist
+  // track loads via a short poll) but never yanks the scroll mid-playback.
+  const selId = selection.type === "playlist" ? selection.id : null;
+  const selName = selection.type === "artist" ? selection.name : null;
+  const selectionKey = `${selection.type}:${selId ?? ""}:${selName ?? ""}`;
+  useEffect(() => {
+    if (selection.type !== "playlist" && selection.type !== "artist") return;
+    const st = usePlayerStore.getState();
+    const cur = selectCurrentEntry(st);
+    const targetId = st.playing && cur ? cur.id : null;
+    let raf = 0;
+    let tries = 0;
+    const tick = () => {
+      const list = displayedRef.current;
+      const idx = targetId ? list.findIndex((e) => e.id === targetId) : -1;
+      if (idx >= 0) {
+        if (isManualRef.current) {
+          const el = scrollRef.current?.querySelector<HTMLElement>(
+            `[data-track-id="${targetId}"]`,
+          );
+          if (el) {
+            el.scrollIntoView({ block: "center" });
+            return;
+          }
+        } else {
+          rowVirtualizer.scrollToIndex(idx, { align: "center" });
+          return;
+        }
+      } else if (tries === 0) {
+        scrollRef.current?.scrollTo({ top: 0 });
+      }
+      if (tries++ < 60) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionKey]);
 
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col">
@@ -307,6 +355,7 @@ export function TrackList() {
                 <li
                   key={e.id}
                   data-index={vi.index}
+                  data-track-id={e.id}
                   ref={rowVirtualizer.measureElement}
                   className="list-none pb-1.5"
                   style={{
