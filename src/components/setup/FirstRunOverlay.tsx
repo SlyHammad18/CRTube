@@ -60,7 +60,7 @@ export function FirstRunOverlay() {
       {visible && (
         <motion.div
           key="first-run"
-          className="fixed inset-0 z-[60] grid place-items-center bg-void/95"
+          className="fixed inset-0 z-[60] grid place-items-center bg-void"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
