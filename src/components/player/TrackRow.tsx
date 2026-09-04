@@ -67,6 +67,7 @@ export const TrackRow = memo(function TrackRow({
   const isActive = usePlayerStore(
     (s) => selectCurrentEntry(s)?.id === entry.id,
   );
+  const playing = usePlayerStore((s) => s.playing);
   const thumb = useMemo(() => thumbSrcOf(entry), [entry]);
 
   const onDelete = async () => {
@@ -130,7 +131,7 @@ export const TrackRow = memo(function TrackRow({
 
       {/* Index / EQ */}
       <span className="w-5 shrink-0 text-center">
-        {isActive && !missing ? (
+        {isActive && !missing && playing ? (
           <EqGlyph />
         ) : (
           <span className="font-mono text-12 text-dim">{index + 1}</span>
