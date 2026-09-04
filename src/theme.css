@@ -199,9 +199,13 @@
 }
 
 /* Content-visibility for offscreen virtualized items (browser skips painting) */
-.cv-auto {
+.cv-auto-list {
   content-visibility: auto;
   contain-intrinsic-size: auto 64px;
+}
+.cv-auto-grid {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 236px;
 }
 
 /* Result card reveal — GPU-composited only (opacity + transform) */

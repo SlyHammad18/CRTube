@@ -121,7 +121,7 @@ const EntryCard = memo(function EntryCard({
             transition: { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const },
           }
         : {})}
-      className={`group overflow-hidden rounded-card border bg-panel shadow-panel transition-colors duration-150 hover:bg-raise ${
+      className={`group overflow-hidden rounded-card border bg-panel transition-colors duration-150 hover:bg-raise ${
         missing ? "border-amber/40 opacity-70" : "border-line"
       }`}
     >
@@ -419,8 +419,8 @@ function VirtualResults({
               ref={virtualizer.measureElement}
               className={
                 density === "grid"
-                  ? "absolute left-0 top-0 grid w-full gap-4 pb-4 cv-auto"
-                  : "absolute left-0 top-0 flex w-full flex-col gap-2 pb-2 cv-auto"
+                  ? "absolute left-0 top-0 grid w-full gap-4 pb-4 cv-auto-grid"
+                  : "absolute left-0 top-0 flex w-full flex-col gap-2 pb-2 cv-auto-list"
               }
               style={{
                 transform: `translateY(${vi.start}px)`,

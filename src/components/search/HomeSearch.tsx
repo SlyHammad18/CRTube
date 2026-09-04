@@ -202,7 +202,7 @@ function ResultsGrid() {
               <div
                 key={vi.key}
                 ref={rowVirtualizer.measureElement}
-                className="absolute left-0 top-0 grid w-full gap-4 pb-4 cv-auto"
+                className="absolute left-0 top-0 grid w-full gap-4 pb-4 cv-auto-grid"
                 style={{
                   transform: `translateY(${vi.start}px)`,
                   gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,

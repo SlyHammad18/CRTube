@@ -32,7 +32,7 @@ export const ResultCard = memo(function ResultCard({ item, index }: ResultCardPr
           openSheet(item);
         }
       }}
-      className={`group relative cursor-pointer overflow-hidden rounded-card border border-line bg-panel shadow-panel transition-[background-color,scale] duration-150 hover:bg-raise active:scale-[0.98] ${
+      className={`group relative cursor-pointer overflow-hidden rounded-card border border-line bg-panel transition-[background-color,scale] duration-150 hover:bg-raise active:scale-[0.98] ${
         visible ? "result-card--visible" : "result-card--hidden"
       }`}
       style={{ transitionDelay: `${Math.min(index % 4, 3) * 50}ms` }}
