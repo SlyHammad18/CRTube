@@ -46,15 +46,30 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
         .background_color(Color(7, 9, 12, 255))
         .initialization_script(
             "(function(){\
+               var isEditable=function(el){\
+                 if(!el)return false;\
+                 var t=el.tagName;\
+                 return t==='INPUT'||t==='TEXTAREA'||el.isContentEditable;\
+               };\
                var block=function(e){e.preventDefault();e.stopPropagation();};\
-               document.addEventListener('copy',block,true);\
-               document.addEventListener('cut',block,true);\
-               document.addEventListener('selectstart',block,true);\
+               var blockIfNoFocus=function(e){\
+                 if(!isEditable(document.activeElement))block(e);\
+               };\
+               document.addEventListener('copy',blockIfNoFocus,true);\
+               document.addEventListener('cut',blockIfNoFocus,true);\
+               document.addEventListener('paste',blockIfNoFocus,true);\
+               document.addEventListener('selectstart',blockIfNoFocus,true);\
+               document.addEventListener('contextmenu',function(e){e.preventDefault();},true);\
                document.addEventListener('keydown',function(e){\
                  var k=e.key,m=e.metaKey,c=e.ctrlKey,s=e.shiftKey,a=e.altKey;\
                  if(k==='F5')return block(e);\
+                 if(k==='F12')return block(e);\
+                 if(c&&s&&(k==='I'||k==='i'||k==='J'||k==='j'||k==='C'||k==='c'))return block(e);\
                  if((c||m)&&k==='u')return block(e);\
-                 if((c||m)&&!s&&!a&&(k==='c'||k==='x'))return block(e);\
+                 if((c||m)&&!s&&!a&&(k==='a'||k==='c'||k==='x'||k==='v')){\
+                   if(!isEditable(document.activeElement))return block(e);\
+                   return;\
+                 }\
                },true);\
                var _wt=navigator.clipboard.writeText;\
                navigator.clipboard.writeText=function(){return Promise.resolve();};\
@@ -62,7 +77,9 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
                if(_w)navigator.clipboard.write=function(){return Promise.resolve();};\
                var _ec=document.execCommand.bind(document);\
                document.execCommand=function(cmd){\
-                 if(cmd==='copy'||cmd==='cut')return false;\
+                 if(cmd==='copy'||cmd==='cut'){\
+                   if(!isEditable(document.activeElement))return false;\
+                 }\
                  return _ec.apply(null,arguments);\
                };\
              })();",
