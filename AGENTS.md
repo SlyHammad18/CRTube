@@ -33,3 +33,4 @@
 - Standing gates: `cargo clippy` clean, `npm run build` clean, plus each task's manual checks in §7.
 - Integration tests hit real yt-dlp (network required). Download tests verify embedded cover art/tags via ffprobe and that cancel leaves no partial files.
 - Screenshots: make sure the CRTube window is focused before capturing (GNOME Wayland — X11 focus tools don't work; a freshly launched window grabs focus, so relaunch rather than activate).
+- When the user shows/provides a screenshot (pasted or referenced), locate the newest file in `~/Pictures/Screenshots` and read it with the `opencode_see` tool before answering anything about the UI. Do the same when asked to "check the UI" and a screenshot was just taken.
