@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Reorder, useDragControls, useReducedMotion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MagnifyingGlass, SidebarSimple, Play, X } from "@phosphor-icons/react";
 import { fmtDuration, parseArtists } from "../../lib/format";
@@ -16,41 +15,7 @@ import { SortMenu } from "./SortMenu";
 export type SortKey = "manual" | "title" | "duration" | "added";
 type Filter = "all" | "audio" | "video";
 
-/** One draggable playlist row (manual-order mode only). */
-function DragRow({
-  track,
-  index,
-  onPlay,
-  onRemoveFrom,
-}: {
-  track: PlaylistTrack;
-  index: number;
-  onPlay: () => void;
-  onRemoveFrom: () => void;
-}) {
-  const controls = useDragControls();
-  return (
-    <Reorder.Item
-      value={track}
-      dragListener={false}
-      dragControls={controls}
-      as="div"
-      data-track-id={track.id}
-      className="list-none"
-    >
-      <TrackRow
-        entry={track}
-        index={index}
-        onPlay={onPlay}
-        grip={{ onPointerDown: (e) => controls.start(e) }}
-        onRemoveFrom={onRemoveFrom}
-      />
-    </Reorder.Item>
-  );
-}
-
 export function TrackList() {
-  const reduce = useReducedMotion();
   const selection = usePlaylistsStore((s) => s.selection);
   const openTracks = usePlaylistsStore((s) => s.openTracks);
   const playlists = usePlaylistsStore((s) => s.playlists);
@@ -68,7 +33,22 @@ export function TrackList() {
     dir: -1,
   });
 
-  // Playlists default to manual (position) order; library to newest-first.
+  // Manual playlist reorder — moves a track one position up or down.
+  const moveTrack = useCallback(
+    (from: number, dir: -1 | 1) => {
+      const list = displayedRef.current;
+      const ids = list
+        .map((t) => (t as PlaylistTrack).itemId)
+        .filter((id): id is number => id != null);
+      const to = from + dir;
+      if (to < 0 || to >= ids.length) return;
+      const [moved] = ids.splice(from, 1);
+      ids.splice(to, 0, moved);
+      void reorder(ids);
+    },
+    [reorder],
+  );
+
   useEffect(() => {
     setSort(
       selection.type === "playlist"
@@ -77,16 +57,19 @@ export function TrackList() {
     );
   }, [selection]);
 
-  const source: LibraryEntry[] =
-    selection.type === "playlist"
-      ? (openTracks ?? [])
-      : selection.type === "favourites"
-        ? libEntries.filter((e) => e.favourite)
-        : selection.type === "artist"
-          ? libEntries.filter((e) => parseArtists(e.channel).includes(selection.name))
-          : libEntries;
+  const source: LibraryEntry[] = useMemo(() => {
+    if (selection.type === "playlist") {
+      return openTracks ?? [];
+    }
+    if (selection.type === "favourites") {
+      return libEntries.filter((e) => e.favourite);
+    }
+    if (selection.type === "artist") {
+      return libEntries.filter((e) => parseArtists(e.channel).includes(selection.name));
+    }
+    return libEntries;
+  }, [selection, libEntries, openTracks]);
 
-  /** Rows after filter + search, before sorting. */
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return source.filter(
@@ -109,8 +92,9 @@ export function TrackList() {
     return [...filtered].sort((a, b) => cmp[key](a, b) * sort.dir);
   }, [filtered, sort]);
 
-  const playAt = (i: number) => {
-    if (!displayed[i]) return;
+  const playAt = useCallback((i: number) => {
+    const d = displayedRef.current;
+    if (!d[i]) return;
     const ctx = usePlaylistsStore.getState().selection;
     const playCtx =
       ctx.type === "favourites" || ctx.type === "artist"
@@ -119,14 +103,12 @@ export function TrackList() {
             type: ctx.type,
             id: ctx.type === "playlist" ? ctx.id : undefined,
           };
-    usePlayerStore.getState().playAll(displayed, i, playCtx);
-  };
+    usePlayerStore.getState().playAll(d, i, playCtx);
+  }, []);
 
   const totalS = displayed.reduce((acc, e) => acc + (e.durationS ?? 0), 0);
   const isManualDrag = selection.type === "playlist" && sort.key === "manual";
 
-  // Virtualize the (potentially very long) track list so only the visible rows
-  // are in the DOM — keeps scrolling and hover animations smooth at 1k+ tracks.
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
     count: displayed.length,
@@ -140,17 +122,11 @@ export function TrackList() {
       ? playlists.find((p) => p.id === selection.id)
       : undefined;
 
-  // Keep the latest list + manual flag reachable from the scroll effect without
-  // making it re-run on every filter/sort/search keystroke.
   const displayedRef = useRef(displayed);
   displayedRef.current = displayed;
   const isManualRef = useRef(isManualDrag);
   isManualRef.current = isManualDrag;
 
-  // On opening a Playlist/Artist, land at the top — unless a track is currently
-  // playing and belongs to this list, in which case center on it. Keyed on the
-  // selection only, so it fires when the view opens (and tolerates async playlist
-  // track loads via a short poll) but never yanks the scroll mid-playback.
   const selId = selection.type === "playlist" ? selection.id : null;
   const selName = selection.type === "artist" ? selection.name : null;
   const selectionKey = `${selection.type}:${selId ?? ""}:${selName ?? ""}`;
@@ -280,7 +256,7 @@ export function TrackList() {
       {/* List */}
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto px-6 pb-6"
+        className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 will-change-transform"
       >
         {libEntries.length === 0 && selection.type === "library" ? (
           <div className="flex flex-col items-center justify-center gap-4 pt-[18vh]">
@@ -316,33 +292,6 @@ export function TrackList() {
             {query.trim() || filter}
             {"\u201d_"}
           </p>
-        ) : isManualDrag ? (
-          <Reorder.Group
-            axis="y"
-            values={displayed}
-            onReorder={(next: LibraryEntry[]) => {
-              const ids = next
-                .map((t) => (t as PlaylistTrack).itemId)
-                .filter((id) => id != null);
-              void reorder(ids);
-            }}
-            as="ul"
-            className="m-0 flex list-none flex-col gap-1.5 p-0"
-            transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 22 }}
-          >
-            {displayed.map((t, i) => (
-              <DragRow
-                key={(t as PlaylistTrack).itemId}
-                track={t as PlaylistTrack}
-                index={i}
-                onPlay={() => playAt(i)}
-                onRemoveFrom={() =>
-                  selection.type === "playlist" &&
-                  void removeFrom(selection.id, (t as PlaylistTrack).itemId)
-                }
-              />
-            ))}
-          </Reorder.Group>
         ) : (
           <ul
             className="m-0 list-none p-0"
@@ -357,7 +306,7 @@ export function TrackList() {
                   data-index={vi.index}
                   data-track-id={e.id}
                   ref={rowVirtualizer.measureElement}
-                  className="list-none pb-1.5"
+                  className="list-none pb-1.5 cv-auto"
                   style={{
                     position: "absolute",
                     top: 0,
@@ -366,7 +315,28 @@ export function TrackList() {
                     transform: `translateY(${vi.start}px)`,
                   }}
                 >
-                  <TrackRow entry={e} index={vi.index} onPlay={() => playAt(vi.index)} />
+                  <TrackRow
+                    entry={e}
+                    index={vi.index}
+                    onPlay={() => playAt(vi.index)}
+                    onMoveUp={
+                      isManualDrag
+                        ? () => moveTrack(vi.index, -1)
+                        : undefined
+                    }
+                    onMoveDown={
+                      isManualDrag
+                        ? () => moveTrack(vi.index, 1)
+                        : undefined
+                    }
+                    isFirst={vi.index === 0}
+                    isLast={vi.index === displayed.length - 1}
+                    onRemoveFrom={
+                      isManualDrag && selection.type === "playlist"
+                        ? () => void removeFrom(selection.id, (e as PlaylistTrack).itemId)
+                        : undefined
+                    }
+                  />
                 </li>
               );
             })}

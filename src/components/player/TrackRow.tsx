@@ -1,6 +1,11 @@
 import {
+  memo,
+  useMemo,
+} from "react";
+import {
   FolderOpen,
-  DotsSixVertical,
+  CaretUp,
+  CaretDown,
   PencilSimple,
   Trash,
   X,
@@ -39,30 +44,35 @@ function EqGlyph() {
   );
 }
 
-export function TrackRow({
+export const TrackRow = memo(function TrackRow({
   entry,
   index,
   onPlay,
-  grip,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
   onRemoveFrom,
 }: {
   entry: LibraryEntry;
   index: number;
   onPlay: () => void;
-  /** Present only while manual-order dragging is enabled (playlist view). */
-  grip?: { onPointerDown: (e: React.PointerEvent) => void };
-  /** Playlist variant: removes the row from the playlist (file untouched). */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  isFirst?: boolean;
+  isLast?: boolean;
   onRemoveFrom?: () => void;
 }) {
   const missing = entry.status === "missing";
   const isActive = usePlayerStore(
     (s) => selectCurrentEntry(s)?.id === entry.id,
   );
+  const thumb = useMemo(() => thumbSrcOf(entry), [entry]);
 
   const onDelete = async () => {
     const ok = await confirm({
       title: "Delete file?",
-      message: `Removes “${entry.title}” from your library and disk.`,
+      message: `Removes "${entry.title}" from your library and disk.`,
       confirmLabel: "Delete",
     });
     if (!ok) return;
@@ -94,15 +104,28 @@ export function TrackRow({
             : "border-line hover:bg-raise"
       }`}
     >
-      {/* Grip (playlist manual order) */}
-      {grip && (
-        <button
-          aria-label="Drag to reorder"
-          onPointerDown={grip.onPointerDown}
-          className="grid h-7 w-5 shrink-0 cursor-grab touch-none place-items-center rounded-card text-dim opacity-0 transition-opacity duration-150 hover:text-mute group-hover:opacity-100 active:cursor-grabbing"
-        >
-          <DotsSixVertical size={13} weight="light" aria-hidden />
-        </button>
+      {/* Reorder arrows (playlist manual order) */}
+      {onMoveUp && onMoveDown && (
+        <div className="flex shrink-0 flex-col opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <button
+            aria-label="Move up"
+            title="Move up"
+            disabled={isFirst}
+            onClick={(ev) => { ev.stopPropagation(); onMoveUp(); }}
+            className="grid h-4 w-5 place-items-center rounded-card text-dim transition-colors duration-150 hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-30"
+          >
+            <CaretUp size={10} weight="bold" aria-hidden />
+          </button>
+          <button
+            aria-label="Move down"
+            title="Move down"
+            disabled={isLast}
+            onClick={(ev) => { ev.stopPropagation(); onMoveDown(); }}
+            className="grid h-4 w-5 place-items-center rounded-card text-dim transition-colors duration-150 hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-30"
+          >
+            <CaretDown size={10} weight="bold" aria-hidden />
+          </button>
+        </div>
       )}
 
       {/* Index / EQ */}
@@ -116,10 +139,12 @@ export function TrackRow({
 
       {/* Thumb */}
       <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-card border border-line bg-raise">
-        {thumbSrcOf(entry) && !missing && (
+        {thumb && !missing && (
           <img
-            src={thumbSrcOf(entry)}
+            src={thumb}
             alt=""
+            width={88}
+            height={88}
             loading="lazy"
             className="h-full w-full object-cover"
           />
@@ -188,7 +213,7 @@ export function TrackRow({
             onClick={async () => {
               const ok = await confirm({
                 title: "Remove from playlist?",
-                message: `Removes “${entry.title}” from this playlist (file stays in your library).`,
+                message: `Removes "${entry.title}" from this playlist (file stays in your library).`,
                 confirmLabel: "Remove",
               });
               if (ok) onRemoveFrom();
@@ -210,4 +235,4 @@ export function TrackRow({
       </div>
     </div>
   );
-}
+});
