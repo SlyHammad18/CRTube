@@ -1,5 +1,5 @@
-import { memo, useEffect } from "react";
-import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "motion/react";
+import { memo, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { CaretUp, Pause, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { fmtDuration } from "../../lib/format";
@@ -60,6 +60,24 @@ export function PlayerBar() {
     if (d > 0) store.getState().seek(frac * d);
   };
 
+  const barRef = useRef<HTMLButtonElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const thumbLeft = useTransform(progress, (v) => {
+    const pct = v * 100;
+    if (pct <= 5) return "0px";
+    if (pct >= 95) return "calc(100% - 10px)";
+    return `calc(${pct}% - 5px)`;
+  });
+
+  const seekToClientX = (clientX: number) => {
+    const el = barRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const d = store.getState().durationS;
+    if (d > 0) store.getState().seek(frac * d);
+  };
+
   return (
     <AnimatePresence>
       {active && !paneOpen && (
@@ -76,19 +94,46 @@ export function PlayerBar() {
         >
           {/* Click-to-seek hairline */}
           <button
+            ref={barRef}
             aria-label="Seek"
             onClick={handleSeek}
-            className="group absolute inset-x-0 top-0 z-10 -mt-px h-3 cursor-pointer"
+            onPointerDown={(e) => {
+              setDragging(true);
+              (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+              seekToClientX(e.clientX);
+            }}
+            onPointerMove={(e) => {
+              if (dragging) seekToClientX(e.clientX);
+            }}
+            onPointerUp={(e) => {
+              setDragging(false);
+              (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+            }}
+            onPointerCancel={() => setDragging(false)}
+            className="group absolute inset-x-0 top-1.5 z-10 h-3 cursor-pointer"
           >
-            <div className="absolute inset-x-0 top-0 h-[2px] bg-line transition-[height] duration-150 group-hover:h-[3px]">
+            {/* Flex wrapper centers the track and knob together, so the knob
+                stays exactly on the line's vertical center. */}
+            <div className="relative flex h-full w-full items-center">
+              <div className="relative h-[2px] w-full rounded-full bg-line transition-[height] duration-150 group-hover:h-[3px]">
+                <motion.div
+                  style={{ scaleX: progress }}
+                  className="h-full w-full origin-left rounded-full bg-ice"
+                />
+              </div>
               <motion.div
-                style={{ scaleX: progress }}
-                className="h-full w-full origin-left bg-ice"
+                aria-hidden
+                style={{ left: thumbLeft }}
+                className={`pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-ice transition-[opacity,scale] duration-150 ${
+                  dragging
+                    ? "scale-100 opacity-100"
+                    : "scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100"
+                }`}
               />
             </div>
           </button>
 
-          <div className="grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-line px-4">
+          <div className="grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
             {/* Left: thumb + title */}
             <div className="flex min-w-0 items-center gap-3">
               <button

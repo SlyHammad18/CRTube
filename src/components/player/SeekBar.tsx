@@ -15,6 +15,7 @@ export function SeekBar() {
   const reduce = useReducedMotion();
   const barRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  const [gripping, setGripping] = useState(false);
   const [showRemaining, setShowRemaining] = useState(true);
 
   const frac =
@@ -39,6 +40,7 @@ export function SeekBar() {
         aria-valuenow={Math.round(currentTimeS)}
         onPointerDown={(e) => {
           dragging.current = true;
+          setGripping(true);
           (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
           seekToClientX(e.clientX);
         }}
@@ -47,7 +49,12 @@ export function SeekBar() {
         }}
         onPointerUp={(e) => {
           dragging.current = false;
+          setGripping(false);
           (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
+          setGripping(false);
         }}
         className="group relative flex h-4 cursor-pointer items-center"
       >
@@ -61,6 +68,15 @@ export function SeekBar() {
             style={{ width: `${frac * 100}%` }}
           />
         </div>
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-ice transition-[opacity,scale] duration-150 ${
+            gripping
+              ? "scale-100 opacity-100"
+              : "scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100"
+          }`}
+          style={{ left: `calc(${frac * 100}% - 5px)` }}
+        />
       </div>
       <div className="mt-1 flex justify-between font-mono text-11 tabular-nums text-mute">
         <span>{fmtDuration(currentTimeS) ?? "0:00"}</span>
