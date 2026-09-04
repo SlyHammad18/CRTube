@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Pause, Play, RepeatOnce, X } from "@phosphor-icons/react";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 import { useUIStore } from "../../stores/ui";
+import { isUrduScript } from "../../lib/format";
 import { setFullscreenSlot } from "../player-bar/mediaSlots";
 import { SeekBar } from "./SeekBar";
 import { VolumeSlider } from "./VolumeSlider";
@@ -153,23 +154,4 @@ export function VideoFullscreen() {
       </div>
     </>
   );
-}
-
-/** True when `text` contains Arabic-script characters (incl. Urdu). Mirrors the
- *  same helper in CaptionDeck so lyric subtitles render in the Urdu Nastaliq
- *  font with correct RTL flow. */
-function isUrduScript(text: string): boolean {
-  for (const ch of text) {
-    const c = ch.codePointAt(0) ?? 0;
-    if (
-      (c >= 0x0600 && c <= 0x06ff) || // Arabic
-      (c >= 0x0750 && c <= 0x077f) || // Arabic Supplement
-      (c >= 0x08a0 && c <= 0x08ff) || // Arabic Extended-A
-      (c >= 0xfb50 && c <= 0xfdff) || // Arabic Presentation Forms-A
-      (c >= 0xfe70 && c <= 0xfeff) // Arabic Presentation Forms-B
-    ) {
-      return true;
-    }
-  }
-  return false;
 }

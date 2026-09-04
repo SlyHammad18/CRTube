@@ -361,6 +361,8 @@ pub fn normalize_search_entry(entry: &Value) -> Option<SearchItem> {
         .or_else(|| value_str(entry, "uploader"))
         .or_else(|| value_str(entry, "channel_name"));
 
+    // Prefer a thumbnail near ~480px wide (enough for the ~210px result cards)
+    // instead of grabbing the largest one — saves ~30–60KB per cell of transfer.
     let thumb_url = entry
         .get("thumbnails")
         .and_then(Value::as_array)
@@ -372,6 +374,7 @@ pub fn normalize_search_entry(entry: &Value) -> Option<SearchItem> {
                     let width = t.get("width").and_then(Value::as_u64).unwrap_or(0);
                     Some((width, url))
                 })
+                .filter(|(w, _)| *w > 0 && *w <= 640)
                 .max_by_key(|(w, _)| *w)
                 .map(|(_, url)| url)
         })
@@ -620,7 +623,7 @@ mod tests {
     #[test]
     fn parses_flat_search_entries_and_skips_junk() {
         let stdout = concat!(
-            r#"{"_type":"url","id":"abc123def45","title":"A Song","channel":"Ch A","duration":214.0,"view_count":1048576,"thumbnails":[{"url":"https://t/low.jpg","width":168},{"url":"https://t/high.jpg","width":1280}]}"#,
+            r#"{"_type":"url","id":"abc123def45","title":"A Song","channel":"Ch A","duration":214.0,"view_count":1048576,"thumbnails":[{"url":"https://t/low.jpg","width":168},{"url":"https://t/med.jpg","width":480},{"url":"https://t/high.jpg","width":1280}]}"#,
             "\n",
             "\n",
             r#"{"_type":"playlist","id":"PLxyz","title":"Some Mixtape"}"#,
@@ -635,7 +638,8 @@ mod tests {
         assert_eq!(item.channel.as_deref(), Some("Ch A"));
         assert_eq!(item.duration_s, Some(214));
         assert_eq!(item.views, Some(1048576));
-        assert_eq!(item.thumb_url.as_deref(), Some("https://t/high.jpg"));
+        // Prefers the largest thumbnail that fits the ~480px display bucket.
+        assert_eq!(item.thumb_url.as_deref(), Some("https://t/med.jpg"));
     }
 
     #[test]

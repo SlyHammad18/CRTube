@@ -1,8 +1,9 @@
-import { motion, useReducedMotion } from "motion/react";
+import { memo } from "react";
 import { CheckCircle, DownloadSimple } from "@phosphor-icons/react";
 import { useLibraryStore } from "../../stores/library";
 import { useSheetStore } from "../../stores/sheet";
 import { fmtCount, fmtDuration } from "../../lib/format";
+import { useReveal } from "../../hooks/useReveal";
 import type { SearchItem } from "../../types/search";
 
 interface ResultCardProps {
@@ -10,25 +11,17 @@ interface ResultCardProps {
   index: number;
 }
 
-export function ResultCard({ item, index }: ResultCardProps) {
+export const ResultCard = memo(function ResultCard({ item, index }: ResultCardProps) {
   const inLibrary = useLibraryStore((s) => s.ids.has(item.videoId));
   const openSheet = useSheetStore((s) => s.openForCard);
-  const reduce = useReducedMotion();
+  const { ref, visible } = useReveal<HTMLDivElement>();
 
   const duration = fmtDuration(item.durationS);
   const views = fmtCount(item.views);
 
   return (
-    <motion.article
-      layout
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: reduce ? 0.01 : 0.3,
-        delay: reduce ? 0 : Math.min(index, 12) * 0.04,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-      whileHover={reduce ? undefined : { y: -3 }}
+    <div
+      ref={ref}
       role="button"
       tabIndex={0}
       aria-label={`Open download options for ${item.title}`}
@@ -39,27 +32,21 @@ export function ResultCard({ item, index }: ResultCardProps) {
           openSheet(item);
         }
       }}
-      className="group relative cursor-pointer overflow-hidden rounded-card border border-line bg-panel shadow-panel transition-[background-color,scale] duration-150 hover:bg-raise active:scale-[0.98]"
+      className={`group relative cursor-pointer overflow-hidden rounded-card border border-line bg-panel shadow-panel transition-[background-color,scale] duration-150 hover:bg-raise active:scale-[0.98] ${
+        visible ? "result-card--visible" : "result-card--hidden"
+      }`}
+      style={{ transitionDelay: `${Math.min(index % 4, 3) * 50}ms` }}
     >
       <div className="relative aspect-video w-full overflow-hidden bg-raise">
         {item.thumbUrl && (
           <img
             src={item.thumbUrl}
             alt=""
+            width={480}
+            height={360}
             loading="lazy"
             className="h-full w-full object-cover opacity-90 transition-opacity duration-150 group-hover:opacity-100"
           />
-        )}
-        {duration && (
-          <span className="absolute bottom-1 right-1 rounded-full bg-void/80 px-1.5 py-0.5 font-mono text-11 text-ink">
-            {duration}
-          </span>
-        )}
-        {inLibrary && (
-          <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-ice px-2 py-0.5 text-11 font-semibold text-void">
-            <CheckCircle size={11} weight="bold" aria-hidden />
-            in library
-          </span>
         )}
         {duration && (
           <span className="absolute bottom-1 right-1 rounded-full bg-void/80 px-1.5 py-0.5 font-mono text-11 text-ink transition-opacity duration-150 group-hover:opacity-0">
@@ -70,6 +57,12 @@ export function ResultCard({ item, index }: ResultCardProps) {
           <DownloadSimple size={13} weight="bold" aria-hidden />
           Download
         </span>
+        {inLibrary && (
+          <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full bg-ice px-2 py-0.5 text-11 font-semibold text-void">
+            <CheckCircle size={11} weight="bold" aria-hidden />
+            in library
+          </span>
+        )}
       </div>
       <div className="p-2.5">
         <h3 className="line-clamp-2 min-h-[2.5em] text-13 leading-snug text-ink">
@@ -80,6 +73,6 @@ export function ResultCard({ item, index }: ResultCardProps) {
           {views && <span className="shrink-0 font-mono text-mute">{views}</span>}
         </p>
       </div>
-    </motion.article>
+    </div>
   );
-}
+});

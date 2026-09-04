@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { motion, useMotionValue, useTransform, useReducedMotion } from "motion/react";
 import { CheckCircle, Warning, X } from "@phosphor-icons/react";
 import { progressMvs, type QueueItem } from "../../stores/queue";
@@ -15,7 +15,7 @@ function queuedPosition(item: QueueItem, items: QueueItem[]): number {
   return 0;
 }
 
-export function QueueRow({ item }: { item: QueueItem }) {
+export const QueueRow = memo(function QueueRow({ item }: { item: QueueItem }) {
   const cancel = useQueueStore((s) => s.cancel);
   const dismiss = useQueueStore((s) => s.dismiss);
   const items = useQueueStore((s) => s.items);
@@ -138,4 +138,4 @@ export function QueueRow({ item }: { item: QueueItem }) {
       </div>
     </motion.div>
   );
-}
+});

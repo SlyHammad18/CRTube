@@ -141,6 +141,17 @@ export function PlaylistsPane() {
   const [playlistsOpen, setPlaylistsOpen] = useState(true);
   const [artistsOpen, setArtistsOpen] = useState(true);
 
+  // Derive stable counts that only update when the underlying data changes.
+  const entryCount = libEntries.length;
+  const totalBytes = useMemo(
+    () => libEntries.reduce((acc, e) => acc + (e.sizeBytes ?? 0), 0),
+    [libEntries],
+  );
+  const favCount = useMemo(
+    () => libEntries.filter((e) => e.favourite).length,
+    [libEntries],
+  );
+
   const artistCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const e of libEntries) {
@@ -159,9 +170,6 @@ export function PlaylistsPane() {
     void useLibraryStore.getState().refresh();
   }, [loaded]);
 
-  const totalBytes = libEntries.reduce((acc, e) => acc + (e.sizeBytes ?? 0), 0);
-  const favCount = libEntries.filter((e) => e.favourite).length;
-
   return (
     <aside className="flex h-full w-[216px] shrink-0 flex-col border-r border-line bg-panel/50">
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -170,7 +178,7 @@ export function PlaylistsPane() {
           label="All Tracks"
           icon={<MusicNote size={14} weight="light" />}
           active={selection.type === "library" && !selection.recent}
-          count={libEntries.length}
+          count={entryCount}
           onClick={() => openLibrary(false)}
         />
         <LibraryItem

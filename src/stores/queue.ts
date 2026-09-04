@@ -61,10 +61,14 @@ export const useQueueStore = create<QueueStore>((set, get) => {
       const updates = pending;
       pending.clear();
       set((s) => {
+        let changed = false;
         const items = s.items.map((i) => {
           const u = updates.get(i.localId);
-          return u ? { ...i, ...u } : i;
+          if (!u) return i;
+          changed = true;
+          return { ...i, ...u };
         });
+        if (!changed) return {};
         return { items, activeCount: countActive(items) };
       });
     });
@@ -72,9 +76,17 @@ export const useQueueStore = create<QueueStore>((set, get) => {
 
   function patchItem(localId: number, part: Partial<QueueItem>) {
     set((s) => {
-      const items = s.items.map((i) =>
-        i.localId === localId ? { ...i, ...part } : i,
-      );
+      let changed = false;
+      const items = s.items.map((i) => {
+        if (i.localId !== localId) return i;
+        // Skip update if all values are identical.
+        const keys = Object.keys(part) as (keyof QueueItem)[];
+        for (const k of keys) {
+          if (i[k] !== part[k]) { changed = true; break; }
+        }
+        return changed ? { ...i, ...part } : i;
+      });
+      if (!changed) return {};
       return { items, activeCount: countActive(items) };
     });
   }

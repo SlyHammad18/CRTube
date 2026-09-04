@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Check, Plus } from "@phosphor-icons/react";
+import { useShallow } from "zustand/react/shallow";
 import { usePlaylistsStore } from "../../stores/playlists";
 import { pushToast } from "../../stores/toast";
 import { confirm } from "../../stores/confirm";
@@ -12,7 +13,14 @@ import { confirm } from "../../stores/confirm";
  */
 export function AddToPlaylistMenu({ downloadId }: { downloadId: number }) {
   const playlists = usePlaylistsStore((s) => s.playlists);
-  const members = usePlaylistsStore((s) => s.members);
+  const membershipForTrack = usePlaylistsStore(useShallow((s) => {
+    const m = s.members;
+    const result: Record<number, number | undefined> = {};
+    for (const playlistId of Object.keys(m)) {
+      result[Number(playlistId)] = m[Number(playlistId)]?.[downloadId];
+    }
+    return result;
+  }));
   const addTo = usePlaylistsStore((s) => s.addTo);
   const removeFrom = usePlaylistsStore((s) => s.removeFrom);
   const create = usePlaylistsStore((s) => s.create);
@@ -97,7 +105,7 @@ export function AddToPlaylistMenu({ downloadId }: { downloadId: number }) {
               </p>
             )}
             {playlists.map((p) => {
-              const itemId = members[p.id]?.[downloadId];
+              const itemId = membershipForTrack[p.id];
               return (
                 <button
                   key={p.id}

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useUIStore } from "./stores/ui";
 import { useToolsStore } from "./stores/tools";
@@ -15,16 +15,34 @@ import { ConfirmModal } from "./components/common/ConfirmModal";
 import { RenameTrackModal } from "./components/player/RenameTrackModal";
 import { FirstRunOverlay } from "./components/setup/FirstRunOverlay";
 import { FormatSheet } from "./components/sheet/FormatSheet";
-import { HomeSearch } from "./components/search/HomeSearch";
-import { DownloadsView } from "./components/downloads/DownloadsView";
-import { LibraryView } from "./components/library/LibraryView";
-import { SettingsView } from "./components/settings/SettingsView";
-import { PlayerTab } from "./components/player/PlayerTab";
 import { LyricsDock } from "./components/player/LyricsDock";
 import { PlayerBar } from "./components/player-bar/PlayerBar";
 import { MediaHost } from "./components/player-bar/MediaHost";
 import { VideoFullscreen } from "./components/player/VideoFullscreen";
 import { PlaceholderView } from "./components/common/PlaceholderView";
+
+// Lazy-load tab views so the initial bundle only carries the player shell.
+const HomeSearch = lazy(() =>
+  import("./components/search/HomeSearch").then((m) => ({ default: m.HomeSearch })),
+);
+const DownloadsView = lazy(() =>
+  import("./components/downloads/DownloadsView").then((m) => ({
+    default: m.DownloadsView,
+  })),
+);
+const LibraryView = lazy(() =>
+  import("./components/library/LibraryView").then((m) => ({
+    default: m.LibraryView,
+  })),
+);
+const SettingsView = lazy(() =>
+  import("./components/settings/SettingsView").then((m) => ({
+    default: m.SettingsView,
+  })),
+);
+const PlayerTab = lazy(() =>
+  import("./components/player/PlayerTab").then((m) => ({ default: m.PlayerTab })),
+);
 
 export default function App() {
   const view = useUIStore((s) => s.view);
@@ -60,7 +78,7 @@ export default function App() {
           <Rail />
           <div className="relative flex min-w-0 flex-1 flex-col">
             <main className="relative min-h-0 flex-1 overflow-hidden">
-              <AnimatePresence mode="wait">
+              <AnimatePresence mode="sync">
               <motion.div
                 key={view}
                 className={`absolute inset-0 flex flex-col ${
@@ -82,6 +100,7 @@ export default function App() {
                     ease: [0.16, 1, 0.3, 1],
                   }}
                 >
+                  <Suspense fallback={null}>
                   {view === "player" ? (
                     <PlayerTab />
                   ) : view === "search" ? (
@@ -95,6 +114,7 @@ export default function App() {
                   ) : (
                     <PlaceholderView view={view} />
                   )}
+                  </Suspense>
                 </motion.div>
               </AnimatePresence>
             </main>

@@ -194,7 +194,7 @@ fn row_to_entry(r: &rusqlite::Row) -> Result<LibraryEntry, rusqlite::Error> {
     })
 }
 
-pub fn list_and_sync_statuses(conn: &Connection) -> Result<Vec<LibraryEntry>, rusqlite::Error> {
+pub fn list_entries(conn: &Connection) -> Result<Vec<LibraryEntry>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT
             d.id, d.video_id, d.url, d.title, d.duration_s, d.kind,
@@ -209,28 +209,61 @@ pub fn list_and_sync_statuses(conn: &Connection) -> Result<Vec<LibraryEntry>, ru
         FROM downloads d
         ORDER BY d.created_at DESC, d.id DESC",
     )?;
-    let mut entries: Vec<LibraryEntry> =
-        stmt.query_map([], row_to_entry)?.collect::<Result<_, _>>()?;
+    let entries = stmt.query_map([], row_to_entry)?.collect::<Result<_, _>>()?;
+    Ok(entries)
+}
 
-    for entry in &mut entries {
+/// Check whether each entry's file still exists, updating statuses in a single
+/// batched transaction. Stat calls run in parallel without holding the DB lock.
+pub fn sync_entry_statuses(
+    conn: &Connection,
+    entries: &mut [LibraryEntry],
+) -> Result<(), rusqlite::Error> {
+    // Parallel existence checks (no DB lock held by the caller's perspective —
+    // callers should release the connection before calling this and re-acquire
+    // afterwards; here we only need `conn` for the final batch write).
+    let existing: Vec<bool> = std::thread::scope(|s| {
+        let handles: Vec<_> = entries
+            .iter()
+            .map(|e| {
+                let path = e.path.clone();
+                s.spawn(move || path.is_empty() || Path::new(&path).exists())
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
+    let mut flush: Vec<(i64, bool)> = Vec::new();
+    for (entry, exists) in entries.iter_mut().zip(existing) {
         if entry.path.is_empty() {
             continue;
         }
-        let exists = std::path::Path::new(&entry.path).exists();
         if entry.status == "done" && !exists {
             entry.status = "missing".to_string();
-            let _ = conn.execute(
-                "UPDATE downloads SET status = 'missing' WHERE id = ?1",
-                params![entry.id],
-            );
+            flush.push((entry.id, false));
         } else if entry.status == "missing" && exists {
             entry.status = "done".to_string();
-            let _ = conn.execute(
-                "UPDATE downloads SET status = 'done' WHERE id = ?1",
-                params![entry.id],
-            );
+            flush.push((entry.id, true));
         }
     }
+
+    if !flush.is_empty() {
+        let tx = conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare("UPDATE downloads SET status = ?2 WHERE id = ?1")?;
+            for (id, status) in &flush {
+                stmt.execute(params![id, if *status { "done" } else { "missing" }])?;
+            }
+        }
+        tx.commit()?;
+    }
+
+    Ok(())
+}
+
+pub fn list_and_sync_statuses(conn: &Connection) -> Result<Vec<LibraryEntry>, rusqlite::Error> {
+    let mut entries = list_entries(conn)?;
+    sync_entry_statuses(conn, &mut entries)?;
     Ok(entries)
 }
 
@@ -452,6 +485,19 @@ pub fn list_playlist_items(
 
 /// Rewrite positions so items play in the given order. IDs belonging to other
 /// playlists are ignored; omitted items keep their relative order at the end.
+/// All playlist memberships as (playlist_id, download_id, item_id) triples —
+/// a single query replacing the N+1 `list_playlist_items` calls used for the
+/// membership checkmark UI.
+pub fn list_playlist_memberships(
+    conn: &Connection,
+) -> Result<Vec<(i64, i64, i64)>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT playlist_id, download_id, id FROM playlist_items ORDER BY playlist_id, id",
+    )?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    rows.collect()
+}
+
 pub fn reorder_playlist_items(
     conn: &Connection,
     playlist_id: i64,

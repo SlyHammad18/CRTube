@@ -66,3 +66,23 @@ export function joinArtists(artists: string[]): string {
     .filter((a) => a.length > 0)
     .join(", ");
 }
+
+/// True when `text` contains Arabic-script characters (incl. all Urdu letters).
+/// Used to render lyric lines in the Nastaliq Urdu font with correct RTL flow.
+const URDU_RANGES: [number, number][] = [
+  [0x0600, 0x06ff], // Arabic
+  [0x0750, 0x077f], // Arabic Supplement
+  [0x08a0, 0x08ff], // Arabic Extended-A
+  [0xfb50, 0xfdff], // Arabic Presentation Forms-A
+  [0xfe70, 0xfeff], // Arabic Presentation Forms-B
+];
+
+export function isUrduScript(text: string): boolean {
+  for (const ch of text) {
+    const c = ch.codePointAt(0) ?? 0;
+    for (const [lo, hi] of URDU_RANGES) {
+      if (c >= lo && c <= hi) return true;
+    }
+  }
+  return false;
+}

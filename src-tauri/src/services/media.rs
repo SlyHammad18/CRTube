@@ -129,6 +129,46 @@ pub fn probe_video_codec(path: &Path, ffprobe: &Path) -> Option<String> {
     }
 }
 
+/// Async version of `probe_video_codec` that doesn't block the Tokio runtime.
+pub async fn probe_video_codec_async(path: PathBuf, ffprobe: PathBuf) -> Option<String> {
+    if !ffprobe.exists() {
+        return None;
+    }
+    let out = TokioCommand::new(&ffprobe)
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name,disposition:attached_pic",
+            "-of",
+            "csv=p=0",
+            &path.to_string_lossy(),
+        ])
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let line = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if line.is_empty() {
+        return None;
+    }
+    let mut parts = line.split(',');
+    let codec = parts.next()?.to_string();
+    let attached_pic = parts.next().unwrap_or("0").trim() == "1";
+    if attached_pic {
+        return None;
+    }
+    if codec.is_empty() {
+        None
+    } else {
+        Some(codec)
+    }
+}
+
 /// Whether a video stream + container can be played directly by WebKitGTK's
 /// `<video>` element. Only H.264 in an MP4/M4V container is reliably decodable
 /// on Linux; AV1/HEVC/ProRes/etc. must be transcoded.

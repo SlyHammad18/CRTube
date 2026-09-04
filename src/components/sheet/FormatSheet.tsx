@@ -16,6 +16,7 @@ import { pushToast } from "../../stores/toast";
 import { ipc, type AudioQualityPref, type DownloadKind } from "../../lib/ipc";
 import { fmtBytes, fmtDuration } from "../../lib/format";
 import { Toggle } from "../common/Toggle";
+import { Thumb } from "../common/Thumb";
 import type { FormatInfo } from "../../types/search";
 
 const CONTAINER_ORDER = ["mp4", "webm", "mkv"] as const;
@@ -356,14 +357,12 @@ export function FormatSheet() {
           transition={
             reduce
               ? { duration: 0.01 }
-              : { type: "spring", stiffness: 380, damping: 34 }
+              : { type: "spring", stiffness: 420, damping: 40 }
           }
         >
           <div className="flex items-start gap-3 border-b border-line p-4">
             <div className="h-[54px] w-[96px] shrink-0 overflow-hidden rounded-card bg-raise">
-              {thumb && (
-                <img src={thumb} alt="" className="h-full w-full object-cover" />
-              )}
+              <Thumb src={thumb} width={96} height={54} className="h-full w-full object-cover" />
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="line-clamp-2 text-15 font-semibold leading-snug text-ink">

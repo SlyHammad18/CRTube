@@ -42,7 +42,7 @@ export function ConfirmModal() {
           initial={reduce ? { opacity: 0 } : { opacity: 0 }}
           animate={reduce ? { opacity: 1 } : { opacity: 1 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0 }}
-          transition={{ duration: reduce ? 0.01 : 0.15 }}
+          transition={{ duration: reduce ? 0.01 : 0.1 }}
         >
           <motion.div
             role="dialog"
@@ -52,11 +52,9 @@ export function ConfirmModal() {
             initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 6 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 6 }}
-            transition={
-              reduce
-                ? { duration: 0.01 }
-                : { type: "spring", stiffness: 320, damping: 26 }
-            }
+            transition={{
+              duration: reduce ? 0.01 : 0.15,
+            }}
             className="w-[min(92vw,360px)] rounded-card border border-line bg-panel p-4 shadow-panel"
           >
             <h2 id="confirm-title" className="text-15 font-semibold text-ink">

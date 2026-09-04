@@ -122,21 +122,19 @@ export function LyricsSearchModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: reduce ? 0.01 : 0.15 }}
+          transition={{ duration: reduce ? 0.01 : 0.1 }}
         >
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={mode === "edit" ? "Change lyrics" : "Find lyrics"}
             onClick={(e) => e.stopPropagation()}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 6 }}
-            animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 6 }}
-            transition={
-              reduce
-                ? { duration: 0.01 }
-                : { type: "spring", stiffness: 320, damping: 26 }
-            }
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+            transition={{
+              duration: reduce ? 0.01 : 0.15,
+            }}
             className="flex max-h-[80vh] w-[min(92vw,440px)] flex-col rounded-card border border-line bg-panel shadow-panel"
           >
             <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">

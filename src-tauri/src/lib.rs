@@ -47,14 +47,12 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
         .initialization_script(
             "(function(){\
                var block=function(e){e.preventDefault();e.stopPropagation();};\
-               document.addEventListener('contextmenu',block,true);\
                document.addEventListener('copy',block,true);\
                document.addEventListener('cut',block,true);\
                document.addEventListener('selectstart',block,true);\
                document.addEventListener('keydown',function(e){\
                  var k=e.key,m=e.metaKey,c=e.ctrlKey,s=e.shiftKey,a=e.altKey;\
-                 if(k==='F12'||k==='F5')return block(e);\
-                 if((c||m)&&s&&(k==='I'||k==='J'||k==='C'))return block(e);\
+                 if(k==='F5')return block(e);\
                  if((c||m)&&k==='u')return block(e);\
                  if((c||m)&&!s&&!a&&(k==='c'||k==='x'))return block(e);\
                },true);\
@@ -128,6 +126,7 @@ pub fn run() {
             commands::player::add_playlist_item,
             commands::player::remove_playlist_item,
             commands::player::list_playlist_items,
+            commands::player::list_playlist_memberships,
             commands::player::reorder_playlist_items,
             commands::player::fetch_lyrics,
             commands::player::search_lyrics,

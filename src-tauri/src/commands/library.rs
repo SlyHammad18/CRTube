@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use rusqlite::params;
 use serde::Deserialize;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
@@ -51,9 +52,63 @@ pub fn add_entry(
 }
 
 #[tauri::command]
-pub fn list_library(db: State<'_, Arc<Db>>) -> Result<Vec<LibraryEntry>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::list_and_sync_statuses(&conn).map_err(|e| e.to_string())
+pub async fn list_library(db: State<'_, Arc<Db>>) -> Result<Vec<LibraryEntry>, String> {
+    let db = Arc::clone(&db);
+    // Query the rows (lock held briefly), then run parallel existence checks
+    // off the DB lock, then batch-update missing/done statuses.
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<LibraryEntry>, String> {
+        let rows: Vec<LibraryEntry> = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            db::list_entries(&conn).map_err(|e| e.to_string())?
+        };
+
+        // Fast non-blocking stat checks in parallel.
+        let exists: Vec<bool> = std::thread::scope(|s| {
+            let handles: Vec<_> = rows
+                .iter()
+                .map(|e| {
+                    let path = e.path.clone();
+                    s.spawn(move || path.is_empty() || std::path::Path::new(&path).exists())
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+
+        // Update statuses as a single batch.
+        let mut entries = rows;
+        let mut flush: Vec<(i64, &'static str)> = Vec::new();
+        for (entry, &is_present) in entries.iter_mut().zip(exists.iter()) {
+            if entry.path.is_empty() {
+                continue;
+            }
+            if entry.status == "done" && !is_present {
+                entry.status = "missing".to_string();
+                flush.push((entry.id, "missing"));
+            } else if entry.status == "missing" && is_present {
+                entry.status = "done".to_string();
+                flush.push((entry.id, "done"));
+            }
+        }
+        if !flush.is_empty() {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let tx = conn
+                .unchecked_transaction()
+                .map_err(|e| e.to_string())?;
+            {
+                let mut stmt = tx
+                    .prepare("UPDATE downloads SET status = ?2 WHERE id = ?1")
+                    .map_err(|e| e.to_string())?;
+                for (id, status) in &flush {
+                    stmt.execute(params![id, status]).map_err(|e| e.to_string())?;
+                }
+            }
+            tx.commit().map_err(|e| e.to_string())?;
+        }
+
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

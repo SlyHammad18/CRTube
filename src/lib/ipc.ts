@@ -102,6 +102,8 @@ export const ipc = {
     invoke<void>("remove_playlist_item", { itemId }),
   listPlaylistItems: (playlistId: number) =>
     invoke<PlaylistTrack[]>("list_playlist_items", { playlistId }),
+  listPlaylistMemberships: () =>
+    invoke<[number, number, number][]>("list_playlist_memberships"),
   reorderPlaylistItems: (playlistId: number, itemIds: number[]) =>
     invoke<void>("reorder_playlist_items", { playlistId, itemIds }),
 

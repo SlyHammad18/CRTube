@@ -84,6 +84,15 @@ pub fn list_playlist_items(
     db::list_playlist_items(&conn, playlist_id).map_err(|e| e.to_string())
 }
 
+/// All playlist memberships in one query (playlist_id, download_id, item_id).
+#[tauri::command]
+pub fn list_playlist_memberships(
+    db: State<'_, Arc<Db>>,
+) -> Result<Vec<(i64, i64, i64)>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::list_playlist_memberships(&conn).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn reorder_playlist_items(
     db: State<'_, Arc<Db>>,
@@ -96,25 +105,28 @@ pub fn reorder_playlist_items(
 
 /// Loopback stream URL for a download; `Ok(None)` when the row or file is gone.
 #[tauri::command]
-pub fn media_url(
+pub async fn media_url(
     app: AppHandle,
     server: State<'_, media::MediaServer>,
     db: State<'_, Arc<Db>>,
     id: i64,
 ) -> Result<Option<String>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let row: Option<(String, String)> = conn
-        .query_row(
-            "SELECT path, kind FROM downloads WHERE id = ?1",
-            [id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .ok();
-    let (path, kind) = match row
-        .filter(|(p, _)| !p.trim().is_empty() && Path::new(p.trim()).is_file())
-    {
-        Some((p, k)) => (p, k),
-        None => return Ok(None),
+    // Extract data from under the lock so the MutexGuard is dropped before any await.
+    let (path, kind) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let row: Option<(String, String)> = conn
+            .query_row(
+                "SELECT path, kind FROM downloads WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        match row
+            .filter(|(p, _)| !p.trim().is_empty() && Path::new(p.trim()).is_file())
+        {
+            Some((p, k)) => (p, k),
+            None => return Ok(None),
+        }
     };
     // Only video can need transcoding; audio (incl. files with embedded cover
     // art, which ffprobe reports as a `video` stream) always passes through.
@@ -132,7 +144,7 @@ pub fn media_url(
     // transcoded H.264/AAC copy instead so playback (and controls) actually work.
     let needs_transcode = if let Ok(bin) = installer::bin_dir(&app) {
         let ffprobe = installer::ffprobe_path(&bin);
-        match media::probe_video_codec(path_ref, &ffprobe) {
+        match media::probe_video_codec_async(path_ref.to_path_buf(), ffprobe).await {
             Some(codec) => !media::is_web_playable_video(&codec, &container),
             None => false, // audio-only, or probe failed -> passthrough
         }

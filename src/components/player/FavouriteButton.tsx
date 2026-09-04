@@ -1,7 +1,8 @@
+import { memo } from "react";
 import { Heart } from "@phosphor-icons/react";
 import { useLibraryStore } from "../../stores/library";
 
-export function FavouriteButton({
+export const FavouriteButton = memo(function FavouriteButton({
   entryId,
   size = 16,
   className = "",
@@ -11,7 +12,7 @@ export function FavouriteButton({
   className?: string;
 }) {
   const favourite = useLibraryStore(
-    (s) => s.entries.find((e) => e.id === entryId)?.favourite ?? false,
+    (s) => s.entryById.get(entryId)?.favourite ?? false,
   );
   const setFavourite = useLibraryStore((s) => s.setFavourite);
 
@@ -33,4 +34,4 @@ export function FavouriteButton({
       <Heart size={size} weight={favourite ? "fill" : "light"} aria-hidden />
     </button>
   );
-}
+});

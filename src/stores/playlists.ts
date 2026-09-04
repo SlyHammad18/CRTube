@@ -38,18 +38,12 @@ interface PlaylistsState {
 async function buildMembership(
   playlists: Playlist[],
 ): Promise<Membership> {
-  const entries = await Promise.all(
-    playlists.map(async (p) => {
-      try {
-        return [p.id, await ipc.listPlaylistItems(p.id)] as const;
-      } catch {
-        return [p.id, [] as PlaylistTrack[]] as const;
-      }
-    }),
-  );
+  const rows = await ipc.listPlaylistMemberships();
   const map: Membership = {};
-  for (const [id, tracks] of entries) {
-    map[id] = Object.fromEntries(tracks.map((t) => [t.id, t.itemId]));
+  for (const p of playlists) map[p.id] = {};
+  for (const [playlistId, downloadId, itemId] of rows) {
+    if (!map[playlistId]) continue;
+    map[playlistId][downloadId] = itemId;
   }
   return map;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useSearchStore } from "../../stores/search";
 import { useToolsStore } from "../../stores/tools";
@@ -14,39 +15,30 @@ function HeroWordmark({ size }: { size: "lg" | "sm" }) {
       : "text-24";
   const idle = size === "lg";
 
-  const burn = !idle || reduce ? { opacity: 0.08 } : { opacity: [0.08, 0.72, 0.08] };
-  const burnAlt = !idle || reduce ? { opacity: 0.06 } : { opacity: [0.06, 0.65, 0.06] };
-  const loop = { duration: 4.5, repeat: Infinity, ease: "easeInOut" as const };
-
   return (
-    <motion.div
-      className="relative select-none"
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reduce ? 0.01 : 0.35, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <motion.span
+    <div className="relative select-none opacity-100">
+      <span
         aria-hidden
-        className={`absolute inset-0 font-display font-bold tracking-tight text-ice ${cls}`}
-        style={{ x: 2.2 }}
-        animate={burn}
-        transition={loop}
+        className={`absolute inset-0 font-display font-bold tracking-tight text-ice ${cls} ${
+          idle && !reduce ? "animate-crt-burn" : ""
+        }`}
+        style={{ transform: "translateX(2.2px)" }}
       >
         CRTUBE
-      </motion.span>
-      <motion.span
+      </span>
+      <span
         aria-hidden
-        className={`absolute inset-0 font-display font-bold tracking-tight text-[#38e0c8] ${cls}`}
-        style={{ x: -2.2 }}
-        animate={burnAlt}
-        transition={loop}
+        className={`absolute inset-0 font-display font-bold tracking-tight text-[#38e0c8] ${cls} ${
+          idle && !reduce ? "animate-crt-burn-alt" : ""
+        }`}
+        style={{ transform: "translateX(-2.2px)" }}
       >
         CRTUBE
-      </motion.span>
+      </span>
       <span className={`relative font-display font-bold tracking-tight text-ink ${cls}`}>
         CRTUBE
       </span>
-    </motion.div>
+    </div>
   );
 }
 
@@ -151,21 +143,37 @@ function RecentChips() {
 
 function ResultsGrid() {
   const items = useSearchStore((s) => s.items);
-  return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-4">
-      {items.map((item, i) => (
-        <ResultCard key={item.videoId} item={item} index={i % 20} />
-      ))}
-    </div>
-  );
-}
-
-function InfiniteScrollSentinel() {
-  const sentinelRef = useRef<HTMLDivElement>(null);
   const loadMore = useSearchStore((s) => s.loadMore);
-  const hasMore = useSearchStore((s) => s.hasMore);
   const status = useSearchStore((s) => s.status);
+  const hasMore = useSearchStore((s) => s.hasMore);
 
+  const parentRef = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(1);
+  const GAP = 16;
+
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      setCols(Math.max(1, Math.floor((w + GAP) / (210 + GAP))));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [GAP]);
+
+  const rowCount = Math.ceil(items.length / cols);
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 236,
+    overscan: 4,
+  });
+
+  // Infinite scroll sentinel inside the scroll window.
+  const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !hasMore || status === "loadingMore" || status === "searching") {
@@ -181,13 +189,45 @@ function InfiniteScrollSentinel() {
     return () => observer.disconnect();
   }, [hasMore, status, loadMore]);
 
-  if (!hasMore) return null;
   return (
-    <div ref={sentinelRef} className="grid place-items-center py-6">
-      {status === "loadingMore" ? (
-        <span className="font-mono text-12 text-mute">loading more…</span>
-      ) : (
-        <span className="font-mono text-12 text-mute">scroll for more ↓</span>
+    <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto pb-6 will-change-transform">
+      {items.length > 0 && (
+        <div
+          style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}
+        >
+          {rowVirtualizer.getVirtualItems().map((vi) => {
+            const start = vi.index * cols;
+            const rowItems = items.slice(start, start + cols);
+            return (
+              <div
+                key={vi.key}
+                ref={rowVirtualizer.measureElement}
+                className="absolute left-0 top-0 grid w-full gap-4 pb-4 cv-auto"
+                style={{
+                  transform: `translateY(${vi.start}px)`,
+                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                }}
+              >
+                {rowItems.map((item, ri) => (
+                  <ResultCard
+                    key={item.videoId}
+                    item={item}
+                    index={(start + ri) % 20}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {hasMore && (
+        <div ref={sentinelRef} className="grid place-items-center py-6">
+          {status === "loadingMore" ? (
+            <span className="font-mono text-12 text-mute">loading more…</span>
+          ) : (
+            <span className="font-mono text-12 text-mute">scroll for more ↓</span>
+          )}
+        </div>
       )}
     </div>
   );
@@ -206,7 +246,7 @@ export function HomeSearch() {
   return (
     <div
       className={`mx-auto flex w-full max-w-[960px] flex-col ${
-        idle ? "flex-1 items-center justify-center pb-[6vh]" : ""
+        idle ? "flex-1 items-center justify-center pb-[6vh]" : "min-h-0 flex-1"
       }`}
     >
       {idle ? (
@@ -236,9 +276,8 @@ export function HomeSearch() {
           )}
 
           {items.length > 0 && (
-            <div className="mt-10">
+            <div className="mt-10 flex min-h-0 flex-1 flex-col">
               <ResultsGrid />
-              <InfiniteScrollSentinel />
             </div>
           )}
 

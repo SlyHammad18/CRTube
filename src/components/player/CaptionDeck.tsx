@@ -4,27 +4,10 @@ import { ArrowsOut, Minus, PencilSimple, Plus } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
 import { useUIStore } from "../../stores/ui";
 import { activeIndex } from "../../lib/lrc";
+import { isUrduScript } from "../../lib/format";
 import type { LyricsState } from "../../hooks/useLyrics";
 import type { LibraryEntry } from "../../types/library";
 import { LyricsSearchModal } from "./LyricsSearchModal";
-
-/// True when `text` contains Arabic-script characters (incl. all Urdu letters).
-/// Used to render lyric lines in the Nastaliq Urdu font with correct RTL flow.
-function isUrduScript(text: string): boolean {
-  for (const ch of text) {
-    const c = ch.codePointAt(0) ?? 0;
-    if (
-      (c >= 0x0600 && c <= 0x06ff) || // Arabic
-      (c >= 0x0750 && c <= 0x077f) || // Arabic Supplement
-      (c >= 0x08a0 && c <= 0x08ff) || // Arabic Extended-A
-      (c >= 0xfb50 && c <= 0xfdff) || // Arabic Presentation Forms-A
-      (c >= 0xfe70 && c <= 0xfeff) // Arabic Presentation Forms-B
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /// Per-press nudge for the lyrics sync offset (ms).
 const LYRICS_OFFSET_STEP_MS = 50;

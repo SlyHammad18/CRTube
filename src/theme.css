@@ -177,6 +177,54 @@
   }
 }
 
+/* CRT wordmark glow — GPU-composited opacity pulse */
+@keyframes crt-burn {
+  0%, 100% { opacity: 0.08; }
+  50% { opacity: 0.72; }
+}
+
+@keyframes crt-burn-alt {
+  0%, 100% { opacity: 0.06; }
+  50% { opacity: 0.65; }
+}
+
+.animate-crt-burn {
+  animation: crt-burn 4.5s ease-in-out infinite;
+  will-change: opacity;
+}
+
+.animate-crt-burn-alt {
+  animation: crt-burn-alt 4.5s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* Content-visibility for offscreen virtualized items (browser skips painting) */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+
+/* Result card reveal — GPU-composited only (opacity + transform) */
+.result-card--hidden {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.result-card--visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s var(--ease-console), transform 0.3s var(--ease-console);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-card--hidden,
+  .result-card--visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "motion/react";
 import { CaretUp, Pause, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -9,6 +9,17 @@ import { setSecondarySlot } from "./mediaSlots";
 import { VolumeSlider } from "../player/VolumeSlider";
 import { SpeedMenu } from "../player/SpeedMenu";
 import { FavouriteButton } from "../player/FavouriteButton";
+
+/** Time readout isolated so the rest of the bar doesn't re-render per tick. */
+const TimeReadout = memo(function TimeReadout() {
+  const currentTimeS = usePlayerStore((s) => s.currentTimeS);
+  const durationS = usePlayerStore((s) => s.durationS);
+  return (
+    <span className="hidden shrink-0 font-mono text-12 tabular-nums text-mute md:block">
+      {fmtDuration(currentTimeS) ?? "0:00"} / {fmtDuration(durationS) ?? "0:00"}
+    </span>
+  );
+});
 
 /**
  * Global player bar (DESIGN §4.9) — persistent across every view once the
@@ -23,8 +34,6 @@ export function PlayerBar() {
   const paneOpen = useUIStore((s) => s.nowPlayingOpen && s.view === "player");
   const entry = usePlayerStore(selectCurrentEntry);
   const playing = usePlayerStore((s) => s.playing);
-  const currentTimeS = usePlayerStore((s) => s.currentTimeS);
-  const durationS = usePlayerStore((s) => s.durationS);
   const shuffle = usePlayerStore((s) => s.shuffle);
   const repeat = usePlayerStore((s) => s.repeat);
 
@@ -159,9 +168,7 @@ export function PlayerBar() {
 
             {/* Right: time, volume, expand */}
             <div className="flex shrink-0 items-center justify-end gap-2.5">
-              <span className="hidden shrink-0 font-mono text-12 tabular-nums text-mute md:block">
-                {fmtDuration(currentTimeS) ?? "0:00"} / {fmtDuration(durationS) ?? "0:00"}
-              </span>
+              <TimeReadout />
               <div className="h-4 w-px bg-line" />
               <IconBtn
                 label="Lyrics"
@@ -189,7 +196,15 @@ function thumbSrc(entry: ReturnType<typeof selectCurrentEntry>) {
   const src = entry.thumbUrl.startsWith("http")
     ? entry.thumbUrl
     : convertFileSrc(entry.thumbUrl);
-  return <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" />;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={88}
+      height={88}
+      className="absolute inset-0 h-full w-full object-cover"
+    />
+  );
 }
 
 function IconBtn({

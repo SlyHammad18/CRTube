@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -100,8 +100,15 @@ function EntryActions({ entry }: { entry: LibraryEntry }) {
   );
 }
 
-function EntryCard({ entry, animated = true }: { entry: LibraryEntry; animated?: boolean }) {
+const EntryCard = memo(function EntryCard({
+  entry,
+  animated = false,
+}: {
+  entry: LibraryEntry;
+  animated?: boolean;
+}) {
   const missing = entry.status === "missing";
+  const thumb = useMemo(() => thumbSrc(entry), [entry]);
   const Wrapper = animated ? motion.article : "article";
   return (
     <Wrapper
@@ -119,10 +126,12 @@ function EntryCard({ entry, animated = true }: { entry: LibraryEntry; animated?:
       }`}
     >
       <div className="relative aspect-video w-full overflow-hidden bg-raise">
-        {thumbSrc(entry) && !missing && (
+        {thumb && !missing && (
           <img
-            src={thumbSrc(entry)}
+            src={thumb}
             alt=""
+            width={480}
+            height={360}
             loading="lazy"
             className="h-full w-full object-cover opacity-90"
           />
@@ -158,10 +167,17 @@ function EntryCard({ entry, animated = true }: { entry: LibraryEntry; animated?:
       </div>
     </Wrapper>
   );
-}
+});
 
-function EntryRow({ entry, animated = true }: { entry: LibraryEntry; animated?: boolean }) {
+const EntryRow = memo(function EntryRow({
+  entry,
+  animated = false,
+}: {
+  entry: LibraryEntry;
+  animated?: boolean;
+}) {
   const missing = entry.status === "missing";
+  const thumb = useMemo(() => thumbSrc(entry), [entry]);
   const date = new Date(entry.createdAt * 1000).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -183,8 +199,8 @@ function EntryRow({ entry, animated = true }: { entry: LibraryEntry; animated?: 
       }`}
     >
       <div className="relative h-9 w-16 shrink-0 overflow-hidden rounded-card bg-raise">
-        {thumbSrc(entry) && !missing && (
-          <img src={thumbSrc(entry)} alt="" loading="lazy" className="h-full w-full object-cover" />
+        {thumb && !missing && (
+          <img src={thumb} alt="" width={160} height={90} loading="lazy" className="h-full w-full object-cover" />
         )}
       </div>
       <div className="min-w-0 flex-1">
@@ -207,7 +223,7 @@ function EntryRow({ entry, animated = true }: { entry: LibraryEntry; animated?: 
       </div>
     </Wrapper>
   );
-}
+});
 
 function NoMatches() {
   const searchQuery = useLibraryStore((s) => s.searchQuery);
@@ -403,8 +419,8 @@ function VirtualResults({
               ref={virtualizer.measureElement}
               className={
                 density === "grid"
-                  ? "absolute left-0 top-0 grid w-full gap-4 pb-4"
-                  : "absolute left-0 top-0 flex w-full flex-col gap-2 pb-2"
+                  ? "absolute left-0 top-0 grid w-full gap-4 pb-4 cv-auto"
+                  : "absolute left-0 top-0 flex w-full flex-col gap-2 pb-2 cv-auto"
               }
               style={{
                 transform: `translateY(${vi.start}px)`,

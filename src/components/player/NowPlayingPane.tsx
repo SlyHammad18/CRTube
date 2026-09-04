@@ -75,6 +75,8 @@ export function NowPlayingPane() {
           <img
             src={thumb}
             alt=""
+            width={320}
+            height={320}
             className="absolute inset-0 h-full w-full rounded-card object-cover"
           />
         ) : (
