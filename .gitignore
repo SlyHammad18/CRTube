@@ -10,3 +10,4 @@ ISSUES.md
 .agents/
 skills-lock.json
 .opencode
+.playwright-mcp

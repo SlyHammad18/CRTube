@@ -45,7 +45,7 @@ export function LyricsDock() {
           <X size={18} weight="light" aria-hidden />
         </button>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col">
         <CaptionDeck entry={entry} lyrics={lyrics} />
       </div>
     </div>
