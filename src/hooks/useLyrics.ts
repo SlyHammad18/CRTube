@@ -21,12 +21,16 @@ export interface LyricsState {
   artistName: string;
   cached: boolean;
   override: boolean;
+  /** User-tuned display sync offset in ms (positive = lyrics lag audio). */
+  offsetMs: number;
   /** LRCLIB search — returns candidate matches so the user can pick one. */
   search: (query: string) => Promise<LyricsCandidate[]>;
   /** Persist a chosen/edited lyric set for this track (sticky per-song override). */
   apply: (payload: LyricsPayload) => void;
   /** Drop any stored override for this track so auto-fetch resumes. */
   clearLyrics: (videoId: string) => void;
+  /** Tune the display sync offset (ms) for this track — persisted per-song. */
+  setOffset: (ms: number) => void;
 }
 
 const IDLE: LyricsState = {
@@ -38,9 +42,11 @@ const IDLE: LyricsState = {
   artistName: "",
   cached: false,
   override: false,
+  offsetMs: 0,
   search: async () => [],
   apply: () => {},
   clearLyrics: () => {},
+  setOffset: () => {},
 };
 
 interface Resolved {
@@ -51,10 +57,12 @@ interface Resolved {
   trackName: string;
   artistName: string;
   cached: boolean;
+  offsetMs: number;
 }
 
 function resolve(p: LyricsPayload): Resolved {
   const synced = p.synced ? parseLrc(p.synced) : [];
+  const offsetMs = p.offsetMs ?? 0;
   if (p.instrumental) {
     return {
       status: "instrumental",
@@ -64,6 +72,7 @@ function resolve(p: LyricsPayload): Resolved {
       trackName: p.trackName,
       artistName: p.artistName,
       cached: p.cached,
+      offsetMs,
     };
   }
   if (synced.length > 0) {
@@ -75,6 +84,7 @@ function resolve(p: LyricsPayload): Resolved {
       trackName: p.trackName,
       artistName: p.artistName,
       cached: p.cached,
+      offsetMs,
     };
   }
   if (p.plain) {
@@ -90,6 +100,7 @@ function resolve(p: LyricsPayload): Resolved {
       trackName: p.trackName,
       artistName: p.artistName,
       cached: p.cached,
+      offsetMs,
     };
   }
   return {
@@ -100,6 +111,7 @@ function resolve(p: LyricsPayload): Resolved {
     trackName: p.trackName,
     artistName: p.artistName,
     cached: p.cached,
+    offsetMs,
   };
 }
 
@@ -163,12 +175,29 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
         .setLyrics(id, payload)
         .then(() => {
           if (reqId.current !== myReq) return;
-          setState({ ...IDLE, ...resolve(payload), override: true });
+          // Keep the user's tuned offset — changing the lyric text shouldn't reset it.
+          setState((s) => ({ ...IDLE, ...resolve(payload), override: true, offsetMs: s.offsetMs }));
         })
         .catch(() => {
           if (reqId.current !== myReq) return;
           setState({ ...IDLE, status: "error", override: true });
         });
+    },
+    [entry],
+  );
+
+  const setOffset = useCallback(
+    (ms: number) => {
+      if (!entry) return;
+      const clamped = Math.max(-100000, Math.min(100000, Math.round(ms)));
+      const myReq = reqId.current;
+      ipc
+        .setLyricsOffset(entry.videoId, clamped)
+        .then(() => {
+          if (reqId.current !== myReq) return;
+          setState((s) => ({ ...s, offsetMs: clamped }));
+        })
+        .catch(() => {});
     },
     [entry],
   );
@@ -187,5 +216,5 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
     [entry, load],
   );
 
-  return { ...state, search, apply, clearLyrics };
+  return { ...state, search, apply, clearLyrics, setOffset };
 }

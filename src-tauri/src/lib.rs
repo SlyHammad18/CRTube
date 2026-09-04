@@ -108,6 +108,7 @@ pub fn run() {
             commands::player::search_lyrics,
             commands::player::set_lyrics,
             commands::player::clear_lyrics,
+            commands::player::set_lyrics_offset,
             commands::player::media_url
         ])
         .run(tauri::generate_context!())

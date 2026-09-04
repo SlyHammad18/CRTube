@@ -52,7 +52,7 @@ export function NowPlayingPane() {
 
   if (!entry) {
     return (
-      <aside className="flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-hidden border-l border-line bg-panel/50 p-4">
+    <aside className="group flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-hidden border-l border-line bg-panel/50 p-4">
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
           <div className="grid aspect-square w-40 place-items-center rounded-card border border-line bg-raise">
             <MusicNotes size={32} weight="light" className="text-dim" aria-hidden />
@@ -67,7 +67,7 @@ export function NowPlayingPane() {
   }
 
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-hidden border-l border-line bg-panel/50 p-4">
+    <aside className="group flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-hidden border-l border-line bg-panel/50 p-4">
       {/* Artwork frame — poster (cached thumbnail) behind the portaled <video>
           for video tracks, so the frame is never an empty black box. */}
       <div className="relative aspect-square w-full shrink-0 rounded-card border border-line bg-raise">
@@ -128,19 +128,7 @@ export function NowPlayingPane() {
       {lyricsFullscreen ? (
         <UpNext />
       ) : (
-        <div className="group relative flex min-h-0 flex-1 flex-col">
-          {lyrics.status === "loaded" && (
-            <button
-              aria-label="Expand lyrics"
-              title="Expand lyrics"
-              onClick={() => useUIStore.getState().setLyricsFullscreen(true)}
-              className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-card bg-void/80 text-mute opacity-0 transition-opacity duration-150 hover:bg-raise hover:text-ice focus-visible:opacity-100 group-hover:opacity-100 active:scale-[0.98]"
-            >
-              <ArrowsOut size={16} weight="light" aria-hidden />
-            </button>
-          )}
-          <CaptionDeck entry={entry} lyrics={lyrics} />
-        </div>
+        <CaptionDeck entry={entry} lyrics={lyrics} />
       )}
 
       <SeekBar />

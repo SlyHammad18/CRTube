@@ -100,6 +100,7 @@ export function LyricsSearchModal({
       trackName: c.trackName,
       artistName: c.artistName,
       cached: false,
+      offsetMs: 0,
     });
     onClose();
   };

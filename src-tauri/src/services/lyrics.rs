@@ -17,6 +17,10 @@ pub struct LyricsPayload {
     pub track_name: String,
     pub artist_name: String,
     pub cached: bool,
+    /// User-tuned display sync offset in milliseconds (positive = lyrics lag audio).
+    /// Stored in a sidecar file so it survives lyric-text changes and restarts.
+    #[serde(default)]
+    pub offset_ms: i64,
 }
 
 /// A single LRCLIB search hit surfaced to the UI so the user can pick the best
@@ -151,6 +155,29 @@ pub fn cached_path(dir: &Path, video_id: &str, synced: bool) -> PathBuf {
     dir.join(format!("{video_id}.{}", if synced { "lrc" } else { "txt" }))
 }
 
+/// `{app_data}/lyrics/{video_id}.offset` holds the user-tuned sync offset (ms) as
+/// a plain integer, kept separate from the lyric text so adjusting one never
+/// clobbers the other and the offset persists across lyric changes/restarts.
+fn offset_path(dir: &Path, video_id: &str) -> PathBuf {
+    dir.join(format!("{video_id}.offset"))
+}
+
+fn read_offset(dir: &Path, video_id: &str) -> i64 {
+    match std::fs::read_to_string(offset_path(dir, video_id)) {
+        Ok(s) => s.trim().parse::<i64>().unwrap_or(0),
+        Err(_) => 0,
+    }
+}
+
+fn write_offset(dir: &Path, video_id: &str, ms: i64) -> Option<()> {
+    std::fs::create_dir_all(dir).ok()?;
+    let dest = offset_path(dir, video_id);
+    let tmp = dir.join(format!(".{video_id}.offset.tmp"));
+    std::fs::write(&tmp, ms.to_string()).ok()?;
+    std::fs::rename(&tmp, &dest).ok()?;
+    Some(())
+}
+
 fn read_cache(dir: &Path, video_id: &str) -> Option<LyricsPayload> {
     for flag in [true, false] {
         let body = match std::fs::read_to_string(cached_path(dir, video_id, flag)) {
@@ -169,6 +196,7 @@ fn read_cache(dir: &Path, video_id: &str) -> Option<LyricsPayload> {
             track_name: String::new(),
             artist_name: String::new(),
             cached: true,
+            offset_ms: read_offset(dir, video_id),
         });
     }
     None
@@ -285,6 +313,7 @@ pub async fn fetch_lyrics(
         track_name: t.track_name,
         artist_name: t.artist_name,
         cached: false,
+        offset_ms: read_offset(&dir, video_id),
     };
     write_cache(&dir, video_id, &payload);
     Ok(Some(payload))
@@ -339,7 +368,16 @@ pub fn set_lyrics(
     Ok(())
 }
 
+/// Persist a user-tuned display sync offset (ms) for a track in its sidecar file.
+/// Kept separate from the lyric text so it survives lyric changes and restarts.
+pub fn set_offset(app: &AppHandle, video_id: &str, ms: i64) -> Result<(), String> {
+    let dir = lyrics_dir(app).ok_or("cannot resolve app data dir")?;
+    write_offset(&dir, video_id, ms).ok_or("failed to write lyrics offset")?;
+    Ok(())
+}
+
 /// Drop any stored override for a track so auto-fetch resumes ("Reset to automatic").
+/// Also clears the tuned sync offset sidecar.
 pub fn clear_lyrics(app: &AppHandle, video_id: &str) -> Result<(), String> {
     let dir = lyrics_dir(app).ok_or("cannot resolve app data dir")?;
     for flag in [true, false] {
@@ -347,6 +385,10 @@ pub fn clear_lyrics(app: &AppHandle, video_id: &str) -> Result<(), String> {
         if p.exists() {
             let _ = std::fs::remove_file(&p);
         }
+    }
+    let off = offset_path(&dir, video_id);
+    if off.exists() {
+        let _ = std::fs::remove_file(&off);
     }
     Ok(())
 }
@@ -451,6 +493,7 @@ mod tests {
             track_name: "T".into(),
             artist_name: "A".into(),
             cached: false,
+            offset_ms: 0,
         };
         write_cache(&dir, "vid1", &synced).unwrap();
         let hit = read_cache(&dir, "vid1").unwrap();
@@ -465,6 +508,7 @@ mod tests {
             track_name: String::new(),
             artist_name: String::new(),
             cached: false,
+            offset_ms: 0,
         };
         write_cache(&dir, "vid2", &plain).unwrap();
         assert_eq!(read_cache(&dir, "vid2").unwrap().plain.as_deref(), Some("just words"));
@@ -477,6 +521,7 @@ mod tests {
             track_name: String::new(),
             artist_name: String::new(),
             cached: false,
+            offset_ms: 0,
         };
         write_cache(&dir, "vid3", &inst).unwrap();
         let hit = read_cache(&dir, "vid3").unwrap();

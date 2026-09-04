@@ -88,6 +88,8 @@ export const ipc = {
     invoke<void>("set_lyrics", { videoId, payload }),
   clearLyrics: (videoId: string) =>
     invoke<void>("clear_lyrics", { videoId }),
+  setLyricsOffset: (videoId: string, offsetMs: number) =>
+    invoke<void>("set_lyrics_offset", { videoId, offsetMs }),
 
   listPlaylists: () => invoke<Playlist[]>("list_playlists"),
   createPlaylist: (name: string) => invoke<Playlist>("create_playlist", { name }),

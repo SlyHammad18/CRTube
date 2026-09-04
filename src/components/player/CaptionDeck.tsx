@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
-import { PencilSimple } from "@phosphor-icons/react";
+import { ArrowsOut, Minus, PencilSimple, Plus } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
+import { useUIStore } from "../../stores/ui";
 import { activeIndex } from "../../lib/lrc";
 import type { LyricsState } from "../../hooks/useLyrics";
 import type { LibraryEntry } from "../../types/library";
@@ -23,6 +24,15 @@ function isUrduScript(text: string): boolean {
     }
   }
   return false;
+}
+
+/// Per-press nudge for the lyrics sync offset (ms).
+const LYRICS_OFFSET_STEP_MS = 50;
+
+function fmtOffset(ms: number): string {
+  const s = ms / 1000;
+  const sign = ms > 0 ? "+" : "";
+  return `${sign}${s.toFixed(2)}s`;
 }
 
 /**
@@ -66,7 +76,7 @@ export function CaptionDeck({
   } else {
     content = (
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center px-4 pt-3">
+        <div className="flex items-center gap-2 px-4 pt-3">
           <button
             aria-label="Edit lyrics"
             title="Change lyrics"
@@ -75,12 +85,41 @@ export function CaptionDeck({
           >
             <PencilSimple size={13} weight="light" aria-hidden />
           </button>
+          <div className="ml-auto flex items-center gap-1 rounded-card border border-line bg-raise px-1 py-0.5">
+            <button
+              aria-label="Lyrics earlier"
+              title="Lyrics earlier"
+              onClick={() => lyrics.setOffset(lyrics.offsetMs - LYRICS_OFFSET_STEP_MS)}
+              className="grid h-6 w-6 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-panel hover:text-ice active:scale-[0.98]"
+            >
+              <Minus size={13} weight="light" aria-hidden />
+            </button>
+            <span className="min-w-[3.25rem] text-center font-mono text-11 text-mute tabular-nums">
+              {fmtOffset(lyrics.offsetMs)}
+            </span>
+            <button
+              aria-label="Lyrics later"
+              title="Lyrics later"
+              onClick={() => lyrics.setOffset(lyrics.offsetMs + LYRICS_OFFSET_STEP_MS)}
+              className="grid h-6 w-6 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-panel hover:text-ice active:scale-[0.98]"
+            >
+              <Plus size={13} weight="light" aria-hidden />
+            </button>
+          </div>
+          <button
+            aria-label="Expand lyrics"
+            title="Expand lyrics"
+            onClick={() => useUIStore.getState().setLyricsFullscreen(true)}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-card text-mute opacity-0 transition-opacity duration-150 hover:bg-raise hover:text-ice group-hover:opacity-100 focus-visible:opacity-100 active:scale-[0.98]"
+          >
+            <ArrowsOut size={13} weight="light" aria-hidden />
+          </button>
         </div>
         <Deck
           lines={lyrics.lines}
           source={lyrics.source}
-          currentTimeMs={currentTimeS * 1000}
-          onSeek={(ms) => seek(ms / 1000)}
+          currentTimeMs={Math.max(0, currentTimeS * 1000 - lyrics.offsetMs)}
+          onSeek={(ms) => seek((ms + lyrics.offsetMs) / 1000)}
           reduce={!!reduce}
         />
       </div>
@@ -273,7 +312,7 @@ function Deck({
             "linear-gradient(to bottom, transparent, black 18%, black 82%, transparent)",
         }}
       >
-        <div className="flex flex-col gap-1 px-4 py-8">
+        <div className="flex flex-col gap-1 px-4 pt-10 pb-8">
         {lines.map((l, i) => (
           <Line
             key={i}

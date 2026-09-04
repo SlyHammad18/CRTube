@@ -184,3 +184,9 @@ pub fn set_lyrics(app: AppHandle, video_id: String, payload: LyricsPayload) -> R
 pub fn clear_lyrics(app: AppHandle, video_id: String) -> Result<(), String> {
     lyrics::clear_lyrics(&app, &video_id)
 }
+
+/// Persist a user-tuned lyric sync offset (ms) for a track.
+#[tauri::command]
+pub fn set_lyrics_offset(app: AppHandle, video_id: String, offset_ms: i64) -> Result<(), String> {
+    lyrics::set_offset(&app, &video_id, offset_ms)
+}
