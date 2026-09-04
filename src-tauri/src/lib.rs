@@ -43,7 +43,32 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
         .decorations(false)
         .center()
         .transparent(false)
-        .background_color(Color(7, 9, 12, 255));
+        .background_color(Color(7, 9, 12, 255))
+        .initialization_script(
+            "(function(){\
+               var block=function(e){e.preventDefault();e.stopPropagation();};\
+               document.addEventListener('contextmenu',block,true);\
+               document.addEventListener('copy',block,true);\
+               document.addEventListener('cut',block,true);\
+               document.addEventListener('selectstart',block,true);\
+               document.addEventListener('keydown',function(e){\
+                 var k=e.key,m=e.metaKey,c=e.ctrlKey,s=e.shiftKey,a=e.altKey;\
+                 if(k==='F12'||k==='F5')return block(e);\
+                 if((c||m)&&s&&(k==='I'||k==='J'||k==='C'))return block(e);\
+                 if((c||m)&&k==='u')return block(e);\
+                 if((c||m)&&!s&&!a&&(k==='c'||k==='x'))return block(e);\
+               },true);\
+               var _wt=navigator.clipboard.writeText;\
+               navigator.clipboard.writeText=function(){return Promise.resolve();};\
+               var _w=navigator.clipboard.write;\
+               if(_w)navigator.clipboard.write=function(){return Promise.resolve();};\
+               var _ec=document.execCommand.bind(document);\
+               document.execCommand=function(cmd){\
+                 if(cmd==='copy'||cmd==='cut')return false;\
+                 return _ec.apply(null,arguments);\
+               };\
+             })();",
+        );
     builder.build()?;
     Ok(())
 }
