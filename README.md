@@ -31,43 +31,48 @@ queue downloads with live progress — everything runs locally through
   GitHub releases; ffmpeg is installed once. Updates never call `yt-dlp -U`.
 - **Resilient** — friendly messages for offline boots, region-blocked videos,
   disk-full, rate limits, and bad links. Never crashes on a tool error.
+- **Resume where you left off** — the queue, current song, timestamp, repeat,
+  shuffle, and speed are remembered and reapplied on next launch.
+- **Editable lyrics** — fix synced lyrics via an LRCLIB search modal, nudge each
+  song's timing offset, or use them as subtitles in fullscreen video.
+- **Favourites** — heart any track into a Favourites playlist, rename tracks and
+  artists, and reorder playlists with up/down arrows.
 - **Ice Console design** — dark-only, cool-neutral palette with a single ice
   accent, monospaced numerics, and motion that collapses under
   `prefers-reduced-motion`.
 
-## What's new in v0.2.0
+## What's new in v0.3.0
 
-v0.2.0 is a major update built around **in-app playback** — downloaded audio and
-video now play directly inside CRTube, alongside a full library, playlist, and
-lyrics experience. Highlights since v0.1.0:
+v0.3.0 builds on v0.2.0's in-app playback with a bigger lyrics experience,
+session resume, and library management:
 
-- **Music player** — a global player bar with play/pause, seek, volume (with an
-  on-screen percentage) and mute, plus playback-speed control. Audio and video
-  stream through a local loopback media server, so files never leave your machine.
-- **Video playback** — watch downloaded videos in a stable in-app surface with
-  fullscreen (including 1080p). Codecs WebKitGTK can't decode are transparently
-  re-encoded on the fly at playback time.
-- **Library & track lists** — All Tracks / Recently Added views, single-click to
-  play, filter by Audio/Video, and sort controls.
-- **Playlists** — create, rename, and drag-to-reorder playlists; add tracks via a
-  portaled popover and remove them with a confirm modal. Three-phase repeat:
-  off → loop playlist → loop one.
-- **Now Playing** — a dedicated pane with artwork, a caption deck, and track
-  metadata; the global bar auto-hides while Now Playing is open.
-- **Up Next** — a sidebar queue of upcoming tracks.
-- **Lyrics** — synced, scrollable lyrics from the LRCLIB service, a "jump to
-  current line" sync button, and a fullscreen lyrics overlay. Urdu/Nastaliq lines
-  render in Noto Nastaliq Urdu (right-aligned) for proper script support.
-- **Polish** — toast alerts moved to the top-right, delete confirmations, and a
-  refreshed app icon (device mark) across all platforms.
+- **Resume session** — CRTube remembers where you left off: the open playlist,
+  the queue and current song, its timestamp, loop, shuffle, and speed are saved
+  and applied at the next launch (always resuming paused).
+- **Lyrics** — editable per-song lyrics with an LRCLIB search modal; per-song
+  sync-offset `+/-` nudges that persist; live lyrics as subtitles in fullscreen
+  video; and Now Playing re-ordered so lyrics sit above the transport row.
+- **Player** — fullscreen video controls (favourite, speed, loop-one), a
+  per-track "audio only" toggle with an auto-disable setting, global keyboard
+  shortcuts (Space, seek, volume, lyrics, repeat, shuffle, and more), and
+  shuffle/repeat/speed controls in the global player bar.
+- **Library & playlists** — a Favourites playlist with heart toggles, track
+  title + multi-artist renaming, a collapsible Artists tab, auto-scroll to the
+  playing track, and playlist reordering via up/down arrows.
+- **OS integration** — the GNOME Notification Center media card now shows
+  square-cropped, undistorted artwork from locally cached thumbnails.
+- **Polish** — faster startup (boot animation removed), hardened webview
+  (inspect/right-click/copy blocked), and a fixed volume-slider focus bug so
+  keyboard shortcuts always work after dragging the volume.
 
 ## Download
 
 Prebuilt installers for Linux are attached to the latest
 [GitHub release](https://github.com/SlyHammad18/CRTube/releases):
 
-- **Debian / Ubuntu** — `CRTube_0.2.1_amd64.deb`
-- **Portable Linux** — `CRTube_0.2.1_amd64.AppImage` (make executable, then run)
+- **Debian / Ubuntu** — `CRTube_0.3.0_amd64.deb`
+- **Fedora / openSUSE / RHEL** — `CRTube-0.3.0-1.x86_64.rpm`
+- **Portable Linux** — `CRTube_0.3.0_amd64.AppImage` (make executable, then run)
 
 Windows (NSIS) installers are produced automatically when built on Windows.
 
