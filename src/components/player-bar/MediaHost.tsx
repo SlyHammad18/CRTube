@@ -59,6 +59,93 @@ export function MediaHost() {
     }
   }, [entry, isVideo, autoDisableVideo]);
 
+  // Sync with system MediaSession API (MPRIS on Linux desktop / GNOME
+  // Notification Center). Artwork must be an http(s) URL: WebKit only
+  // publishes artwork its own image loader fetched (so file:// is refused from
+  // our origin), and the shell then fetches the published mpris:artUrl itself
+  // (so Tauri's asset:// is unknown to it). Cached thumbs therefore come from
+  // the loopback media server.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    if (!entry) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = "none";
+      return;
+    }
+
+    const setMetadata = (artSrc: string) => {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: entry.title,
+        artist: entry.channel || "CRTube",
+        album: "CRTube",
+        artwork: artSrc
+          ? [
+              { src: artSrc, sizes: "512x512" },
+              { src: artSrc, sizes: "256x256" },
+              { src: artSrc, sizes: "96x96" },
+            ]
+          : [],
+      });
+    };
+
+    const thumbUrl = entry.thumbUrl ?? "";
+    if (thumbUrl.startsWith("http://") || thumbUrl.startsWith("https://")) {
+      setMetadata(thumbUrl);
+      return;
+    }
+
+    // Local cached thumb — publish the loopback stream URL once known.
+    let alive = true;
+    void ipc
+      .thumbMediaUrl(entry.videoId)
+      .then((url) => {
+        if (alive) setMetadata(url ?? "");
+      })
+      .catch(() => {
+        if (alive) setMetadata("");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [entry]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+
+    const setHandler = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler | null,
+    ) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Ignore unsupported actions
+      }
+    };
+
+    setHandler("play", () => {
+      if (!usePlayerStore.getState().playing) usePlayerStore.getState().toggle();
+    });
+    setHandler("pause", () => {
+      if (usePlayerStore.getState().playing) usePlayerStore.getState().toggle();
+    });
+    setHandler("previoustrack", () => usePlayerStore.getState().prev());
+    setHandler("nexttrack", () => usePlayerStore.getState().next());
+    setHandler("seekto", (details) => {
+      if (details.seekTime != null) {
+        usePlayerStore.getState().seek(details.seekTime);
+      }
+    });
+
+    return () => {
+      setHandler("play", null);
+      setHandler("pause", null);
+      setHandler("previoustrack", null);
+      setHandler("nexttrack", null);
+      setHandler("seekto", null);
+    };
+  }, []);
+
   // Which stage the live video overlays, and whether it's visible at all.
   const els = useSlotEls();
   const stage: "fullscreen" | "primary" | "secondary" | "none" =
@@ -296,19 +383,44 @@ export function MediaHost() {
 
   // --- element -> store (synthetic events follow the stable node) ---------
 
+  const lastSyncSec = useRef(-1);
+  const syncPositionState = (currentTime: number, duration: number) => {
+    if (
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      !("setPositionState" in navigator.mediaSession) ||
+      duration <= 0 ||
+      !Number.isFinite(duration)
+    ) {
+      return;
+    }
+    const sec = Math.floor(currentTime);
+    if (sec === lastSyncSec.current) return;
+    lastSyncSec.current = sec;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: Math.max(0, duration),
+        playbackRate: usePlayerStore.getState().speed,
+        position: Math.min(Math.max(0, currentTime), duration),
+      });
+    } catch {
+      // Ignore
+    }
+  };
+
   const onTimeUpdate = () => {
     const el = videoRef.current;
     if (!el) return;
-    usePlayerStore.getState().syncTime(
-      el.currentTime,
-      Number.isFinite(el.duration) ? el.duration : 0,
-    );
+    const dur = Number.isFinite(el.duration) ? el.duration : 0;
+    usePlayerStore.getState().syncTime(el.currentTime, dur);
+    syncPositionState(el.currentTime, dur);
   };
 
   const onDurationChange = () => {
     const el = videoRef.current;
     if (!el || !Number.isFinite(el.duration)) return;
     usePlayerStore.getState().syncTime(el.currentTime, el.duration);
+    syncPositionState(el.currentTime, el.duration);
   };
 
   const onEnded = () => {

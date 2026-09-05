@@ -35,6 +35,8 @@ pub struct MediaServer {
     /// file (prevents the double-encode / corruption race from concurrent
     /// requests for the same video).
     pub transcoding: Arc<tokio::sync::Mutex<HashSet<i64>>>,
+    /// Guards per-video square-thumbnail renders (OS media-session artwork).
+    pub thumb_transcoding: Arc<tokio::sync::Mutex<HashSet<String>>>,
 }
 
 /// Pure: parse a single-range `Range: bytes=...` header against a file length.
@@ -83,6 +85,7 @@ pub fn content_type_for(path: &Path) -> &'static str {
         "flac" => "audio/flac",
         "ogg" | "opus" => "audio/ogg",
         "wav" => "audio/wav",
+        "jpg" | "jpeg" => "image/jpeg",
         _ => "application/octet-stream",
     }
 }
@@ -205,11 +208,13 @@ impl MediaServer {
             token: generate_token(),
             roots: Arc::new(tokio::sync::RwLock::new(roots)),
             transcoding: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            thumb_transcoding: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
         };
 
         let token = server.token.clone();
         let roots_shared = server.roots.clone();
         let transcoding = server.transcoding.clone();
+        let thumb_transcoding = server.thumb_transcoding.clone();
         tauri::async_runtime::spawn(async move {
             loop {
                 match listener.accept().await {
@@ -217,10 +222,18 @@ impl MediaServer {
                         let token = token.clone();
                         let roots = roots_shared.clone();
                         let transcoding = transcoding.clone();
+                        let thumb_transcoding = thumb_transcoding.clone();
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            if let Err(e) =
-                                serve_connection(stream, app, token, roots, transcoding).await
+                            if let Err(e) = serve_connection(
+                                stream,
+                                app,
+                                token,
+                                roots,
+                                transcoding,
+                                thumb_transcoding,
+                            )
+                            .await
                             {
                                 eprintln!("crtube media-server: {e}");
                             }
@@ -243,6 +256,18 @@ impl MediaServer {
         format!("http://127.0.0.1:{}/{}/t/{}", self.port, self.token, download_id)
     }
 
+    /// Loopback URL for a cached thumbnail, rendered as a centered square crop
+    /// (GNOME's media card stretches 16:9 art when it has to fill its square
+    /// slot). WebKit only publishes artwork it can fetch like an `<img>` and
+    /// the shell then re-fetches that `mpris:artUrl` itself, so both sides
+    /// need an http(s) URL. Path: /{token}/thumbs/{video_id}/sq.
+    pub fn thumb_url_for(&self, video_id: &str) -> String {
+        format!(
+            "http://127.0.0.1:{}/{}/thumbs/{}/sq",
+            self.port, self.token, video_id
+        )
+    }
+
     pub async fn set_roots(&self, roots: Vec<PathBuf>) {
         *self.roots.write().await = roots;
     }
@@ -253,9 +278,43 @@ struct Request {
     range: Option<String>,
     /// First path segment — must equal the session token.
     token: String,
+    /// `/{token}/{id}` — numeric download id.
     id: Option<i64>,
     /// `/{token}/t/{id}` requests an ffmpeg transcode instead of passthrough.
     transcode: bool,
+    /// `/{token}/thumbs/{video_id}` — cached thumbnail request.
+    video_id: Option<String>,
+    /// `/{token}/thumbs/{video_id}/sq` requests the centered-square-cropped
+    /// variant (GNOME stretches 16:9 mpris artwork to fit its square card).
+    square: bool,
+}
+
+/// Pure: parse a request target into `(transcode, id, video_id, square)`.
+/// Shapes: `/{token}/{id}`, `/{token}/t/{id}`, `/{token}/thumbs/{video_id}`,
+/// `/{token}/thumbs/{video_id}/sq`.
+fn parse_target(target: &str) -> (bool, Option<i64>, Option<String>, bool) {
+    let segments: Vec<&str> = target.trim_matches('/').split('/').collect();
+    match segments.len() {
+        4 if segments.get(1) == Some(&"thumbs") && segments.get(3) == Some(&"sq") => {
+            (false, None, Some(segments[2].to_string()), true)
+        }
+        3 if segments.get(1) == Some(&"thumbs") => {
+            (false, None, Some(segments[2].to_string()), false)
+        }
+        3 if segments.get(1) == Some(&"t") => (
+            true,
+            segments.get(2).and_then(|s| s.parse::<i64>().ok()),
+            None,
+            false,
+        ),
+        2 => (
+            false,
+            segments.get(1).and_then(|s| s.parse::<i64>().ok()),
+            None,
+            false,
+        ),
+        _ => (false, None, None, false),
+    }
 }
 
 async fn read_request<S>(stream: &mut S) -> Result<Option<Request>, String>
@@ -295,21 +354,22 @@ where
         }
     }
 
-    // Target shape: /{token}/{id}  or  /{token}/t/{id} (transcode)
+    // Target shapes:
+    //   /{token}/{id}            media by download id
+    //   /{token}/t/{id}          on-the-fly transcode
+    //   /{token}/thumbs/{video_id}     cached thumbnail
+    //   /{token}/thumbs/{video_id}/sq  square-cropped thumbnail
     let segments: Vec<&str> = target.trim_matches('/').split('/').collect();
     let token = segments.first().copied().unwrap_or_default().to_string();
-    let (transcode, id) = match segments.len() {
-        3 if segments.get(1) == Some(&"t") => (true, segments.get(2).and_then(|s| s.parse::<i64>().ok())),
-        2 => (false, segments.get(1).and_then(|s| s.parse::<i64>().ok())),
-        _ => (false, None),
-    };
-
+    let (transcode, id, video_id, square) = parse_target(&target);
     Ok(Some(Request {
         want_body: method != "HEAD",
         range,
         token,
         id,
         transcode,
+        video_id,
+        square,
     }))
 }
 
@@ -319,6 +379,7 @@ async fn serve_connection(
     token: String,
     roots: Arc<tokio::sync::RwLock<Vec<PathBuf>>>,
     transcoding: Arc<tokio::sync::Mutex<HashSet<i64>>>,
+    thumb_transcoding: Arc<tokio::sync::Mutex<HashSet<String>>>,
 ) -> Result<(), String> {
     let Some(req) = read_request(&mut stream).await? else {
         return Ok(());
@@ -328,6 +389,27 @@ async fn serve_connection(
     if !secure_eq(req.token.as_bytes(), token.as_bytes()) {
         return respond_text(&mut stream, 404, "not found").await;
     }
+
+    // Thumb route: {app_data}/thumbs/{video_id}.jpg — app-owned cache, no
+    // DB/roots lookup needed (still token-gated above). The `/sq` variant is
+    // center-cropped to a square so GNOME's media card does not stretch it.
+    if let Some(video_id) = req.video_id {
+        let dir = match app.path().app_data_dir() {
+            Ok(d) => d.join("thumbs"),
+            Err(_) => return respond_text(&mut stream, 404, "not found").await,
+        };
+        let raw = dir.join(format!("{video_id}.jpg"));
+        if !raw.is_file() {
+            return respond_text(&mut stream, 404, "not found").await;
+        }
+        let path = if req.square {
+            square_thumb(&app, &dir, &video_id, &raw, thumb_transcoding).await
+        } else {
+            raw
+        };
+        return serve_file(stream, path, req.range, req.want_body).await;
+    }
+
     let Some(id) = req.id else {
         return respond_text(&mut stream, 404, "not found").await;
     };
@@ -362,6 +444,100 @@ async fn serve_connection(
             .await;
     }
     serve_file(stream, resolved, req.range, req.want_body).await
+}
+
+/// Pure: ffmpeg args that center-crop the cached (16:9) thumbnail to a 1:1
+/// square. `force_original_aspect_ratio=increase` scales until it fills the
+/// target, then `crop` keeps the center — no distortion, sides trimmed.
+fn crop_square_ffmpeg_args(input: &Path, output: &Path) -> Vec<String> {
+    vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(),
+        "error".to_string(),
+        "-y".to_string(),
+        "-i".to_string(),
+        input.to_string_lossy().into_owned(),
+        "-vf".to_string(),
+        "scale=960:960:force_original_aspect_ratio=increase,crop=960:960".to_string(),
+        "-frames:v".to_string(),
+        "1".to_string(),
+        "-q:v".to_string(),
+        "2".to_string(),
+        output.to_string_lossy().into_owned(),
+    ]
+}
+
+/// Render (or reuse) the square-cropped `{video_id}.sq.jpg` next to the raw
+/// thumb. Falls back to the raw (16:9) file when ffmpeg is unavailable or
+/// fails, so the OS card still shows something rather than nothing.
+/// A per-video_id lock prevents concurrent ffmpeg runs on the same file.
+async fn square_thumb(
+    app: &AppHandle,
+    dir: &Path,
+    video_id: &str,
+    raw: &Path,
+    in_flight: Arc<tokio::sync::Mutex<HashSet<String>>>,
+) -> PathBuf {
+    let sq = dir.join(format!("{video_id}.sq.jpg"));
+    if sq.is_file() {
+        return sq;
+    }
+
+    let owner = {
+        let mut g = in_flight.lock().await;
+        if g.contains(video_id) {
+            false
+        } else {
+            g.insert(video_id.to_string());
+            true
+        }
+    };
+
+    if !owner {
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if sq.is_file() {
+                remove_thumb_lock(&in_flight, video_id).await;
+                return sq;
+            }
+        }
+        remove_thumb_lock(&in_flight, video_id).await;
+        return raw.to_path_buf();
+    }
+
+    let ffmpeg = match installer::bin_dir(app) {
+        Ok(b) => installer::ffmpeg_path(&b),
+        Err(_) => {
+            remove_thumb_lock(&in_flight, video_id).await;
+            return raw.to_path_buf();
+        }
+    };
+
+    let ok = if ffmpeg.exists() {
+        let args = crop_square_ffmpeg_args(raw, &sq);
+        TokioCommand::new(&ffmpeg)
+            .args(&args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    remove_thumb_lock(&in_flight, video_id).await;
+    if ok && sq.is_file() {
+        sq
+    } else {
+        raw.to_path_buf()
+    }
+}
+
+async fn remove_thumb_lock(set: &Arc<tokio::sync::Mutex<HashSet<String>>>, id: &str) {
+    let mut g = set.lock().await;
+    g.remove(id);
 }
 
 /// Serve a file over HTTP with proper `Range` support (206 / 200).
@@ -701,7 +877,38 @@ mod tests {
         assert_eq!(content_type_for(&P::from("c.webm")), "video/webm");
         assert_eq!(content_type_for(&P::from("d.mkv")), "video/x-matroska");
         assert_eq!(content_type_for(&P::from("e.M4A")), "video/mp4");
+        assert_eq!(content_type_for(&P::from("th.jpg")), "image/jpeg");
+        assert_eq!(content_type_for(&P::from("th.JPEG")), "image/jpeg");
         assert_eq!(content_type_for(&P::from("f.xyz")), "application/octet-stream");
+    }
+
+    #[test]
+    fn parse_target_shapes() {
+        assert_eq!(parse_target("/tok/42"), (false, Some(42), None, false));
+        assert_eq!(parse_target("/tok/t/7"), (true, Some(7), None, false));
+        assert_eq!(
+            parse_target("/tok/thumbs/abc123def"),
+            (false, None, Some("abc123def".into()), false)
+        );
+        assert_eq!(
+            parse_target("/tok/thumbs/abc123def/sq"),
+            (false, None, Some("abc123def".into()), true)
+        );
+        assert_eq!(parse_target("/tok/thumbs/123/sq"), (false, None, Some("123".into()), true));
+        assert_eq!(parse_target("/tok"), (false, None, None, false));
+        assert_eq!(parse_target("/tok/bad"), (false, None, None, false));
+        assert_eq!(parse_target(""), (false, None, None, false));
+    }
+
+    #[test]
+    fn crop_square_args_crop_center() {
+        use PathBuf as P;
+        let args = crop_square_ffmpeg_args(&P::from("/th/a.jpg"), &P::from("/th/a.sq.jpg"));
+        let joined = args.join(" ");
+        assert!(joined.contains("scale=960:960:force_original_aspect_ratio=increase,crop=960:960"));
+        assert!(args.contains(&"-y".to_string()));
+        assert!(joined.contains("-frames:v 1"));
+        assert!(args.last().unwrap().ends_with("a.sq.jpg"));
     }
 
     #[test]

@@ -70,6 +70,8 @@ export const ipc = {
   setSettings: (settings: AppSettings) =>
     invoke<AppSettings>("set_settings", { settings }),
   mediaUrl: (id: number) => invoke<string | null>("media_url", { id }),
+  thumbMediaUrl: (videoId: string) =>
+    invoke<string | null>("thumb_media_url", { videoId }),
   fetchLyrics: (
     videoId: string,
     title: string,

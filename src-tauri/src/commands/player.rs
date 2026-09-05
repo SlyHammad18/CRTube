@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::services::db::{self, Db, Playlist, PlaylistTrack};
 use crate::services::installer;
@@ -158,6 +158,27 @@ pub async fn media_url(
         server.url_for(id)
     };
     Ok(Some(url))
+}
+
+/// Loopback URL for a cached thumbnail, published as OS media-session artwork
+/// (MPRIS on Linux). `Ok(None)` when the thumbnail isn't cached yet — the
+/// caller should then omit artwork rather than publish a 404.
+#[tauri::command]
+pub fn thumb_media_url(
+    app: AppHandle,
+    server: State<'_, media::MediaServer>,
+    video_id: String,
+) -> Result<Option<String>, String> {
+    let thumb = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("thumbs")
+        .join(format!("{video_id}.jpg"));
+    if !thumb.is_file() {
+        return Ok(None);
+    }
+    Ok(Some(server.thumb_url_for(&video_id)))
 }
 
 /// LRCLIB lookup for a track; cache-first, returns `Ok(None)` when nothing found.
