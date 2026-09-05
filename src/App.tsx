@@ -8,7 +8,6 @@ import { useSettingsStore } from "./stores/settings";
 import { usePlayerStore } from "./stores/player";
 import { Titlebar } from "./components/titlebar/Titlebar";
 import { Rail } from "./components/rail/Rail";
-import { BootOverlay } from "./components/boot/BootOverlay";
 import { Scanlines } from "./components/common/Scanlines";
 import { Toasts } from "./components/common/Toasts";
 import { ConfirmModal } from "./components/common/ConfirmModal";
@@ -48,8 +47,6 @@ const PlayerTab = lazy(() =>
 
 export default function App() {
   const view = useUIStore((s) => s.view);
-  const booted = useUIStore((s) => s.booted);
-  const setBooted = useUIStore((s) => s.setBooted);
   const reduce = useReducedMotion();
 
   useGlobalShortcuts();
@@ -65,18 +62,7 @@ export default function App() {
 
   return (
     <>
-      <motion.div
-        className="flex h-full flex-col overflow-hidden bg-void"
-        initial={false}
-        animate={
-          booted
-            ? { opacity: 1, scale: 1 }
-            : reduce
-              ? { opacity: 0 }
-              : { opacity: 0, scale: 0.98 }
-        }
-        transition={{ duration: reduce ? 0.01 : 0.24, ease: [0.16, 1, 0.3, 1] }}
-      >
+      <div className="flex h-full flex-col overflow-hidden bg-void">
         <Titlebar />
         <div className="flex min-h-0 flex-1">
           <Rail />
@@ -127,10 +113,9 @@ export default function App() {
             <PlayerBar />
           </div>
         </div>
-      </motion.div>
+      </div>
       {/* Owns the single media element; never unmounts while the app runs */}
       <MediaHost />
-      <BootOverlay onDone={() => setBooted(true)} />
       <FirstRunOverlay />
       <FormatSheet />
       <Scanlines />

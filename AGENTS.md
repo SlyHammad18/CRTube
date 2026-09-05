@@ -13,7 +13,7 @@
 ## Hard rules from the spec
 - Never invoke `yt-dlp -U`. Updates = download release asset from GitHub API → sha256 verify → atomic rename over old binary (`services/installer.rs`). ffmpeg installed once, never updated.
 - Frontend must not use the Tauri fs plugin — all file ops happen Rust-side; paths cross IPC as strings only.
-- Theme tokens live in `src/theme.css` (Tailwind v4 `@theme`). Single accent ice `#4DD8FF`; cool neutrals only (no warm grays, no purple); no pure `#000000`/`#FFFFFF`; radius 10px everywhere except pill chips/status tags; one allowed gradient (`ice → #38E0C8`) reserved for the boot logo.
+- Theme tokens live in `src/theme.css` (Tailwind v4 `@theme`). Single accent ice `#4DD8FF`; cool neutrals only (no warm grays, no purple); no pure `#000000`/`#FFFFFF`; radius 10px everywhere except pill chips/status tags; no gradients anywhere (the former boot-logo gradient is removed).
 - Everything numeric (sizes, durations, speeds, ETAs, versions) renders in JetBrains Mono.
 - Motion: animate only `transform`/`opacity`; springs for interactive elements; all motion collapses under `prefers-reduced-motion`.
 

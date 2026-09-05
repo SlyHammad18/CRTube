@@ -61,7 +61,6 @@ Hard rules:
 
 - Primary button = `ice` fill + `void` text (contrast ≈ 12:1).
 - No purple anywhere. No neon outer glows.
-- The only gradient allowed: `#4DD8FF → #38E0C8`, reserved for the boot logo sheen and nothing else.
 - No pure `#000000`, no pure `#FFFFFF`.
 - Shadows are tinted to the background hue (`0 8px 24px rgba(0,0,0,.35)`), never pure black on panels.
 
@@ -99,23 +98,16 @@ Every interactive element ships all states:
 
 ---
 
-## 3. Signature Element — "Power-On"
+## 3. Signature Element — CRT Motif
 
-Every launch plays a 700ms CRT boot sequence:
-
-1. Screen flicker (opacity keyframes),
-2. Horizontal scanline sweep,
-3. `CRTUBE` logotype resolves with brief chromatic split (`#4DD8FF → #38E0C8` sheen),
-4. Dissolve; app content scales `0.98 → 1`.
-
-Echoed quietly elsewhere so the motif stays coherent without repeating itself loudly:
+The broadcast motif echoes quietly across the app without a boot sequence:
 
 - Fixed scanline overlay at 3% opacity, `pointer-events-none`, z-index layer documented in code.
 - Titlebar telemetry readout in JetBrains Mono: `● ytdlp 2026.08.20 · ready`. Status dot: `ice` = ready, `amber` = updating tools, `signal` = error.
 - Empty states written as console prompts: `> awaiting input_`, `> nothing archived yet_`.
 - The Player surface echoes the broadcast motif with the **Caption Deck** (§4.8) — synced lyrics set like closed-captioning.
 
-**Reduced motion:** the entire signature collapses under `prefers-reduced-motion` — instant crossfade instead of flicker, scanline overlay rendered static.
+**Reduced motion:** the scanline overlay renders static and no animation of the motif runs under `prefers-reduced-motion`.
 
 ---
 
@@ -219,7 +211,7 @@ Changing the download directory re-applies the runtime asset-protocol allow rule
 
 ### 4.7 First-run setup overlay
 
-Full-screen overlay before any search is possible: "Calibrating display…" — two real progress bars (`yt-dlp`, `ffmpeg`) fed by installer progress events, then auto-dismisses into the boot sequence's tail. Blocks interaction until tools are ready.
+Full-screen overlay before any search is possible: "Calibrating display…" — two real progress bars (`yt-dlp`, `ffmpeg`) fed by installer progress events, then auto-dismisses. Blocks interaction until tools are ready.
 
 ### 4.8 Player (default view — music-first, video minor)
 
@@ -477,12 +469,11 @@ Frontend owns LRC rendering: pure TS `lib/lrc.ts` — `parseLrc(text) -> [{tMs, 
 
 ```
 src/
-├─ main.tsx / App.tsx        # providers, router shell, boot gate, PlayerBar + MediaHost mount
+├─ main.tsx / App.tsx        # providers, router shell, PlayerBar + MediaHost mount
 ├─ theme.css                 # Tailwind v4 tokens (@theme), fonts, scanlines, caption-deck utils
 ├─ components/
 │  ├─ titlebar/              # drag region, telemetry, window buttons
 │  ├─ rail/                  # nav rail + active notch + playing pulse dot
-│  ├─ boot/                  # power-on sequence overlay
 │  ├─ search/                # hero dock, result cards, skeletons
 │  ├─ sheet/                 # format slide-over
 │  ├─ downloads/             # queue rows, progress bars
@@ -531,9 +522,9 @@ Motion rules (project-wide):
 Each task ends with its verify gate run and passing **before** the next task begins.
 
 ### T1 — Scaffold & shell
-Tauri v2 + React-TS + Tailwind v4 project; frameless window config; custom titlebar (drag region, min/max/close, double-click maximize); icon rail + view routing; full token system in `theme.css` incl. @fontsource fonts; boot overlay stub.
+Tauri v2 + React-TS + Tailwind v4 project; frameless window config; custom titlebar (drag region, min/max/close, double-click maximize); icon rail + view routing; full token system in `theme.css` incl. @fontsource fonts.
 
-**Verify:** `cargo clippy` clean, `npm run build` clean, `npm run tauri dev` → frameless dark window, all three window buttons work, rail switches placeholder views, boot flicker plays once.
+**Verify:** `cargo clippy` clean, `npm run build` clean, `npm run tauri dev` → frameless dark window, all three window buttons work, rail switches placeholder views.
 
 ### T2 — Tool manager
 Installer service (yt-dlp + ffmpeg/ffprobe, sha256 verify, atomic replace), progress events, version probes, update-on-start logic, first-run overlay wired to real progress.
@@ -576,7 +567,7 @@ All four sections bound to real settings; engine section shows live versions + f
 **Verify:** every toggle/picker persists across restart and takes effect without relaunch.
 
 ### T10 — Motion & polish pass
-View transitions, spring hovers, toast stack animation, boot sequence refinement, scanline overlay, empty/error-state audit (offline search, bad URL, failed download), copy audit, reduced-motion collapse verified.
+View transitions, spring hovers, toast stack animation, scanline overlay, empty/error-state audit (offline search, bad URL, failed download), copy audit, reduced-motion collapse verified.
 
 **Verify:** walkthrough with reduced-motion ON and OFF; screenshot review of every screen + every empty/error state; contrast spot-checks pass WCAG AA.
 

@@ -10,7 +10,6 @@ export interface PlaylistNameDraft {
 
 interface UIState {
   view: View;
-  booted: boolean;
   /** §4.8 — right-hand Now Playing pane visibility. */
   nowPlayingOpen: boolean;
   /** In-app fullscreen video overlay (max window size, audio + controls). */
@@ -25,7 +24,6 @@ interface UIState {
   /** Drives the global new/rename playlist dialog (Ctrl+N / F2). */
   playlistName: PlaylistNameDraft | null;
   setView: (view: View) => void;
-  setBooted: (booted: boolean) => void;
   setNowPlayingOpen: (open: boolean) => void;
   setVideoFullscreen: (open: boolean) => void;
   setVideoDisabled: (disabled: boolean) => void;
@@ -38,7 +36,6 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   // §4.1 — the app opens on the Player.
   view: "player",
-  booted: false,
   nowPlayingOpen: true,
   videoFullscreen: false,
   videoDisabled: false,
@@ -46,7 +43,6 @@ export const useUIStore = create<UIState>((set) => ({
   lyricsDockOpen: false,
   playlistName: null,
   setView: (view) => set({ view }),
-  setBooted: (booted) => set({ booted }),
   setNowPlayingOpen: (nowPlayingOpen) => set({ nowPlayingOpen }),
   setVideoFullscreen: (open) => set({ videoFullscreen: open }),
   setVideoDisabled: (disabled) => set({ videoDisabled: disabled }),
