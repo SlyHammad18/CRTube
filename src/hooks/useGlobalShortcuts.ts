@@ -29,7 +29,9 @@ export function useGlobalShortcuts() {
         !!target &&
         (target.isContentEditable ||
           !!target.closest(
-            "input, textarea, select, [contenteditable='true']",
+            // range inputs (the volume slider) are controls, not text entry —
+            // playback hotkeys must keep winning once a slider is clicked.
+            "textarea, select, [contenteditable='true'], input:not([type='range'])",
           ));
       if (editable) return;
 
