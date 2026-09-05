@@ -3,9 +3,6 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useUIStore } from "./stores/ui";
 import { useToolsStore } from "./stores/tools";
 import { useQueueStore } from "./stores/queue";
-import { useLibraryStore } from "./stores/library";
-import { useSettingsStore } from "./stores/settings";
-import { usePlayerStore } from "./stores/player";
 import { Titlebar } from "./components/titlebar/Titlebar";
 import { Rail } from "./components/rail/Rail";
 import { Scanlines } from "./components/common/Scanlines";
@@ -18,6 +15,7 @@ import { LyricsDock } from "./components/player/LyricsDock";
 import { PlayerBar } from "./components/player-bar/PlayerBar";
 import { PlaylistNameDialog } from "./components/player/PlaylistNameDialog";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { useSession } from "./hooks/useSession";
 import { MediaHost } from "./components/player-bar/MediaHost";
 import { VideoFullscreen } from "./components/player/VideoFullscreen";
 import { PlaceholderView } from "./components/common/PlaceholderView";
@@ -50,14 +48,13 @@ export default function App() {
   const reduce = useReducedMotion();
 
   useGlobalShortcuts();
+  // Resume-session: hydrates settings, loads library/playlists, restores the
+  // saved queue/song/timestamp/repeat/shuffle and persists it onward.
+  useSession();
 
   useEffect(() => {
     void useToolsStore.getState().init();
     useQueueStore.getState().attach();
-    void useLibraryStore.getState().refresh();
-    void useSettingsStore.getState().load().then(() => {
-      usePlayerStore.getState().hydrateFromSettings();
-    });
   }, []);
 
   return (

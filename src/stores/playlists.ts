@@ -22,6 +22,7 @@ interface PlaylistsState {
   members: Membership;
 
   refresh: () => Promise<void>;
+  restoreSelection: (sel: PlayerSelection | null) => Promise<void>;
   openLibrary: (recent?: boolean) => void;
   openFavourites: () => void;
   openArtist: (name: string) => void;
@@ -67,6 +68,22 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
       }
     } catch {
       set({ loaded: true });
+    }
+  },
+
+  // Reopen the sidebar pane saved in the previous session. A playlist that no
+  // longer exists falls back to the default library view.
+  restoreSelection: async (sel) => {
+    if (!sel) return;
+    const s = get();
+    if (sel.type === "playlist") {
+      if (!s.playlists.some((p) => p.id === sel.id)) {
+        set({ selection: { type: "library", recent: false }, openTracks: null });
+        return;
+      }
+      await get().openPlaylist(sel.id);
+    } else {
+      set({ selection: sel, openTracks: null });
     }
   },
 

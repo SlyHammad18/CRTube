@@ -10,6 +10,7 @@ import type {
 import type { SearchItem, VideoInfo } from "../types/search";
 import type { LibraryEntry } from "../types/library";
 import type { AppSettings } from "../types/settings";
+import type { PlayerSession } from "../types/session";
 import type { Playlist, PlaylistTrack } from "../types/player";
 import type { LyricsPayload, LyricsCandidate } from "../types/lyrics";
 import type {
@@ -72,6 +73,9 @@ export const ipc = {
   mediaUrl: (id: number) => invoke<string | null>("media_url", { id }),
   thumbMediaUrl: (videoId: string) =>
     invoke<string | null>("thumb_media_url", { videoId }),
+  getSession: () => invoke<PlayerSession | null>("get_session"),
+  setSession: (session: PlayerSession) =>
+    invoke<void>("set_session", { session }),
   fetchLyrics: (
     videoId: string,
     title: string,

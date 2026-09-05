@@ -245,12 +245,37 @@ export function MediaHost() {
 
   const seekNonce = usePlayerStore((s) => s.seekNonce);
   const seekTargetS = usePlayerStore((s) => s.seekTargetS);
+  // A seek requested before the media has loaded (e.g. the resume-session
+  // restore at boot) is stashed here and applied once metadata is available —
+  // setting `currentTime` on a HAVE_NOTHING element is unreliable.
+  const pendingSeekRef = useRef<number | null>(null);
   useEffect(() => {
     const el = videoRef.current;
     if (!el || seekNonceRef.current === seekNonce) return;
     seekNonceRef.current = seekNonce;
-    if (Number.isFinite(seekTargetS)) el.currentTime = seekTargetS;
+    if (Number.isFinite(seekTargetS)) {
+      if (el.readyState >= 2) {
+        el.currentTime = seekTargetS;
+      } else {
+        pendingSeekRef.current = seekTargetS;
+      }
+    }
   }, [seekNonce, seekTargetS]);
+
+  // Apply any pending seek as soon as the current source has metadata.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const apply = () => {
+      if (pendingSeekRef.current == null) return;
+      if (el.readyState < 1) return;
+      el.currentTime = pendingSeekRef.current;
+      pendingSeekRef.current = null;
+    };
+    el.addEventListener("loadedmetadata", apply);
+    apply();
+    return () => el.removeEventListener("loadedmetadata", apply);
+  }, [entryPath]);
 
   // --- layout: keep the single node positioned over the active stage ------
   // The node is `position: fixed`, so it does NOT move with page scroll and

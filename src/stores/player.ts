@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { LibraryEntry } from "../types/library";
+import type { PlayerSession } from "../types/session";
 import { useSettingsStore } from "./settings";
 import { pushToast } from "./toast";
 
@@ -87,6 +88,8 @@ interface PlayerState {
   onEnded: () => void;
   onMediaError: () => void;
   hydrateFromSettings: () => void;
+  /** Reapply a saved resume session (always starts paused). */
+  restore: (session: PlayerSession) => void;
   /** Patch a queue entry's metadata in place (e.g. after a library rename). */
   patchEntry: (
     id: number,
@@ -306,6 +309,66 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       set({
         volume: Math.min(1, Math.max(0, st.player_volume)),
         speed: Math.min(SPEED_MAX, Math.max(SPEED_MIN, st.player_speed)),
+      });
+    },
+
+    restore: (session) => {
+      const s = get();
+      const raw = Array.isArray(session.queue) ? session.queue : [];
+      const queue = raw.filter((e): e is LibraryEntry =>
+        !!(e && typeof e.id === "number" && e.status !== "missing"),
+      );
+      if (queue.length === 0 || !Array.isArray(session.order)) {
+        set({
+          queue: [],
+          order: [],
+          pos: -1,
+          playing: false,
+          currentTimeS: 0,
+          durationS: 0,
+          context: null,
+        });
+        return;
+      }
+      // Remap the saved permutation onto the surviving subset, preserving the
+      // relative shuffle order after files that vanished are dropped. `pos` is
+      // an index into `order`; the current track is the surviving entry whose
+      // old queue index sat at `session.order[session.pos]`.
+      const oldToNew = new Map<number, number>();
+      for (let i = 0; i < queue.length; i++) {
+        oldToNew.set(raw.indexOf(queue[i]), i);
+      }
+      const order = session.order
+        .map((i) => oldToNew.get(i))
+        .filter((i): i is number => i != null);
+      const oldCurr =
+        session.pos >= 0 && session.order[session.pos] != null
+          ? session.order[session.pos]
+          : undefined;
+      let pos = -1;
+      if (oldCurr != null && oldToNew.has(oldCurr)) {
+        pos = order.indexOf(oldToNew.get(oldCurr)!);
+      }
+      if (pos < 0 && order.length > 0) pos = 0;
+      const currentTimeS = Number.isFinite(session.currentTimeS)
+        ? Math.max(0, session.currentTimeS)
+        : 0;
+      const repeat =
+        session.repeat === "all" || session.repeat === "one"
+          ? session.repeat
+          : "off";
+      set({
+        queue,
+        order,
+        pos,
+        playing: false,
+        currentTimeS,
+        durationS: pos >= 0 ? queue[order[pos]]?.durationS ?? 0 : 0,
+        repeat,
+        shuffle: !!session.shuffle,
+        context: session.context ?? null,
+        seekTargetS: currentTimeS,
+        seekNonce: s.seekNonce + 1,
       });
     },
 

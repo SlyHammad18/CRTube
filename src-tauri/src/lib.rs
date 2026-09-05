@@ -151,7 +151,9 @@ pub fn run() {
             commands::player::clear_lyrics,
             commands::player::set_lyrics_offset,
             commands::player::media_url,
-            commands::player::thumb_media_url
+            commands::player::thumb_media_url,
+            commands::player::get_session,
+            commands::player::set_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running CRTube");

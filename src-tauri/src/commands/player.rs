@@ -7,6 +7,9 @@ use crate::services::db::{self, Db, Playlist, PlaylistTrack};
 use crate::services::installer;
 use crate::services::lyrics::{self, LyricsCandidate, LyricsPayload};
 use crate::services::media;
+use crate::services::session;
+
+use serde_json::Value;
 
 const PLAYLIST_NAME_MAX: usize = 80;
 
@@ -179,6 +182,19 @@ pub fn thumb_media_url(
         return Ok(None);
     }
     Ok(Some(server.thumb_url_for(&video_id)))
+}
+
+/// Resume session (queue, timestamp, repeat/shuffle, sidebar selection) or
+/// `None` when nothing was saved yet. Opaque JSON — the frontend owns schema.
+#[tauri::command]
+pub fn get_session(app: AppHandle) -> Result<Option<Value>, String> {
+    Ok(session::load_session(&app))
+}
+
+/// Persist the resume session snapshot. Non-object payloads are rejected.
+#[tauri::command]
+pub fn set_session(app: AppHandle, session: Value) -> Result<(), String> {
+    session::save_session(&app, &session)
 }
 
 /// LRCLIB lookup for a track; cache-first, returns `Ok(None)` when nothing found.
