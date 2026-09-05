@@ -17,6 +17,8 @@ import { FirstRunOverlay } from "./components/setup/FirstRunOverlay";
 import { FormatSheet } from "./components/sheet/FormatSheet";
 import { LyricsDock } from "./components/player/LyricsDock";
 import { PlayerBar } from "./components/player-bar/PlayerBar";
+import { PlaylistNameDialog } from "./components/player/PlaylistNameDialog";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { MediaHost } from "./components/player-bar/MediaHost";
 import { VideoFullscreen } from "./components/player/VideoFullscreen";
 import { PlaceholderView } from "./components/common/PlaceholderView";
@@ -49,6 +51,8 @@ export default function App() {
   const booted = useUIStore((s) => s.booted);
   const setBooted = useUIStore((s) => s.setBooted);
   const reduce = useReducedMotion();
+
+  useGlobalShortcuts();
 
   useEffect(() => {
     void useToolsStore.getState().init();
@@ -133,6 +137,7 @@ export default function App() {
       <Toasts />
       <ConfirmModal />
       <RenameTrackModal />
+      <PlaylistNameDialog />
       <VideoFullscreen />
     </>
   );

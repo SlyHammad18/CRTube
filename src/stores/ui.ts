@@ -2,6 +2,12 @@ import { create } from "zustand";
 
 export type View = "player" | "search" | "downloads" | "library" | "settings";
 
+export interface PlaylistNameDraft {
+  mode: "create" | "rename";
+  id?: number;
+  initial?: string;
+}
+
 interface UIState {
   view: View;
   booted: boolean;
@@ -16,6 +22,8 @@ interface UIState {
   lyricsFullscreen: boolean;
   /** Bottom-docked lyrics panel, available from any view via the player bar. */
   lyricsDockOpen: boolean;
+  /** Drives the global new/rename playlist dialog (Ctrl+N / F2). */
+  playlistName: PlaylistNameDraft | null;
   setView: (view: View) => void;
   setBooted: (booted: boolean) => void;
   setNowPlayingOpen: (open: boolean) => void;
@@ -23,6 +31,8 @@ interface UIState {
   setVideoDisabled: (disabled: boolean) => void;
   setLyricsFullscreen: (open: boolean) => void;
   setLyricsDockOpen: (open: boolean) => void;
+  openPlaylistName: (draft: PlaylistNameDraft) => void;
+  closePlaylistName: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -34,6 +44,7 @@ export const useUIStore = create<UIState>((set) => ({
   videoDisabled: false,
   lyricsFullscreen: false,
   lyricsDockOpen: false,
+  playlistName: null,
   setView: (view) => set({ view }),
   setBooted: (booted) => set({ booted }),
   setNowPlayingOpen: (nowPlayingOpen) => set({ nowPlayingOpen }),
@@ -41,4 +52,6 @@ export const useUIStore = create<UIState>((set) => ({
   setVideoDisabled: (disabled) => set({ videoDisabled: disabled }),
   setLyricsFullscreen: (open) => set({ lyricsFullscreen: open }),
   setLyricsDockOpen: (open) => set({ lyricsDockOpen: open }),
+  openPlaylistName: (draft) => set({ playlistName: draft }),
+  closePlaylistName: () => set({ playlistName: null }),
 }));

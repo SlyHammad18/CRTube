@@ -276,7 +276,7 @@ Three panes inside the main view area:
 - Fallback ladder: synced LRC → plain text (static scrollable block, same typography, no caret) → `instrumental` flag renders an `INSTRUMENTAL` status tag → no result: console prompt `> no lyrics found_ try manual search` with an inline artist/title override form prefilled from parsed metadata (§5.7).
 - Lyrics fetch lazily on first play of a track; cached hits render instantly (§5.7).
 
-**Keyboard map (global, ignored while typing in inputs):** `Space` play/pause · `←/→` seek ∓5s · `↑/↓` volume ±10%.
+**Keyboard map (global, ignored while focus is in a text-editable field):** `Space` play/pause · `←/→` seek ∓1s · `↑/↓` volume ±1% (unmutes on raise) · `m` mute/unmute · `,`/`.` next/previous track · `l` toggle lyrics dock · `r` cycle repeat · `s` toggle shuffle · `Ctrl+N` new playlist · `F2` rename selected playlist (else edit the playing song).
 
 ### 4.9 Global Player Bar & Media Host
 

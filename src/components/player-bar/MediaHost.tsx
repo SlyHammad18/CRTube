@@ -294,51 +294,6 @@ export function MediaHost() {
     };
   }, [stage, els.primary, els.secondary, els.fullscreen]);
 
-  // --- global hotkeys (§4.8): space / arrows ------------------------------
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (
-        t &&
-        (t.tagName === "INPUT" ||
-          t.tagName === "TEXTAREA" ||
-          t.tagName === "SELECT" ||
-          t.isContentEditable)
-      ) {
-        return;
-      }
-      const s = usePlayerStore.getState();
-      switch (e.key) {
-        case " ":
-          e.preventDefault();
-          s.toggle();
-          break;
-        case "ArrowLeft":
-          e.preventDefault();
-          s.seek(Math.max(0, s.currentTimeS - 5));
-          break;
-        case "ArrowRight": {
-          e.preventDefault();
-          const max = s.durationS > 0 ? s.durationS - 0.05 : s.currentTimeS + 5;
-          s.seek(Math.min(max, s.currentTimeS + 5));
-          break;
-        }
-        case "ArrowUp":
-          e.preventDefault();
-          s.setVolume(s.volume + 0.1);
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          s.setVolume(s.volume - 0.1);
-          break;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   // --- element -> store (synthetic events follow the stable node) ---------
 
   const onTimeUpdate = () => {
