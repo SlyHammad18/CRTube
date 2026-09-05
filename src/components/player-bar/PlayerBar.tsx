@@ -82,15 +82,11 @@ export function PlayerBar() {
     <AnimatePresence>
       {active && !paneOpen && (
         <motion.div
-          initial={{ height: 0 }}
-          animate={{ height: "auto" }}
-          exit={{ height: 0 }}
-          transition={
-            reduce
-              ? { duration: 0.01 }
-              : { type: "spring", stiffness: 300, damping: 30 }
-          }
-          className="relative shrink-0 overflow-hidden bg-panel"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: reduce ? 0.01 : 0.15, ease: "easeOut" }}
+          className="relative shrink-0 bg-panel"
         >
           {/* Click-to-seek hairline */}
           <button
@@ -110,30 +106,26 @@ export function PlayerBar() {
               (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
             }}
             onPointerCancel={() => setDragging(false)}
-            className="group absolute inset-x-0 top-1.5 z-10 h-3 cursor-pointer"
+            className="group absolute inset-x-0 top-0 z-10 h-3 cursor-pointer"
           >
-            {/* Flex wrapper centers the track and knob together, so the knob
-                stays exactly on the line's vertical center. */}
-            <div className="relative flex h-full w-full items-center">
-              <div className="relative h-[2px] w-full rounded-full bg-line transition-[height] duration-150 group-hover:h-[3px]">
-                <motion.div
-                  style={{ scaleX: progress }}
-                  className="h-full w-full origin-left rounded-full bg-ice"
-                />
-              </div>
+            <div className="absolute inset-x-0 top-0 h-[2px] w-full rounded-full bg-line transition-[height] duration-150 group-hover:h-[3px]">
               <motion.div
-                aria-hidden
-                style={{ left: thumbLeft }}
-                className={`pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-ice transition-[opacity,scale] duration-150 ${
-                  dragging
-                    ? "scale-100 opacity-100"
-                    : "scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100"
-                }`}
+                style={{ scaleX: progress }}
+                className="h-full w-full origin-left rounded-full bg-ice"
               />
             </div>
+            <motion.div
+              aria-hidden
+              style={{ left: thumbLeft }}
+              className={`pointer-events-none absolute top-[1px] h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-ice transition-[opacity,scale] duration-150 ${
+                dragging
+                  ? "scale-100 opacity-100"
+                  : "scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100"
+              }`}
+            />
           </button>
 
-          <div className="grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
+          <div className="grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-line px-4">
             {/* Left: thumb + title */}
             <div className="flex min-w-0 items-center gap-3">
               <button
