@@ -84,7 +84,7 @@ export default function App() {
                 className={`absolute inset-0 flex flex-col ${
                   view === "player"
                     ? "overflow-hidden p-0" // §4.8 panes are edge-to-edge
-                    : "overflow-y-auto p-8"
+                    : "overflow-y-auto px-8 pt-8"
                 }`}
                   initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
                   animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
