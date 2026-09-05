@@ -36,6 +36,7 @@ export function CaptionDeck({
   const reduce = useReducedMotion();
   const currentTimeS = usePlayerStore((s) => s.currentTimeS);
   const seek = usePlayerStore((s) => s.seek);
+  const lyricsFullscreen = useUIStore((s) => s.lyricsFullscreen);
   const [lyricsModal, setLyricsModal] = useState<null | "edit" | "find">(null);
 
   if (lyrics.status === "idle") return null;
@@ -89,14 +90,16 @@ export function CaptionDeck({
               <Plus size={13} weight="light" aria-hidden />
             </button>
           </div>
-          <button
-            aria-label="Expand lyrics"
-            title="Expand lyrics"
-            onClick={() => useUIStore.getState().setLyricsFullscreen(true)}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-card text-mute opacity-0 transition-opacity duration-150 hover:bg-raise hover:text-ice group-hover:opacity-100 focus-visible:opacity-100 active:scale-[0.98]"
-          >
-            <ArrowsOut size={13} weight="light" aria-hidden />
-          </button>
+          {!lyricsFullscreen && (
+            <button
+              aria-label="Expand lyrics"
+              title="Expand lyrics"
+              onClick={() => useUIStore.getState().setLyricsFullscreen(true)}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ice focus-visible:bg-raise active:scale-[0.98]"
+            >
+              <ArrowsOut size={13} weight="light" aria-hidden />
+            </button>
+          )}
         </div>
         <Deck
           lines={lyrics.lines}
