@@ -155,7 +155,7 @@ impl DownloadPlan {
 }
 
 const PROGRESS_TEMPLATE: &str =
-    "download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s";
+    "download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s";
 
 pub fn download_args(bin_dir: &Path, plan: &DownloadPlan, url: &str) -> Vec<String> {
     let mut args = vec![
@@ -304,11 +304,41 @@ pub fn parse_progress_line(line: &str) -> Option<(u64, Option<u64>)> {
     let rest = line.strip_prefix("PROG|")?;
     let mut parts = rest.split('|');
     let downloaded = parts.next()?.trim().parse::<u64>().ok()?;
-    let total = match parts.next()?.trim() {
+    // total_bytes first (exact), falling back to total_bytes_estimate.
+    let total = parts
+        .next()
+        .and_then(|n| parse_optional_size(n.trim()))
+        .or_else(|| parts.next().and_then(|n| parse_optional_size(n.trim())));
+    Some((downloaded, total))
+}
+
+/// Parse a numeric size field, treating "NA" / empty as unknown.
+fn parse_optional_size(raw: &str) -> Option<u64> {
+    match raw {
         "NA" | "" => None,
         n => n.parse::<u64>().ok(),
-    };
-    Some((downloaded, total))
+    }
+}
+
+/// Map a non-progress stdout line to the next overall job stage, if any.
+/// Handles the fixed headers emitted by the pinned yt-dlp invocation:
+/// `[info] ...: Downloading N format(s) …` (extraction finished, about to
+/// start fetching), `[Merger]`, `[ExtractAudio]`, `[Metadata]`,
+/// `[EmbedThumbnail]`. Returns `None` for noise lines.
+pub fn next_stage(line: &str) -> Option<&'static str> {
+    if line.contains("[Merger]") {
+        Some("merging")
+    } else if line.contains("[ExtractAudio]") {
+        Some("extracting audio")
+    } else if line.contains("[EmbedThumbnail]") || line.contains("[Metadata]") {
+        Some("embedding tags")
+    // `[info] jNQXAC9IVRw: Downloading 1 format(s): 395+140` — extraction done,
+    // about to start fetching streams. Distinguish from other `[info]` chatter.
+    } else if line.contains("[info]") && line.contains("Downloading") && line.contains("format(s)") {
+        Some("preparing")
+    } else {
+        None
+    }
 }
 
 pub fn compute_metrics(
@@ -801,7 +831,7 @@ mod tests {
                 "--ffmpeg-location",
                 "/opt/bin",
                 "--progress-template",
-                "download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s",
+                "download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s",
                 "-P",
                 "/tmp/dl",
                 "-o",
@@ -840,12 +870,28 @@ mod tests {
 
     #[test]
     fn parses_progress_template_lines() {
-        assert_eq!(parse_progress_line("PROG|1024|4096"), Some((1024, Some(4096))));
-        assert_eq!(parse_progress_line("PROG|1024|NA"), Some((1024, None)));
-        assert_eq!(parse_progress_line("PROG| 2048 | 8192 "), Some((2048, Some(8192))));
-        assert_eq!(parse_progress_line("PROG|abc|4096"), None);
+        // total_bytes known, estimate present → exact total wins.
+        assert_eq!(parse_progress_line("PROG|1024|4096|4096"), Some((1024, Some(4096))));
+        // total_bytes unknown, estimate present.
+        assert_eq!(parse_progress_line("PROG|1024|NA|8192"), Some((1024, Some(8192))));
+        // neither total known.
+        assert_eq!(parse_progress_line("PROG|1024|NA|NA"), Some((1024, None)));
+        assert_eq!(parse_progress_line("PROG| 2048 | NA | 8192 "), Some((2048, Some(8192))));
+        assert_eq!(parse_progress_line("PROG|abc|NA|NA"), None);
         assert_eq!(parse_progress_line("[download] Destination: x"), None);
         assert_eq!(parse_progress_line(""), None);
+    }
+
+    #[test]
+    fn next_stage_maps_fixed_headers() {
+        assert_eq!(next_stage("[info] jNQXAC9IVRw: Downloading 1 format(s): 395+140"), Some("preparing"));
+        assert_eq!(next_stage("[Merger] Merging formats into \"x.mp4\""), Some("merging"));
+        assert_eq!(next_stage("[ExtractAudio] Destination: x.mp3"), Some("extracting audio"));
+        assert_eq!(next_stage("[EmbedThumbnail] Adding thumbnail 1 of 1"), Some("embedding tags"));
+        assert_eq!(next_stage("[Metadata] Adding metadata to \"x.mp3\""), Some("embedding tags"));
+        assert_eq!(next_stage("[download] Destination: x.f395.mp4"), None);
+        assert_eq!(next_stage("Deleting original file x.f140.m4a"), None);
+        assert_eq!(next_stage(""), None);
     }
 
     #[test]

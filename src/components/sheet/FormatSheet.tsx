@@ -301,15 +301,30 @@ export function FormatSheet() {
       pushToast("Already in your library");
       return;
     }
-    const selectedRow = videoFormats.find(
-      (f) => f.height === height && f.ext === container,
-    );
     const audioRows = info?.formats.filter((f) => f.height == null) ?? [];
     const bestAudioSize = Math.max(0, ...audioRows.map((f) => f.filesize ?? 0));
+    // Estimate the full download size so the queue can show a live percentage
+    // even when yt-dlp itself reports an unknown total (the norm on YouTube).
+    // Prefer formats at the selected height, then any format at or below it,
+    // preferring the chosen container where available — mirrors the pinned
+    // `bv*[ext=…][height<=…]+ba[ext=m4a]` selector as closely as possible.
+    const vidSizePool =
+      videoFormats.filter((f) => f.height === height).length > 0
+        ? videoFormats.filter((f) => f.height === height)
+        : videoFormats.filter((f) => f.height != null && f.height <= (height ?? 0));
+    const preferredVideoSize = Math.max(
+      0,
+      ...vidSizePool
+        .filter((f) => f.ext === container)
+        .map((f) => f.filesize ?? 0),
+    );
+    const videoSize =
+      preferredVideoSize ||
+      Math.max(0, ...vidSizePool.map((f) => f.filesize ?? 0));
     const expectedSize =
       tab === "video"
-        ? (selectedRow?.filesize ?? 0) + bestAudioSize > 0
-          ? (selectedRow?.filesize ?? 0) + bestAudioSize
+        ? videoSize + bestAudioSize > 0
+          ? videoSize + bestAudioSize
           : undefined
         : bestAudioSize > 0
           ? bestAudioSize

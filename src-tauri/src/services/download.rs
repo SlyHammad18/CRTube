@@ -7,7 +7,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, ChildStdout};
 
 use super::installer::{prepended_path, ytdlp_path};
-use super::ytdlp::{compute_metrics, friendly_message, parse_progress_line};
+use super::ytdlp::{compute_metrics, friendly_message, next_stage, parse_progress_line};
 use crate::jobs::JobRegistry;
 
 const EMIT_INTERVAL: Duration = Duration::from_millis(150);
@@ -128,56 +128,93 @@ pub async fn run_download_job(
     let start = Instant::now();
     let mut prev: Option<(f64, u64)> = None;
     let mut last_emit = Instant::now() - EMIT_INTERVAL;
-    let mut stage = "download".to_string();
+    let mut stage = "preparing".to_string();
     let mut last_downloaded: u64 = 0;
     let mut last_total: Option<u64> = None;
     let mut last_pct: f64 = 0.0;
     let mut stream_offset: u64 = 0;
     let mut stream_downloaded: u64 = 0;
+    let mut stream_index: u32 = 0;
+    let mut stream_count: u32 = 0;
+    let mut emitted_preparing = false;
 
     while let Ok(Some(line)) = lines.next_line().await {
         if line.contains("[download] Destination:") {
             stream_offset += stream_downloaded;
             stream_downloaded = 0;
             prev = None;
+            stream_index += 1;
+            stream_count = stream_count.max(stream_index);
+            let label = if stream_index > 1 {
+                format!("downloading stream {stream_index}/{stream_count}")
+            } else {
+                "downloading".to_string()
+            };
+            stage = label;
+            on_event(DlEvent::Progress(DlProgress {
+                id,
+                pct: last_pct,
+                speed_bps: None,
+                eta_s: None,
+                downloaded: last_downloaded,
+                total: last_total,
+                stage: stage.clone(),
+            }));
+            last_emit = Instant::now();
             continue;
         }
         let Some((downloaded, total)) = parse_progress_line(&line) else {
-            let new_stage = if line.contains("[Merger]") {
-                Some("merging")
-            } else if line.contains("[ExtractAudio]") {
-                Some("extracting audio")
-            } else if line.contains("[EmbedThumbnail]") || line.contains("[Metadata]") {
-                Some("embedding tags")
-            } else {
-                None
+            let Some(new_stage) = next_stage(&line) else {
+                continue;
             };
-            if let Some(s) = new_stage {
-                if stage != s {
-                    stage = s.to_string();
-                    on_event(DlEvent::Progress(DlProgress {
-                        id,
-                        pct: last_pct,
-                        speed_bps: None,
-                        eta_s: None,
-                        downloaded: last_downloaded,
-                        total: last_total,
-                        stage: stage.clone(),
-                    }));
-                    last_emit = Instant::now();
-                }
+            if new_stage == "preparing" && !emitted_preparing {
+                emitted_preparing = true;
+                stage = "preparing".to_string();
+                on_event(DlEvent::Progress(DlProgress {
+                    id,
+                    pct: 0.0,
+                    speed_bps: None,
+                    eta_s: None,
+                    downloaded: 0,
+                    total: last_total,
+                    stage: stage.clone(),
+                }));
+                last_emit = Instant::now();
+            } else if new_stage != "preparing" && stage != new_stage {
+                stage = new_stage.to_string();
+                on_event(DlEvent::Progress(DlProgress {
+                    id,
+                    pct: last_pct,
+                    speed_bps: None,
+                    eta_s: None,
+                    downloaded: last_downloaded,
+                    total: last_total,
+                    stage: stage.clone(),
+                }));
+                last_emit = Instant::now();
             }
             continue;
         };
-        let effective_total = total.or(fallback_total);
+        // Prefer the combined probe total when it exceeds this stream's own
+        // total: for video+audio the stream total covers only the current
+        // stream, so the percentage would hit 100% before audio even starts.
+        let effective_total = fallback_total
+            .filter(|ft| total.map(|t| *ft > t).unwrap_or(true))
+            .or(total);
         stream_downloaded = downloaded;
         let cumulative = stream_offset.saturating_add(downloaded);
         let secs = start.elapsed().as_secs_f64();
         let (pct, speed, eta) = compute_metrics(prev, secs, cumulative, effective_total);
+        // Percentage never regresses: probe estimates vs actual bytes can
+        // disagree per stream, so clamp monotonically instead of jumping back.
+        let pct = pct.max(last_pct).min(100.0);
         prev = Some((secs, cumulative));
         last_downloaded = cumulative;
         last_total = effective_total;
         last_pct = pct;
+        if stage == "preparing" {
+            stage = "downloading".to_string();
+        }
         if last_emit.elapsed() >= EMIT_INTERVAL {
             on_event(DlEvent::Progress(DlProgress {
                 id,
@@ -210,10 +247,21 @@ pub async fn run_download_job(
     match status {
         Ok(s) if s.success() => {
             match find_final_file(&entry.dir, &entry.video_id, &entry.ext, entry.started) {
-                Some(path) => on_event(DlEvent::Done(DlDone {
-                    id,
-                    path: path.to_string_lossy().to_string(),
-                })),
+                Some(path) => {
+                    on_event(DlEvent::Progress(DlProgress {
+                        id,
+                        pct: 100.0,
+                        speed_bps: None,
+                        eta_s: None,
+                        downloaded: last_downloaded,
+                        total: last_total,
+                        stage: "finalizing".to_string(),
+                    }));
+                    on_event(DlEvent::Done(DlDone {
+                        id,
+                        path: path.to_string_lossy().to_string(),
+                    }));
+                }
                 None => {
                     cleanup_partials(&entry.dir, &entry.video_id);
                     on_event(DlEvent::Failed(DlError {

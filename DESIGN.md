@@ -184,7 +184,7 @@ The broadcast motif echoes quietly across the app without a boot sequence:
 
 ### 4.4 Downloads
 
-- Rows: mini thumbnail, title, `ice` progress bar with moving sheen highlight, mono stats line `8.2 MB/s · ETA 00:31 · 47%`, cancel ✕.
+- Rows: mini thumbnail, title, 4-phase strip (`prepare · download · process · save`), `ice` progress bar with moving sheen highlight, mono stats line `8.2 MB/s · ETA 00:31 · 47%`, cancel ✕.
 - Progress bar width driven by a Motion value (not React state churn).
 - Completed: check flash on the row, then item moves out to Library automatically.
 - Queue owned by frontend store; concurrency limit from settings (default 3). Queued rows dimmed with position number.
@@ -378,11 +378,11 @@ yt-dlp --dump-single-json --no-playlist {url}
 
 # Common
 --newline --no-colors --ffmpeg-location {bin_dir} \
---progress-template "download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s" \
+--progress-template "download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s" \
 -P {download_dir} -o "{title} [{id}].{ext}"
 ```
 
-- Progress lines parsed in Rust by a pure function (unit-tested) → emitted as `dl://progress`.
+- Progress lines parsed in Rust by a pure function (unit-tested) → emitted as `dl://progress`. Template emits `downloaded_bytes` + `total_bytes` + `total_bytes_estimate`; parser prefers the exact total, then the estimate, then the probe `expected_size` from the format sheet; `pct` is clamped monotonically so estimates never make the bar regress. Stage is richer than a bare percent: `preparing → downloading (stream n/m) → merging / extracting audio / embedding tags → finalizing`. Rows show a compact 4-step strip (`prepare · download · process · save`), and when no total is known at all (yt-dlp `NA` + no probe size) the bar renders an indeterminate pulse with a live bytes/speed readout instead of a frozen `%`.
 - Cancel: `child.kill()` via job registry; cleanup of `.part` files.
 - Thumbnails cached separately via reqwest into `{app_data}/thumbs/{video_id}.jpg` — keeps download folders clean, library covers survive offline.
 

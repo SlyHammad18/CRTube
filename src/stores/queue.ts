@@ -57,9 +57,9 @@ export const useQueueStore = create<QueueStore>((set, get) => {
     rafScheduled = true;
     requestAnimationFrame(() => {
       rafScheduled = false;
-      if (pending.size === 0) return;
-      const updates = pending;
+      const updates = new Map(pending);
       pending.clear();
+      if (updates.size === 0) return;
       set((s) => {
         let changed = false;
         const items = s.items.map((i) => {
@@ -137,7 +137,7 @@ export const useQueueStore = create<QueueStore>((set, get) => {
         etaS: null,
         downloaded: 0,
         total: null,
-        stage: "download",
+        stage: "preparing",
       };
       set((s) => ({
         items: [...s.items, item],

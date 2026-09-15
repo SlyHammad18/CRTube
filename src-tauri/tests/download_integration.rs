@@ -261,6 +261,86 @@ async fn cancel_mid_download_leaves_no_partial_files() {
 
 #[tokio::test]
 #[ignore = "requires network and installed yt-dlp/ffmpeg"]
+async fn download_reports_phase_stages_and_monotonic_pct() {
+    let bin = bin_dir();
+    let dir = unique_dir("stages");
+    let p = plan(DownloadKind::Video, &dir, AudioQuality::Best);
+    let url = "https://www.youtube.com/watch?v=jNQXAC9IVRw".to_string();
+
+    let args = download_args(&bin, &p, &url);
+    let mut child = download::spawn_ytdlp(&bin, &args).expect("spawn");
+    let stdout = child.stdout.take().expect("stdout");
+    let stderr = child.stderr.take();
+
+    let registry = Arc::new(JobRegistry::default());
+    let events: Arc<Mutex<Vec<DlEvent>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = events.clone();
+    let id = registry.insert(crtube_lib::jobs::JobEntry {
+        child,
+        stderr,
+        video_id: p.video_id.clone(),
+        ext: p.ext().to_string(),
+        dir: dir.clone(),
+        started: std::time::SystemTime::now(),
+    });
+
+    run_download_job(id, stdout, registry, None, move |e| {
+        sink.lock().unwrap().push(e)
+    })
+    .await;
+
+    let events = events.lock().unwrap();
+    let stages: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            DlEvent::Progress(pr) => Some(pr.stage.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        stages.iter().any(|s| s == "preparing"),
+        "preparing phase visible, got: {stages:?}"
+    );
+    assert!(
+        stages.iter().any(|s| s.starts_with("downloading")),
+        "downloading phase visible, got: {stages:?}"
+    );
+    assert!(
+        stages.iter().any(|s| s == "finalizing"),
+        "finalizing phase visible, got: {stages:?}"
+    );
+
+    let pcts: Vec<f64> = events
+        .iter()
+        .filter_map(|e| match e {
+            DlEvent::Progress(pr) => Some(pr.pct),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        pcts.windows(2).all(|w| w[1] >= w[0]),
+        "percentage never regresses: {pcts:?}"
+    );
+
+    assert!(
+        events.iter().any(|e| matches!(e, DlEvent::Done(_))),
+        "job completes"
+    );
+    let last_stage = events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            DlEvent::Progress(pr) => Some(pr.stage.as_str()),
+            _ => None,
+        })
+        .unwrap_or("");
+    assert_eq!(last_stage, "finalizing", "finalizing precedes done");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+#[ignore = "requires network and installed yt-dlp/ffmpeg"]
 async fn find_final_file_ignores_partials() {
     let dir = unique_dir("find");
     let now = std::time::SystemTime::now();
