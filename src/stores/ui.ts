@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type View = "player" | "search" | "downloads" | "library" | "settings";
+export type View = "home" | "player" | "search" | "downloads" | "library" | "settings";
 
 export interface PlaylistNameDraft {
   mode: "create" | "rename";
@@ -34,8 +34,8 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  // §4.1 — the app opens on the Player.
-  view: "player",
+  // App launches on the Home dashboard.
+  view: "home",
   nowPlayingOpen: true,
   videoFullscreen: false,
   videoDisabled: false,

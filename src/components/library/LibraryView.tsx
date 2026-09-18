@@ -125,7 +125,7 @@ const EntryCard = memo(function EntryCard({
         missing ? "border-amber/40 opacity-70" : "border-line"
       }`}
     >
-      <div className="relative aspect-video w-full overflow-hidden bg-raise">
+      <div className="relative aspect-square w-full overflow-hidden bg-raise">
         {thumb && !missing && (
           <img
             src={thumb}
@@ -146,6 +146,22 @@ const EntryCard = memo(function EntryCard({
           <span className="absolute inset-0 grid place-items-center font-mono text-12 text-amber">
             file missing
           </span>
+        )}
+        {!missing && (
+          <button
+            aria-label="Play in app player"
+            title="Play in app"
+            onClick={() =>
+              usePlayerStore
+                .getState()
+                .playAll([entry], 0, { type: "library" })
+            }
+            className="absolute inset-0 grid place-items-center bg-void/0 text-void transition-colors duration-150 hover:bg-void/30"
+          >
+            <span className="grid h-11 w-11 translate-y-1 place-items-center rounded-full bg-ice opacity-0 shadow-panel transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+              <Play size={16} weight="fill" aria-hidden />
+            </span>
+          </button>
         )}
       </div>
       <div className="p-2.5">
@@ -402,7 +418,7 @@ function VirtualResults({
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => (density === "grid" ? 220 : 60),
+    estimateSize: () => (density === "grid" ? 240 : 60),
     overscan: 6,
   });
 

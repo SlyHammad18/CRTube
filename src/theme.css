@@ -158,22 +158,49 @@
   }
 
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--color-raise);
+    background: var(--color-dim);
+    background-clip: padding-box;
+    border: 2px solid transparent;
     border-radius: 9999px;
-    border: 3px solid var(--color-void);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--color-raise) 80%, var(--color-mute));
+    background: var(--color-mute);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--color-ice);
+    background-clip: padding-box;
+    border: 2px solid transparent;
   }
 
   ::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-dim) transparent;
+  }
+}
+
+/* Horizontal shelves (Recently Added, results...) scroll by wheel/trackpad +
+ * drag only — no visible bar. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 

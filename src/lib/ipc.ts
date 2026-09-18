@@ -11,7 +11,7 @@ import type { SearchItem, VideoInfo } from "../types/search";
 import type { LibraryEntry } from "../types/library";
 import type { AppSettings } from "../types/settings";
 import type { PlayerSession } from "../types/session";
-import type { Playlist, PlaylistTrack } from "../types/player";
+import type { Artist, Playlist, PlaylistTrack } from "../types/player";
 import type { LyricsPayload, LyricsCandidate } from "../types/lyrics";
 import type {
   DlDonePayload,
@@ -112,6 +112,18 @@ export const ipc = {
     invoke<[number, number, number][]>("list_playlist_memberships"),
   reorderPlaylistItems: (playlistId: number, itemIds: number[]) =>
     invoke<void>("reorder_playlist_items", { playlistId, itemIds }),
+  pickPlaylistCover: (playlistId: number) =>
+    invoke<Playlist>("pick_playlist_cover", { playlistId }),
+  clearPlaylistCover: (playlistId: number) =>
+    invoke<Playlist>("clear_playlist_cover", { playlistId }),
+  shufflePlaylistCover: (playlistId: number) =>
+    invoke<Playlist>("shuffle_playlist_cover", { playlistId }),
+
+  listArtists: () => invoke<Artist[]>("list_artists"),
+  pickArtistCover: (artistId: number) =>
+    invoke<Artist>("pick_artist_cover", { artistId }),
+  clearArtistCover: (artistId: number) =>
+    invoke<Artist>("clear_artist_cover", { artistId }),
 
   onDlProgress: async (
     cb: (payload: DlProgressPayload) => void,

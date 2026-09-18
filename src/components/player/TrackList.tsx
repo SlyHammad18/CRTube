@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MagnifyingGlass, SidebarSimple, Play, X } from "@phosphor-icons/react";
-import { fmtDuration, parseArtists } from "../../lib/format";
+import { MagnifyingGlass, X } from "@phosphor-icons/react";
+import { parseArtists } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
 import type { PlaylistTrack } from "../../types/player";
 import { useLibraryStore } from "../../stores/library";
@@ -18,13 +18,10 @@ type Filter = "all" | "audio" | "video";
 export function TrackList() {
   const selection = usePlaylistsStore((s) => s.selection);
   const openTracks = usePlaylistsStore((s) => s.openTracks);
-  const playlists = usePlaylistsStore((s) => s.playlists);
   const reorder = usePlaylistsStore((s) => s.reorder);
   const removeFrom = usePlaylistsStore((s) => s.removeFrom);
   const libEntries = useLibraryStore((s) => s.entries);
   const setView = useUIStore((s) => s.setView);
-  const nowPlayingOpen = useUIStore((s) => s.nowPlayingOpen);
-  const setNowPlayingOpen = useUIStore((s) => s.setNowPlayingOpen);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -106,7 +103,6 @@ export function TrackList() {
     usePlayerStore.getState().playAll(d, i, playCtx);
   }, []);
 
-  const totalS = displayed.reduce((acc, e) => acc + (e.durationS ?? 0), 0);
   const isManualDrag = selection.type === "playlist" && sort.key === "manual";
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -116,11 +112,6 @@ export function TrackList() {
     estimateSize: () => 56,
     overscan: 10,
   });
-
-  const activePlaylist =
-    selection.type === "playlist"
-      ? playlists.find((p) => p.id === selection.id)
-      : undefined;
 
   const displayedRef = useRef(displayed);
   displayedRef.current = displayed;
@@ -165,53 +156,8 @@ export function TrackList() {
 
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between gap-3 px-6 pt-6">
-        <div className="min-w-0">
-          <h1 className="truncate font-display text-18 font-semibold tracking-tight">
-            {selection.type === "playlist"
-              ? (activePlaylist?.name ?? "Playlist")
-              : selection.type === "favourites"
-                ? "Favourites"
-                : selection.type === "artist"
-                  ? selection.name
-                  : selection.recent
-                    ? "Recently Added"
-                    : "All Tracks"}
-          </h1>
-          <p className="mt-0.5 font-mono text-12 text-mute">
-            {displayed.length} {displayed.length === 1 ? "track" : "tracks"}
-            {totalS > 0 && ` · ${fmtDuration(totalS)}`}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            aria-label="Toggle now playing pane"
-            aria-pressed={nowPlayingOpen}
-            title="Toggle now playing"
-            onClick={() => setNowPlayingOpen(!nowPlayingOpen)}
-            className={`grid h-8 w-8 place-items-center rounded-card transition-colors duration-150 active:scale-[0.98] ${
-              nowPlayingOpen ? "text-ice" : "text-mute hover:bg-raise hover:text-ink"
-            }`}
-          >
-            <SidebarSimple size={16} weight="light" aria-hidden />
-          </button>
-          {selection.type === "playlist" || selection.type === "favourites" || selection.type === "artist" ? (
-            <button
-              aria-label="Play all"
-              disabled={displayed.length === 0}
-              onClick={() => playAt(0)}
-              className="flex items-center gap-1.5 rounded-card bg-ice px-4 py-2 text-13 font-semibold text-void transition-colors duration-150 hover:bg-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
-            >
-              <Play size={13} weight="fill" aria-hidden />
-              PLAY ALL
-            </button>
-          ) : null}
-        </div>
-      </header>
-
       {/* Toolbar */}
-      <div className="flex flex-nowrap items-center gap-2 px-6 pb-3 pt-4">
+      <div className="flex flex-nowrap items-center gap-2 px-6 pb-2 pt-1">
         <div role="group" aria-label="Filter tracks" className="flex shrink-0 gap-1.5">
           {(["all", "audio", "video"] as const).map((f) => (
             <button

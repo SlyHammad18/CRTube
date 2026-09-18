@@ -1,9 +1,10 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
-use crate::services::db::{self, Db, Playlist, PlaylistTrack};
+use crate::services::db::{self, CoverKind, Db, Playlist, PlaylistTrack};
 use crate::services::installer;
 use crate::services::lyrics::{self, LyricsCandidate, LyricsPayload};
 use crate::services::media;
@@ -12,6 +13,8 @@ use crate::services::session;
 use serde_json::Value;
 
 const PLAYLIST_NAME_MAX: usize = 80;
+/// Extensions accepted for custom cover uploads (also used by artist covers).
+pub(crate) const COVER_EXTS: [&str; 4] = ["jpg", "jpeg", "png", "webp"];
 
 fn clean_playlist_name(name: &str) -> Result<String, String> {
     let name = name.trim();
@@ -238,4 +241,118 @@ pub fn clear_lyrics(app: AppHandle, video_id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn set_lyrics_offset(app: AppHandle, video_id: String, offset_ms: i64) -> Result<(), String> {
     lyrics::set_offset(&app, &video_id, offset_ms)
+}
+
+/// Pick a custom cover image for a playlist from a native file dialog. The file
+/// is copied into `{app_data}/covers/` (Rust-side) and the playlist switches to
+/// `custom` cover mode. Returns the updated playlist.
+#[tauri::command]
+pub async fn pick_playlist_cover(
+    app: AppHandle,
+    db: State<'_, Arc<Db>>,
+    playlist_id: i64,
+) -> Result<Playlist, String> {
+    let picker_app = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        picker_app
+            .dialog()
+            .file()
+            .add_filter("Images", &COVER_EXTS)
+            .blocking_pick_file()
+            .and_then(|p| p.into_path().ok())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "no image selected".to_string())?;
+
+    if !picked.is_file() {
+        return Err("selected image does not exist".into());
+    }
+    let ext = picked
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !COVER_EXTS.contains(&ext.as_str()) {
+        return Err("unsupported image type — use jpg, png or webp".into());
+    }
+
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("covers");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Timestamped name so re-picking always yields a fresh URL (the webview
+    // caches images by path); stale files are swept by remove_legacy_covers.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let dest = dir.join(format!("{playlist_id}.{stamp}.{ext}"));
+    let tmp = dir.join(format!(".{playlist_id}.{stamp}.{ext}.tmp"));
+    std::fs::copy(&picked, &tmp).map_err(|e| format!("copy failed: {e}"))?;
+    std::fs::rename(&tmp, &dest).map_err(|e| format!("commit failed: {e}"))?;
+    remove_legacy_covers(&dir, playlist_id, &dest);
+
+    set_playlist_cover(db, playlist_id, CoverKind::Custom, Some(&dest))
+}
+
+/// Drop a custom cover and return to the auto collage mode.
+#[tauri::command]
+pub fn clear_playlist_cover(
+    db: State<'_, Arc<Db>>,
+    playlist_id: i64,
+) -> Result<Playlist, String> {
+    let stale: Option<String> = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT cover_path FROM playlists WHERE id = ?1",
+            [playlist_id],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+    let playlist = set_playlist_cover(db, playlist_id, CoverKind::Auto, None)?;
+    if let Some(path) = stale {
+        let path = PathBuf::from(&path);
+        if let Some(dir) = path.parent() {
+            remove_legacy_covers(dir, playlist_id, &path);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+    Ok(playlist)
+}
+
+/// Rotate the auto-collage seed so a different stable set of four covers shows.
+#[tauri::command]
+pub fn shuffle_playlist_cover(
+    db: State<'_, Arc<Db>>,
+    playlist_id: i64,
+) -> Result<Playlist, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::set_playlist_cover_seed(&conn, playlist_id, db::now_unix())
+        .map_err(|e| e.to_string())?;
+    db::get_playlist(&conn, playlist_id).map_err(|e| e.to_string())
+}
+
+/// Apply a cover mode + path, spawning a fresh read of the updated playlist.
+fn set_playlist_cover(
+    db: State<'_, Arc<Db>>,
+    playlist_id: i64,
+    kind: CoverKind,
+    cover_path: Option<&Path>,
+) -> Result<Playlist, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let path = cover_path.map(|p| p.to_string_lossy().to_string());
+    db::set_playlist_cover_kind(&conn, playlist_id, kind, path.as_deref())
+        .map_err(|e| e.to_string())?;
+    db::get_playlist(&conn, playlist_id).map_err(|e| e.to_string())
+}
+
+/// Remove stale custom-cover files for a playlist (e.g. an older extension)
+/// while keeping `keep`. Best-effort cleanup, never fatal.
+fn remove_legacy_covers(dir: &Path, playlist_id: i64, keep: &Path) {
+    let prefix = format!("{playlist_id}.");
+    crate::services::db::remove_cover_files(dir, &prefix, Some(keep));
 }

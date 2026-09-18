@@ -42,6 +42,9 @@ const SettingsView = lazy(() =>
 const PlayerTab = lazy(() =>
   import("./components/player/PlayerTab").then((m) => ({ default: m.PlayerTab })),
 );
+const HomeView = lazy(() =>
+  import("./components/home/HomeView").then((m) => ({ default: m.HomeView })),
+);
 
 export default function App() {
   const view = useUIStore((s) => s.view);
@@ -90,6 +93,8 @@ export default function App() {
                   <Suspense fallback={null}>
                   {view === "player" ? (
                     <PlayerTab />
+                  ) : view === "home" ? (
+                    <HomeView />
                   ) : view === "search" ? (
                     <HomeSearch />
                   ) : view === "downloads" ? (

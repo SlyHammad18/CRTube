@@ -1,23 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowClockwise,
   CaretDown,
   CaretRight,
   ClockCounterClockwise,
   DotsThreeVertical,
   Heart,
+  ImageSquare,
   MusicNote,
   PencilSimple,
   Play,
   Plus,
+  Shuffle,
   Trash,
 } from "@phosphor-icons/react";
-import { fmtBytes, parseArtists } from "../../lib/format";
+import { fmtBytes } from "../../lib/format";
 import { useLibraryStore } from "../../stores/library";
 import { usePlayerStore } from "../../stores/player";
 import { usePlaylistsStore } from "../../stores/playlists";
 import { useUIStore } from "../../stores/ui";
 import { pushToast } from "../../stores/toast";
 import { confirm } from "../../stores/confirm";
+import { PlaylistArt } from "../common/PlaylistArt";
+import { ArtistArt } from "../common/ArtistArt";
 
 function SidebarLabel({ children }: { children: string }) {
   return (
@@ -122,6 +127,7 @@ function SectionHeader({
 export function PlaylistsPane() {
   const playlists = usePlaylistsStore((s) => s.playlists);
   const loaded = usePlaylistsStore((s) => s.loaded);
+  const artists = usePlaylistsStore((s) => s.artists);
   const selection = usePlaylistsStore((s) => s.selection);
   const openLibrary = usePlaylistsStore((s) => s.openLibrary);
   const openFavourites = usePlaylistsStore((s) => s.openFavourites);
@@ -130,6 +136,9 @@ export function PlaylistsPane() {
   const create = usePlaylistsStore((s) => s.create);
   const rename = usePlaylistsStore((s) => s.rename);
   const remove = usePlaylistsStore((s) => s.remove);
+  const pickCover = usePlaylistsStore((s) => s.pickCover);
+  const shuffleCover = usePlaylistsStore((s) => s.shuffleCover);
+  const clearCover = usePlaylistsStore((s) => s.clearCover);
 
   const libEntries = useLibraryStore((s) => s.entries);
   const setView = useUIStore((s) => s.setView);
@@ -152,28 +161,17 @@ export function PlaylistsPane() {
     [libEntries],
   );
 
-  const artistCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const e of libEntries) {
-      for (const a of parseArtists(e.channel)) {
-        counts.set(a, (counts.get(a) ?? 0) + 1);
-      }
-    }
-    return Array.from(counts.entries()).sort((x, y) =>
-      x[0].localeCompare(y[0]),
-    );
-  }, [libEntries]);
-
   useEffect(() => {
     if (!loaded) void usePlaylistsStore.getState().refresh();
-    // Also refresh the library counts when the pane mounts.
+    // Also refresh the library counts and artist photos when the pane mounts.
     void useLibraryStore.getState().refresh();
+    void usePlaylistsStore.getState().refreshArtists();
   }, [loaded]);
 
   return (
-    <aside className="flex h-full w-[216px] shrink-0 flex-col border-r border-line bg-panel/50">
+    <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-line bg-panel/50">
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        <SidebarLabel>Library</SidebarLabel>
+        <SidebarLabel>Your Library</SidebarLabel>
         <LibraryItem
           label="All Tracks"
           icon={<MusicNote size={14} weight="light" />}
@@ -229,130 +227,171 @@ export function PlaylistsPane() {
 
         {playlistsOpen && (
           <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
-          {playlists.map((p) => {
-            const active = selection.type === "playlist" && selection.id === p.id;
-            if (renamingId === p.id) {
+            {playlists.map((p) => {
+              const active = selection.type === "playlist" && selection.id === p.id;
+              if (renamingId === p.id) {
+                return (
+                  <li key={p.id} className="px-1 py-0.5">
+                    <NameInput
+                      initial={p.name}
+                      placeholder="Rename playlist…"
+                      onCancel={() => setRenamingId(null)}
+                      onCommit={(name) => {
+                        if (name)
+                          void rename(p.id, name).catch((e) =>
+                            pushToast(`Rename failed — ${String(e)}`),
+                          );
+                        setRenamingId(null);
+                      }}
+                    />
+                  </li>
+                );
+              }
               return (
-                <li key={p.id} className="px-1 py-0.5">
-                  <NameInput
-                    initial={p.name}
-                    placeholder="Rename playlist…"
-                    onCancel={() => setRenamingId(null)}
-                    onCommit={(name) => {
-                      if (name)
-                        void rename(p.id, name).catch((e) =>
-                          pushToast(`Rename failed — ${String(e)}`),
-                        );
-                      setRenamingId(null);
+                <li key={p.id} className="relative">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-current={active ? "true" : undefined}
+                    onClick={() => void openPlaylist(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void openPlaylist(p.id);
                     }}
-                  />
-                </li>
-              );
-            }
-            return (
-              <li key={p.id} className="relative">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  aria-current={active ? "true" : undefined}
-                  onClick={() => void openPlaylist(p.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void openPlaylist(p.id);
-                  }}
-                  className={`group flex w-full cursor-default items-center gap-2 rounded-card px-2 py-1.5 text-left text-13 transition-colors duration-150 ${
-                    active
-                      ? "bg-raise text-ice"
-                      : "text-mute hover:bg-raise hover:text-ink"
-                  }`}
-                >
-                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  <span className="shrink-0 font-mono text-11 text-mute">
-                    {p.trackCount}
-                  </span>
-                  <button
-                    aria-label={`Playlist options for ${p.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuFor(menuFor === p.id ? null : p.id);
-                    }}
-                    className={`grid h-5 w-5 shrink-0 place-items-center rounded-card text-dim transition-all duration-150 hover:text-ink ${
-                      menuFor === p.id
-                        ? "opacity-100"
-                        : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    className={`group flex w-full cursor-default items-center gap-2 rounded-card p-1.5 text-left text-13 transition-colors duration-150 ${
+                      active
+                        ? "bg-raise text-ice"
+                        : "text-mute hover:bg-raise hover:text-ink"
                     }`}
                   >
-                    <DotsThreeVertical size={12} weight="light" aria-hidden />
-                  </button>
-                </div>
-                {menuFor === p.id && (
-                  <>
+                    <PlaylistArt
+                      playlist={p}
+                      className="h-9 w-9 shrink-0 rounded-card"
+                    />
+                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    <span className="shrink-0 font-mono text-11 text-mute">
+                      {p.trackCount}
+                    </span>
                     <button
-                      aria-label="Close playlist menu"
-                      tabIndex={-1}
+                      aria-label={`Playlist options for ${p.name}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setMenuFor(null);
+                        setMenuFor(menuFor === p.id ? null : p.id);
                       }}
-                      className="fixed inset-0 z-40 cursor-default"
-                    />
-                    <div
-                      role="menu"
-                      className="absolute right-1 top-8 z-50 w-40 rounded-card border border-line bg-panel p-1 shadow-panel"
+                      className={`grid h-5 w-5 shrink-0 place-items-center rounded-card text-dim transition-all duration-150 hover:text-ink ${
+                        menuFor === p.id
+                          ? "opacity-100"
+                          : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      }`}
                     >
+                      <DotsThreeVertical size={12} weight="light" aria-hidden />
+                    </button>
+                  </div>
+                  {menuFor === p.id && (
+                    <>
                       <button
-                        role="menuitem"
+                        aria-label="Close playlist menu"
+                        tabIndex={-1}
                         onClick={(e) => {
                           e.stopPropagation();
                           setMenuFor(null);
-                          playAll(libEntries, 0, { type: "playlist", id: p.id });
                         }}
-                        className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-mute transition-colors duration-150 hover:bg-raise hover:text-ink"
+                        className="fixed inset-0 z-40 cursor-default"
+                      />
+                      <div
+                        role="menu"
+                        className="absolute right-1 top-10 z-50 w-44 rounded-card border border-line bg-panel p-1 shadow-panel"
                       >
-                        <Play size={12} weight="light" aria-hidden /> Play all
-                      </button>
-                      <button
-                        role="menuitem"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuFor(null);
-                          setRenamingId(p.id);
-                        }}
-                        className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-mute transition-colors duration-150 hover:bg-raise hover:text-ink"
-                      >
-                        <PencilSimple size={12} weight="light" aria-hidden /> Rename
-                      </button>
-                      <button
-                        role="menuitem"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuFor(null);
-                          void (async () => {
-                            const ok = await confirm({
-                              title: "Delete playlist?",
-                              message: `“${p.name}” and its track list will be removed.`,
-                              confirmLabel: "Delete",
-                            });
-                            if (ok)
-                              void remove(p.id).catch((err) =>
-                                pushToast(`Delete failed — ${String(err)}`),
-                              );
-                          })();
-                        }}
-                        className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-signal transition-colors duration-150 hover:bg-signal hover:text-void"
-                      >
-                        <Trash size={12} weight="light" aria-hidden /> Delete
-                      </button>
-                    </div>
-                  </>
-                )}
+                        <button
+                          role="menuitem"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuFor(null);
+                            playAll(libEntries, 0, { type: "playlist", id: p.id });
+                          }}
+                          className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-mute transition-colors duration-150 hover:bg-raise hover:text-ink"
+                        >
+                          <Play size={12} weight="light" aria-hidden /> Play all
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuFor(null);
+                            void pickCover(p.id);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-mute transition-colors duration-150 hover:bg-raise hover:text-ink"
+                        >
+                          <ImageSquare size={12} weight="light" aria-hidden />
+                          {p.coverKind === "custom" ? "Change cover…" : "Set cover…"}
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuFor(null);
+                            void shuffleCover(p.id);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-mute transition-colors duration-150 hover:bg-raise hover:text-ink"
+                        >
+                          <Shuffle size={12} weight="light" aria-hidden /> Shuffle cover
+                        </button>
+                        {p.coverKind === "custom" && (
+                          <button
+                            role="menuitem"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuFor(null);
+                              void clearCover(p.id);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-mute transition-colors duration-150 hover:bg-raise hover:text-ink"
+                          >
+                            <ArrowClockwise size={12} weight="light" aria-hidden />
+                            Reset to collage
+                          </button>
+                        )}
+                        <button
+                          role="menuitem"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuFor(null);
+                            setRenamingId(p.id);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-mute transition-colors duration-150 hover:bg-raise hover:text-ink"
+                        >
+                          <PencilSimple size={12} weight="light" aria-hidden /> Rename
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuFor(null);
+                            void (async () => {
+                              const ok = await confirm({
+                                title: "Delete playlist?",
+                                message: `“${p.name}” and its track list will be removed.`,
+                                confirmLabel: "Delete",
+                              });
+                              if (ok)
+                                void remove(p.id).catch((err) =>
+                                  pushToast(`Delete failed — ${String(err)}`),
+                                );
+                            })();
+                          }}
+                          className="flex w-full items-center gap-2 rounded-card px-2.5 py-1.5 text-left text-12 text-signal transition-colors duration-150 hover:bg-signal hover:text-void"
+                        >
+                          <Trash size={12} weight="light" aria-hidden /> Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+            {loaded && playlists.length === 0 && !composing && (
+              <li className="px-2 py-1 font-mono text-11 leading-relaxed text-dim">
+                No playlists yet
               </li>
-            );
-          })}
-          {loaded && playlists.length === 0 && !composing && (
-            <li className="px-2 py-1 font-mono text-11 leading-relaxed text-dim">
-              No playlists yet
-            </li>
-          )}
+            )}
           </ul>
         )}
 
@@ -363,17 +402,30 @@ export function PlaylistsPane() {
         />
         {artistsOpen && (
           <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
-            {artistCounts.map(([name, count]) => (
-              <LibraryItem
-                key={name}
-                label={name}
-                icon={<MusicNote size={14} weight="light" />}
-                active={selection.type === "artist" && selection.name === name}
-                count={count}
-                onClick={() => openArtist(name)}
-              />
+            {artists.map((a) => (
+              <li key={a.id}>
+                <button
+                  aria-current={
+                    selection.type === "artist" && selection.name === a.name
+                      ? "true"
+                      : undefined
+                  }
+                  onClick={() => openArtist(a.name)}
+                  className={`flex w-full items-center gap-2 rounded-card px-1.5 py-1.5 text-left text-13 transition-colors duration-150 active:scale-[0.99] ${
+                    selection.type === "artist" && selection.name === a.name
+                      ? "bg-raise text-ice"
+                      : "text-mute hover:bg-raise hover:text-ink"
+                  }`}
+                >
+                  <ArtistArt artist={a} className="h-7 w-7 shrink-0 rounded-card" />
+                  <span className="min-w-0 flex-1 truncate">{a.name}</span>
+                  <span className="shrink-0 font-mono text-11 text-mute">
+                    {a.trackCount}
+                  </span>
+                </button>
+              </li>
             ))}
-            {artistCounts.length === 0 && (
+            {artists.length === 0 && (
               <li className="px-2 py-1 font-mono text-11 leading-relaxed text-dim">
                 No artists yet
               </li>

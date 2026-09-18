@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { ipc } from "../lib/ipc";
-import type { Playlist, PlaylistTrack } from "../types/player";
+import type { Artist, Playlist, PlaylistTrack } from "../types/player";
 import { pushToast } from "./toast";
 import { useLibraryStore } from "./library";
 
@@ -16,6 +16,8 @@ type Membership = Record<number, Record<number, number>>;
 interface PlaylistsState {
   playlists: Playlist[];
   loaded: boolean;
+  /** Artists extracted from track metadata, with cached Deezer photos. */
+  artists: Artist[];
   selection: PlayerSelection;
   /** Tracks of the open playlist; null while a library view is selected. */
   openTracks: PlaylistTrack[] | null;
@@ -34,6 +36,12 @@ interface PlaylistsState {
   addTo: (playlistId: number, downloadId: number) => Promise<boolean>;
   removeFrom: (playlistId: number, itemId: number) => Promise<void>;
   reorder: (orderedItemIds: number[]) => Promise<void>;
+  refreshArtists: () => Promise<void>;
+  pickCover: (id: number) => Promise<void>;
+  clearCover: (id: number) => Promise<void>;
+  shuffleCover: (id: number) => Promise<void>;
+  pickArtistCover: (id: number) => Promise<void>;
+  clearArtistCover: (id: number) => Promise<void>;
 }
 
 async function buildMembership(
@@ -52,6 +60,7 @@ async function buildMembership(
 export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
   playlists: [],
   loaded: false,
+  artists: [],
   selection: { type: "library", recent: false },
   openTracks: null,
   members: {},
@@ -161,6 +170,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     if (sel.type === "playlist" && sel.id === playlistId) {
       await get().openPlaylist(playlistId);
     }
+    void get().refresh(); // update the playlist's seeded collage covers
     return true;
   },
 
@@ -184,6 +194,7 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
             : s.openTracks,
       };
     });
+    void get().refresh(); // update the playlist's seeded collage covers
   },
 
   patchOpenTrack: (id, patch) =>
@@ -216,6 +227,70 @@ export const usePlaylistsStore = create<PlaylistsState>((set, get) => ({
     } catch (e) {
       pushToast(`Reorder failed — ${String(e)}`);
       await get().openPlaylist(sel.id);
+    }
+  },
+
+  refreshArtists: async () => {
+    try {
+      const artists = await ipc.listArtists();
+      set({ artists });
+    } catch {
+      /* the sidebar degrades to an empty artist list */
+    }
+  },
+
+  pickCover: async (id) => {
+    try {
+      const updated = await ipc.pickPlaylistCover(id);
+      set((s) => ({
+        playlists: s.playlists.map((p) => (p.id === id ? updated : p)),
+      }));
+    } catch (e) {
+      pushToast(String(e));
+    }
+  },
+
+  clearCover: async (id) => {
+    try {
+      const updated = await ipc.clearPlaylistCover(id);
+      set((s) => ({
+        playlists: s.playlists.map((p) => (p.id === id ? updated : p)),
+      }));
+    } catch (e) {
+      pushToast(String(e));
+    }
+  },
+
+  shuffleCover: async (id) => {
+    try {
+      const updated = await ipc.shufflePlaylistCover(id);
+      set((s) => ({
+        playlists: s.playlists.map((p) => (p.id === id ? updated : p)),
+      }));
+    } catch (e) {
+      pushToast(String(e));
+    }
+  },
+
+  pickArtistCover: async (id) => {
+    try {
+      const updated = await ipc.pickArtistCover(id);
+      set((s) => ({
+        artists: s.artists.map((a) => (a.id === id ? updated : a)),
+      }));
+    } catch (e) {
+      pushToast(String(e));
+    }
+  },
+
+  clearArtistCover: async (id) => {
+    try {
+      const updated = await ipc.clearArtistCover(id);
+      set((s) => ({
+        artists: s.artists.map((a) => (a.id === id ? updated : a)),
+      }));
+    } catch (e) {
+      pushToast(String(e));
     }
   },
 }));

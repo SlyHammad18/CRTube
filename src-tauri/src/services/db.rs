@@ -61,6 +61,11 @@ const MIGRATIONS: &[&str] = &[
         FROM downloads d
         JOIN artists a ON a.name = d.channel
         WHERE d.channel IS NOT NULL AND TRIM(d.channel) <> '';",
+    // v5 — playlist covers (auto 4-up track collage / custom upload).
+    "ALTER TABLE playlists ADD COLUMN cover_kind TEXT NOT NULL DEFAULT 'auto';",
+    "ALTER TABLE playlists ADD COLUMN cover_path TEXT;",
+    "ALTER TABLE playlists ADD COLUMN cover_seed INTEGER NOT NULL DEFAULT 0;",
+    "UPDATE playlists SET cover_seed = id WHERE cover_seed = 0;",
 ];
 
 pub fn open(path: &Path) -> Result<Connection, rusqlite::Error> {
@@ -71,7 +76,60 @@ pub fn open(path: &Path) -> Result<Connection, rusqlite::Error> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     migrate(&conn)?;
+    // The migration counter has drifted across builds, so schema additions are
+    // idempotent "add column if missing" checks rather than ordered ALTERs.
+    ensure_artist_cover_schema(&conn)?;
     Ok(conn)
+}
+
+/// Idempotently add the artist cover columns (see `ensure_column`). Exposed for
+/// tests and `open`; must run after `migrate`.
+pub(crate) fn ensure_artist_cover_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
+    ensure_column(
+        conn,
+        "artists",
+        "cover_kind",
+        "ALTER TABLE artists ADD COLUMN cover_kind TEXT NOT NULL DEFAULT 'auto';",
+    )?;
+    ensure_column(
+        conn,
+        "artists",
+        "cover_path",
+        "ALTER TABLE artists ADD COLUMN cover_path TEXT;",
+    )?;
+    Ok(())
+}
+
+/// Add a column to `table` only when it isn't already present (idempotent).
+fn ensure_column(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    ddl: &str,
+) -> Result<(), rusqlite::Error> {
+    let has: bool = conn
+        .prepare(&format!("PRAGMA table_info({table})"))?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .any(|c| c == column);
+    if !has {
+        conn.execute_batch(ddl)?;
+    }
+    Ok(())
+}
+
+/// Best-effort sweep of stale cover files whose filename starts with `prefix`
+/// (keeping `keep`, the just-written file). Never fatal.
+pub fn remove_cover_files(dir: &Path, prefix: &str, keep: Option<&Path>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with(prefix) && Some(p.as_path()) != keep {
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
 }
 
 pub fn migrate(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -335,6 +393,89 @@ pub fn set_track_artists(
     tx.commit()
 }
 
+/// All artists with their track counts (artists never referenced by any track
+/// are trimmed out). Artwork resolves on the frontend.
+pub fn list_artists(conn: &Connection) -> Result<Vec<Artist>, rusqlite::Error> {
+    let mut stmt = conn.prepare(&format!(
+        "{ARTIST_SELECT} FROM artists a LEFT JOIN track_artists ta ON ta.artist_id = a.id
+         GROUP BY a.id
+         HAVING track_count > 0
+         ORDER BY a.name COLLATE NOCASE ASC, a.id ASC"
+    ))?;
+    let rows = stmt.query_map([], row_to_artist)?;
+    rows.collect()
+}
+
+/// A single artist (used to return fresh state after a cover change).
+pub fn get_artist(conn: &Connection, id: i64) -> Result<Artist, rusqlite::Error> {
+    let mut stmt = conn.prepare(&format!(
+        "{ARTIST_SELECT} FROM artists a LEFT JOIN track_artists ta ON ta.artist_id = a.id
+         WHERE a.id = ?1
+         GROUP BY a.id"
+    ))?;
+    stmt.query_row([id], row_to_artist)
+}
+
+/// Switch an artist between auto collage and a custom cover image.
+pub fn set_artist_cover_kind(
+    conn: &Connection,
+    id: i64,
+    kind: CoverKind,
+    cover_path: Option<&str>,
+) -> Result<(), rusqlite::Error> {
+    let kind_str = match kind {
+        CoverKind::Auto => "auto",
+        CoverKind::Custom => "custom",
+    };
+    conn.execute(
+        "UPDATE artists SET cover_kind = ?2, cover_path = ?3 WHERE id = ?1",
+        params![id, kind_str, cover_path],
+    )?;
+    Ok(())
+}
+
+/// Switch a playlist between auto collage and a custom cover image.
+pub fn set_playlist_cover_kind(
+    conn: &Connection,
+    id: i64,
+    kind: CoverKind,
+    cover_path: Option<&str>,
+) -> Result<(), rusqlite::Error> {
+    let kind_str = match kind {
+        CoverKind::Auto => "auto",
+        CoverKind::Custom => "custom",
+    };
+    conn.execute(
+        "UPDATE playlists SET cover_kind = ?2, cover_path = ?3 WHERE id = ?1",
+        params![id, kind_str, cover_path],
+    )?;
+    Ok(())
+}
+
+/// Rotate the auto-collage seed so a different-but-stable set of four covers
+/// shows next (the "shuffle cover" action).
+pub fn set_playlist_cover_seed(
+    conn: &Connection,
+    id: i64,
+    seed: i64,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE playlists SET cover_seed = ?2 WHERE id = ?1",
+        params![id, seed],
+    )?;
+    Ok(())
+}
+
+pub fn get_playlist(conn: &Connection, id: i64) -> Result<Playlist, rusqlite::Error> {
+    let mut playlist: Playlist = conn.query_row(
+        &format!("{PLAYLIST_SELECT} WHERE p.id = ?1 GROUP BY p.id"),
+        params![id],
+        row_to_playlist,
+    )?;
+    with_collages(conn, std::slice::from_mut(&mut playlist))?;
+    Ok(playlist)
+}
+
 pub fn rename_entry(
     conn: &Connection,
     id: i64,
@@ -348,6 +489,17 @@ pub fn rename_entry(
     set_track_artists(conn, id, artists)
 }
 
+/// Where a playlist's cover art comes from. `auto` renders the animated 4-up
+/// collage of the playlist's own track covers; `custom` shows a user-picked
+/// image stored at `cover_path`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum CoverKind {
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "custom")]
+    Custom,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Playlist {
@@ -355,7 +507,41 @@ pub struct Playlist {
     pub name: String,
     pub track_count: i64,
     pub created_at: i64,
+    pub cover_kind: CoverKind,
+    pub cover_path: Option<String>,
+    /// Seed driving the auto collage pick (0 is fine — splitmix64 hashes it).
+    pub cover_seed: i64,
+    /// Up to four thumbnails picked for the collage (http URL or a cached
+    /// absolute path). Empty when the playlist has no tracks with covers.
+    pub cover_urls: Vec<String>,
 }
+
+/// A single artist with its track count. Artwork resolves on the frontend from
+/// the artist's own track thumbnails (`auto` collage) or a user-picked cover
+/// image (`custom`, stored at `cover_path`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Artist {
+    pub id: i64,
+    pub name: String,
+    pub track_count: i64,
+    pub cover_kind: CoverKind,
+    pub cover_path: Option<String>,
+}
+
+fn row_to_artist(r: &rusqlite::Row) -> Result<Artist, rusqlite::Error> {
+    let kind: String = r.get("cover_kind")?;
+    Ok(Artist {
+        id: r.get("id")?,
+        name: r.get("name")?,
+        track_count: r.get("track_count")?,
+        cover_kind: if kind == "custom" { CoverKind::Custom } else { CoverKind::Auto },
+        cover_path: r.get("cover_path")?,
+    })
+}
+
+const ARTIST_SELECT: &str = "SELECT a.id, a.name, a.cover_kind, a.cover_path,
+            COUNT(ta.track_id) AS track_count";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -375,17 +561,104 @@ pub fn now_unix() -> i64 {
 }
 
 fn row_to_playlist(r: &rusqlite::Row) -> Result<Playlist, rusqlite::Error> {
+    let kind: String = r.get("cover_kind")?;
     Ok(Playlist {
         id: r.get("id")?,
         name: r.get("name")?,
         track_count: r.get("track_count")?,
         created_at: r.get("created_at")?,
+        cover_kind: if kind == "custom" { CoverKind::Custom } else { CoverKind::Auto },
+        cover_path: r.get("cover_path")?,
+        cover_seed: r.get("cover_seed")?,
+        cover_urls: Vec::new(),
     })
 }
 
 const PLAYLIST_SELECT: &str =
-    "SELECT p.id, p.name, p.created_at, COUNT(pi.id) AS track_count
+    "SELECT p.id, p.name, p.created_at, p.cover_kind, p.cover_path, p.cover_seed,
+            COUNT(pi.id) AS track_count
      FROM playlists p LEFT JOIN playlist_items pi ON pi.playlist_id = p.id";
+
+/// Deterministic PRNG step (splitmix64) — stable across restarts so a given
+/// seed always yields the same collage selection.
+pub fn splitmix64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
+}
+
+/// Pure: the indices a playlist collage should show, from a seeded partial
+/// Fisher–Yates shuffle. Stable for a fixed `seed`; `seed` rotation (the
+/// "shuffle cover" action) picks a different-but-persistent four.
+pub fn seeded_collage_pick(len: usize, seed: u64, max: usize) -> Vec<usize> {
+    if len == 0 || max == 0 {
+        return Vec::new();
+    }
+    let m = max.min(len);
+    let mut arr: Vec<usize> = (0..len).collect();
+    let mut state = splitmix64(seed);
+    for i in 0..m {
+        state = splitmix64(state);
+        let j = i + (state as usize) % (len - i);
+        arr.swap(i, j);
+    }
+    arr.truncate(m);
+    arr
+}
+
+/// Order cover art for the collage from a playlist's thumbs: `<4` values are
+/// used as-is (a single cover fills the whole tile when there's just one);
+/// `>=4` picks four distinct ones seeded by `seed`. Duplicates are dropped so
+/// one song never appears twice on a 2×2 grid.
+pub fn collage_from_thumbs(thumbs: &[Option<String>], seed: u64) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let distinct: Vec<String> = thumbs
+        .iter()
+        .flatten()
+        .filter(|t| !t.trim().is_empty())
+        .filter(|t| seen.insert((*t).clone()))
+        .cloned()
+        .collect();
+    seeded_collage_pick(distinct.len(), seed, 4)
+        .into_iter()
+        .map(|i| distinct[i].clone())
+        .collect()
+}
+
+/// Ordered (non-null, non-empty) thumbnail values for a playlist's tracks.
+fn load_playlist_thumbs(conn: &Connection, playlist_id: i64) -> Result<Vec<Option<String>>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT d.thumb_url
+         FROM playlist_items pi JOIN downloads d ON d.id = pi.download_id
+         WHERE pi.playlist_id = ?1
+         ORDER BY pi.position ASC, pi.id ASC",
+    )?;
+    let rows = stmt.query_map(params![playlist_id], |r| r.get(0))?;
+    rows.collect()
+}
+
+/// Fill each playlist's `cover_urls` from its own tracks (seeded collage for
+/// `CoverKind::Auto`; a single URL for `CoverKind::Custom`).
+pub fn with_collages(conn: &Connection, playlists: &mut [Playlist]) -> Result<(), rusqlite::Error> {
+    for p in playlists.iter_mut() {
+        match p.cover_kind {
+            CoverKind::Custom => {
+                p.cover_urls = p
+                    .cover_path
+                    .iter()
+                    .filter(|c| !c.trim().is_empty())
+                    .cloned()
+                    .collect();
+            }
+            CoverKind::Auto => {
+                let thumbs = load_playlist_thumbs(conn, p.id)?;
+                p.cover_urls = collage_from_thumbs(&thumbs, p.cover_seed as u64);
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Create a playlist; idempotent on name (returns the existing row instead of failing).
 pub fn create_playlist(conn: &Connection, name: &str) -> Result<Playlist, rusqlite::Error> {
@@ -394,11 +667,19 @@ pub fn create_playlist(conn: &Connection, name: &str) -> Result<Playlist, rusqli
         "INSERT OR IGNORE INTO playlists (name, created_at) VALUES (?1, ?2)",
         params![name, now],
     )?;
-    conn.query_row(
+    let mut playlist: Playlist = conn.query_row(
         &format!("{PLAYLIST_SELECT} WHERE p.name = ?1 GROUP BY p.id"),
         params![name],
         row_to_playlist,
-    )
+    )?;
+    // Seed every new playlist with an id-derived seed so its collage is stable.
+    conn.execute(
+        "UPDATE playlists SET cover_seed = ?2 WHERE id = ?1 AND cover_seed = 0",
+        params![playlist.id, playlist.id],
+    )?;
+    playlist.cover_seed = playlist.id;
+    with_collages(conn, std::slice::from_mut(&mut playlist))?;
+    Ok(playlist)
 }
 
 pub fn rename_playlist(conn: &Connection, id: i64, name: &str) -> Result<(), rusqlite::Error> {
@@ -410,7 +691,9 @@ pub fn list_playlists(conn: &Connection) -> Result<Vec<Playlist>, rusqlite::Erro
     let sql = format!("{PLAYLIST_SELECT} GROUP BY p.id ORDER BY p.created_at DESC, p.id DESC");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], row_to_playlist)?;
-    rows.collect()
+    let mut playlists: Vec<Playlist> = rows.collect::<Result<_, _>>()?;
+    with_collages(conn, &mut playlists)?;
+    Ok(playlists)
 }
 
 pub fn delete_playlist(conn: &Connection, id: i64) -> Result<(), rusqlite::Error> {
@@ -522,6 +805,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "foreign_keys", "ON").unwrap();
         migrate(&conn).unwrap();
+        ensure_artist_cover_schema(&conn).unwrap();
         conn
     }
 
@@ -694,5 +978,79 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM playlist_items", [], |r| r.get(0))
             .unwrap();
         assert_eq!(orphans, 0, "FK cascade must remove playlist items");
+    }
+
+    #[test]
+    fn collage_pick_is_stable_bounded_and_seed_sensitive() {
+        let a = seeded_collage_pick(6, 42, 4);
+        let b = seeded_collage_pick(6, 42, 4);
+        assert_eq!(a, b, "same seed -> same selection");
+        assert_ne!(a, seeded_collage_pick(6, 43, 4), "different seed -> different selection");
+        assert_eq!(a.len(), 4);
+        let mut sorted = a.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 4, "no duplicate indices");
+        assert!(sorted.iter().all(|&i| i < 6));
+        // Fewer calls than requested just take what exists.
+        assert_eq!(seeded_collage_pick(2, 7, 4).len(), 2);
+        assert!(seeded_collage_pick(0, 7, 4).is_empty());
+    }
+
+    #[test]
+    fn collage_uses_available_covers_only() {
+        let thumbs: Vec<Option<String>> = vec![
+            Some("a.jpg".into()),
+            None,
+            Some("b.jpg".into()),
+            Some("a.jpg".into()),
+        ];
+        let out = collage_from_thumbs(&thumbs, 0);
+        assert_eq!(out.len(), 2, "dupes + nulls are dropped");
+        assert!(out.iter().all(|u| u == "a.jpg" || u == "b.jpg"));
+
+        let one = collage_from_thumbs(&[None, Some("only.jpg".into())], 0);
+        assert_eq!(one, vec!["only.jpg".to_string()]);
+    }
+
+    #[test]
+    fn new_playlist_defaults_to_seeded_auto_cover() {
+        let conn = mem();
+        let p = create_playlist(&conn, "Seeded").unwrap();
+        assert_eq!(p.cover_seed, p.id, "seed borrowed from id for stability");
+        assert_eq!(p.cover_kind, CoverKind::Auto);
+        assert!(p.cover_path.is_none());
+        assert!(p.cover_urls.is_empty());
+
+        set_playlist_cover_kind(&conn, p.id, CoverKind::Custom, Some("/tmp/custom.jpg")).unwrap();
+        let after = get_playlist(&conn, p.id).unwrap();
+        assert_eq!(after.cover_kind, CoverKind::Custom);
+        assert_eq!(after.cover_urls, vec!["/tmp/custom.jpg".to_string()]);
+
+        set_playlist_cover_kind(&conn, p.id, CoverKind::Auto, None).unwrap();
+        set_playlist_cover_seed(&conn, p.id, 99).unwrap();
+        let reset = get_playlist(&conn, p.id).unwrap();
+        assert_eq!(reset.cover_kind, CoverKind::Auto);
+        assert!(reset.cover_path.is_none());
+        assert_eq!(reset.cover_seed, 99);
+    }
+
+    #[test]
+    fn artists_list_with_track_counts() {
+        let conn = mem();
+        let id = insert_download(&conn, &rec("art00000001", "/tmp/a.mp4")).unwrap();
+        set_track_artists(&conn, id, &["Daft Punk".into()]).unwrap();
+
+        let artists = list_artists(&conn).unwrap();
+        let dp = artists.iter().find(|a| a.name == "Daft Punk").unwrap();
+        assert_eq!(dp.track_count, 1);
+    }
+
+    #[test]
+    fn phantom_artists_are_trimmed_from_listing() {
+        let conn = mem();
+        conn.execute("INSERT INTO artists(name) VALUES ('Nobody')", [])
+            .unwrap();
+        assert!(list_artists(&conn).unwrap().is_empty());
     }
 }

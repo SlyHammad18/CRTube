@@ -2,6 +2,7 @@ import type { View } from "../../stores/ui";
 import { ConsolePrompt } from "./ConsolePrompt";
 
 const PROMPTS: Record<View, string[]> = {
+  home: ["> CRTUBE://HOME"],
   player: ["> CRTUBE://PLAYER"],
   search: ["> awaiting input"],
   downloads: ["> no active transfers"],

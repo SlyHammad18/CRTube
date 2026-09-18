@@ -153,7 +153,13 @@ pub fn run() {
             commands::player::media_url,
             commands::player::thumb_media_url,
             commands::player::get_session,
-            commands::player::set_session
+            commands::player::set_session,
+            commands::player::pick_playlist_cover,
+            commands::player::clear_playlist_cover,
+            commands::player::shuffle_playlist_cover,
+            commands::artists::list_artists,
+            commands::artists::pick_artist_cover,
+            commands::artists::clear_artist_cover,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CRTube");
