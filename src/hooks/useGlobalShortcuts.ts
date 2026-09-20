@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { usePlayerStore, selectCurrentEntry } from "../stores/player";
+import { useLibraryStore } from "../stores/library";
 import { usePlaylistsStore } from "../stores/playlists";
 import { useUIStore } from "../stores/ui";
 import { useRenameStore } from "../stores/rename";
@@ -15,6 +16,8 @@ import { parseArtists } from "../lib/format";
  *   ↑  /  ↓          volume +1% / −1% (unmutes on raise)
  *   m                mute / unmute
  *   ,  /  .          previous / next
+ *   [  /  ]          speed − / speed +
+ *   f                toggle favourite
  *   l                toggle lyrics dock
  *   r                cycle repeat (off → all → one)
  *   s                toggle shuffle
@@ -117,6 +120,33 @@ export function useGlobalShortcuts() {
               player.next();
               handled = true;
               break;
+            case "f": {
+              e.preventDefault();
+              const cur = selectCurrentEntry(player);
+              if (cur) {
+                const lib = useLibraryStore.getState();
+                const entry = lib.entryById.get(cur.id);
+                if (entry) lib.setFavourite(cur.id, !entry.favourite);
+              }
+              handled = true;
+              break;
+            }
+            case "[": {
+              e.preventDefault();
+              const speeds = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+              const cur = speeds.indexOf(player.speed);
+              if (cur > 0) player.setSpeed(speeds[cur - 1]);
+              handled = true;
+              break;
+            }
+            case "]": {
+              e.preventDefault();
+              const speeds = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+              const cur = speeds.indexOf(player.speed);
+              if (cur < speeds.length - 1) player.setSpeed(speeds[cur + 1]);
+              handled = true;
+              break;
+            }
             case "l":
               e.preventDefault();
               if (selectCurrentEntry(player)) ui.setLyricsDockOpen(!ui.lyricsDockOpen);
