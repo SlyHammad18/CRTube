@@ -14,7 +14,7 @@ import { parseArtists } from "../lib/format";
  *   ←  /  →          seek −1s / +1s
  *   ↑  /  ↓          volume +1% / −1% (unmutes on raise)
  *   m                mute / unmute
- *   ,  /  .          next / previous
+ *   ,  /  .          previous / next
  *   l                toggle lyrics dock
  *   r                cycle repeat (off → all → one)
  *   s                toggle shuffle
@@ -109,12 +109,12 @@ export function useGlobalShortcuts() {
               break;
             case ",":
               e.preventDefault();
-              player.next();
+              player.prev();
               handled = true;
               break;
             case ".":
               e.preventDefault();
-              player.prev();
+              player.next();
               handled = true;
               break;
             case "l":
