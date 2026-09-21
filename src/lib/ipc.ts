@@ -124,6 +124,8 @@ export const ipc = {
     invoke<Artist>("pick_artist_cover", { artistId }),
   clearArtistCover: (artistId: number) =>
     invoke<Artist>("clear_artist_cover", { artistId }),
+  searchArtistImage: (name: string) =>
+    invoke<string | null>("search_artist_image", { name }),
 
   onDlProgress: async (
     cb: (payload: DlProgressPayload) => void,

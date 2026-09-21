@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import { useSearchStore } from "../../stores/search";
 import { useToolsStore } from "../../stores/tools";
 import { ResultCard } from "./ResultCard";
@@ -84,6 +84,7 @@ function HeroStatus() {
 
 function HeroDock() {
   const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
   const submitRaw = useSearchStore((s) => s.submitRaw);
   const status = useSearchStore((s) => s.status);
   const reduce = useReducedMotion();
@@ -107,14 +108,28 @@ function HeroDock() {
     >
       <MagnifyingGlass size={20} weight="light" className="text-dim" aria-hidden />
       <input
+        ref={inputRef}
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+        onClick={() => inputRef.current?.select()}
         placeholder="Paste a link or search…"
         spellCheck={false}
         aria-label="Search or paste a YouTube link"
         className="h-14 w-full bg-transparent text-18 text-ink outline-none placeholder:text-dim"
       />
+      {input && (
+        <button
+          aria-label="Clear search"
+          onClick={() => {
+            setInput("");
+            inputRef.current?.focus();
+          }}
+          className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-dim transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
+        >
+          <X size={10} weight="bold" aria-hidden />
+        </button>
+      )}
     </motion.div>
   );
 }
