@@ -265,6 +265,7 @@ Three panes inside the main view area:
 - Fills the remainder of the Now Playing pane. Inner line-track translates vertically so the active line holds center; mask-image fade top/bottom edges; only `transform` animates.
 - Line states: past lines `dim` at 45% opacity · **active line `ink`, Chakra Petch, 4px `ice` caret bar on the left edge** · upcoming lines `mute`.
 - Click any line → seek to its timestamp (spring feedback on the deck).
+- Deck header: pencil (opens the LRCLIB edit/replace modal) · **per-song delay control** — `−`/`+` 50ms nudges flanking a mono text field showing the current offset (`+0.05s`); the field is editable, so the delay can be typed exactly (seconds by default — `0.5`, `-1.25` — or with an `ms` suffix, e.g. `250ms`), `Enter`/blur applies, `Escape` reverts without closing the dock/fullscreen behind it; values clamp to ±100s and persist per-song (§5.7) · expand-to-fullscreen.
 - Fallback ladder: synced LRC → plain text (static scrollable block, same typography, no caret) → `instrumental` flag renders an `INSTRUMENTAL` status tag → no result: console prompt `> no lyrics found_ try manual search` with an inline artist/title override form prefilled from parsed metadata (§5.7).
 - Lyrics fetch lazily on first play of a track; cached hits render instantly (§5.7).
 

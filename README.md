@@ -33,8 +33,8 @@ queue downloads with live progress — everything runs locally through
   disk-full, rate limits, and bad links. Never crashes on a tool error.
 - **Resume where you left off** — the queue, current song, timestamp, repeat,
   shuffle, and speed are remembered and reapplied on next launch.
-- **Editable lyrics** — fix synced lyrics via an LRCLIB search modal, nudge each
-  song's timing offset, or use them as subtitles in fullscreen video.
+- **Editable lyrics** — fix synced lyrics via an LRCLIB search modal, type or
+  nudge each song's timing delay, or use them as subtitles in fullscreen video.
 - **Favourites** — heart any track into a Favourites playlist, rename tracks and
   artists, and reorder playlists with up/down arrows.
 - **Ice Console design** — dark-only, cool-neutral palette with a single ice

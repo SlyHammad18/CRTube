@@ -29,8 +29,14 @@ export interface LyricsState {
   apply: (payload: LyricsPayload) => void;
   /** Drop any stored override for this track so auto-fetch resumes. */
   clearLyrics: (videoId: string) => void;
-  /** Tune the display sync offset (ms) for this track — persisted per-song. */
+  /** Set the display sync offset (ms) absolutely — persisted per-song. */
   setOffset: (ms: number) => void;
+  /**
+   * Shift the offset by `deltaMs` from the latest committed value. Reads a
+   * ref rather than state so a burst of presses (or a press right after the
+   * typed field commits) can't land on a stale base and drop a step.
+   */
+  nudge: (deltaMs: number) => void;
 }
 
 const IDLE: LyricsState = {
@@ -47,6 +53,7 @@ const IDLE: LyricsState = {
   apply: () => {},
   clearLyrics: () => {},
   setOffset: () => {},
+  nudge: () => {},
 };
 
 interface Resolved {
@@ -124,6 +131,8 @@ function resolve(p: LyricsPayload): Resolved {
 export function useLyrics(entry: LibraryEntry | null): LyricsState {
   const [state, setState] = useState<LyricsState>(IDLE);
   const reqId = useRef(0);
+  /** Last committed offset (ms) — synchronous twin of `state.offsetMs`. */
+  const offsetRef = useRef(0);
 
   const load = useCallback((e: LibraryEntry, override?: { title: string; artist: string }) => {
     const id = ++reqId.current;
@@ -140,13 +149,16 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
       .then((payload: LyricsPayload | null) => {
         if (id !== reqId.current) return;
         if (!payload) {
+          offsetRef.current = 0;
           setState({ ...IDLE, status: "none", override: !!override });
           return;
         }
+        offsetRef.current = payload.offsetMs ?? 0;
         setState({ ...IDLE, ...resolve(payload), override: !!override });
       })
       .catch(() => {
         if (id !== reqId.current) return;
+        offsetRef.current = 0;
         setState({ ...IDLE, status: "error", override: !!override });
       });
   }, []);
@@ -154,6 +166,7 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
   useEffect(() => {
     if (!entry) {
       reqId.current++;
+      offsetRef.current = 0;
       setState(IDLE);
       return;
     }
@@ -190,6 +203,9 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
     (ms: number) => {
       if (!entry) return;
       const clamped = Math.max(-100000, Math.min(100000, Math.round(ms)));
+      // Commit synchronously: the next nudge must measure from this value even
+      // if the IPC round-trip (and its setState) hasn't landed yet.
+      offsetRef.current = clamped;
       const myReq = reqId.current;
       ipc
         .setLyricsOffset(entry.videoId, clamped)
@@ -200,6 +216,11 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
         .catch(() => {});
     },
     [entry],
+  );
+
+  const nudge = useCallback(
+    (deltaMs: number) => setOffset(offsetRef.current + deltaMs),
+    [setOffset],
   );
 
   const clearLyrics = useCallback(
@@ -216,5 +237,5 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
     [entry, load],
   );
 
-  return { ...state, search, apply, clearLyrics, setOffset };
+  return { ...state, search, apply, clearLyrics, setOffset, nudge };
 }

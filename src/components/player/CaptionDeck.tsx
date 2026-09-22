@@ -19,12 +19,29 @@ function fmtOffset(ms: number): string {
 }
 
 /**
+ * Parse a typed lyrics delay into milliseconds. Seconds are the default
+ * (`0.5`, `-1.25`, `+0.05s`); an explicit `ms` suffix is accepted too
+ * (`250ms`). Returns `null` for anything unparseable so the field reverts to
+ * the stored value instead of persisting nonsense. Pure — the clamping to the
+ * supported range happens in `useLyrics.setOffset`.
+ */
+function parseOffsetMs(raw: string): number | null {
+  const m = /^\s*([+-]?\d+(?:\.\d+)?)\s*(ms|s)?\s*$/i.exec(raw);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(m[2]?.toLowerCase() === "ms" ? n : n * 1000);
+}
+
+/**
  * Caption Deck — the Player's signature motif (§4.8). Renders synced lyrics
  * with the active line held at center (spring scroll, masked edges), click a
  * line to seek, and a fallback ladder for plain / instrumental / no-result
- * states. When lyrics are missing or wrong, a modal LRCLIB search (opened via
- * the pencil on the loaded deck, or a "Search lyrics" CTA when none are found)
- * lets the user pick the right track (or reset to auto-fetch).
+ * states. The deck header carries the per-song delay control: `+/-` nudges
+ * around a text field, so the timing offset can also be typed exactly. When
+ * lyrics are missing or wrong, a modal LRCLIB search (opened via the pencil on
+ * the loaded deck, or a "Search lyrics" CTA when none are found) lets the user
+ * pick the right track (or reset to auto-fetch).
  */
 export function CaptionDeck({
   entry,
@@ -69,22 +86,20 @@ export function CaptionDeck({
           >
             <PencilSimple size={13} weight="light" aria-hidden />
           </button>
-          <div className="ml-auto flex items-center gap-1 rounded-card border border-line bg-raise px-1 py-0.5">
+          <div className="ml-auto flex items-center gap-1 rounded-card border border-line bg-raise px-1 py-0.5 focus-within:border-ice">
             <button
               aria-label="Lyrics earlier"
               title="Lyrics earlier"
-              onClick={() => lyrics.setOffset(lyrics.offsetMs - LYRICS_OFFSET_STEP_MS)}
+              onClick={() => lyrics.nudge(-LYRICS_OFFSET_STEP_MS)}
               className="grid h-6 w-6 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-panel hover:text-ice active:scale-[0.98]"
             >
               <Minus size={13} weight="light" aria-hidden />
             </button>
-            <span className="min-w-[3.25rem] text-center font-mono text-11 text-mute tabular-nums">
-              {fmtOffset(lyrics.offsetMs)}
-            </span>
+            <OffsetField offsetMs={lyrics.offsetMs} onCommit={lyrics.setOffset} />
             <button
               aria-label="Lyrics later"
               title="Lyrics later"
-              onClick={() => lyrics.setOffset(lyrics.offsetMs + LYRICS_OFFSET_STEP_MS)}
+              onClick={() => lyrics.nudge(LYRICS_OFFSET_STEP_MS)}
               className="grid h-6 w-6 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-panel hover:text-ice active:scale-[0.98]"
             >
               <Plus size={13} weight="light" aria-hidden />
@@ -123,6 +138,56 @@ export function CaptionDeck({
         onClose={() => setLyricsModal(null)}
       />
     </>
+  );
+}
+
+/**
+ * Type-in lyrics delay: shows the stored offset as `+0.05s`, and focusing it
+ * selects the whole value so a typed number replaces it. Commit happens on
+ * Enter or blur — seconds by default (`-1.25`), `ms` accepted (`250ms`) — and
+ * unparseable or untouched text just reverts the display instead of writing.
+ * Escape reverts in place *without* blurring, and stops the event from
+ * bubbling so the lyrics dock / fullscreen "Escape closes the panel" handlers
+ * don't fire while the user is editing.
+ */
+function OffsetField({
+  offsetMs,
+  onCommit,
+}: {
+  offsetMs: number;
+  onCommit: (ms: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = () => {
+    const typed = draft;
+    setDraft(null);
+    if (typed === null || typed === fmtOffset(offsetMs)) return; // untouched
+    const parsed = parseOffsetMs(typed);
+    if (parsed !== null) onCommit(parsed);
+  };
+
+  return (
+    <input
+      value={draft ?? fmtOffset(offsetMs)}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => {
+        setDraft(fmtOffset(offsetMs));
+        e.currentTarget.select();
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          setDraft(null);
+        }
+      }}
+      spellCheck={false}
+      aria-label="Lyrics delay"
+      title="Lyrics delay (positive = lyrics later) — type seconds (0.5 / -1.25) or ms (250ms), Enter applies"
+      className="h-6 w-[4.75rem] cursor-text rounded-card bg-transparent px-1 text-center font-mono text-11 tabular-nums text-mute outline-none transition-colors duration-150 hover:text-ink focus:text-ice"
+    />
   );
 }
 
