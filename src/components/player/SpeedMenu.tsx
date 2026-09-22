@@ -4,11 +4,19 @@ import { usePlayerStore, fmtSpeed } from "../../stores/player";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
-/** Compact playback-speed popover; current value renders as a mono pill. */
+/**
+ * Compact playback-speed popover; current value renders as a mono pill. The
+ * list is presets — a speed reached with the `[` / `]` step keys isn't one, so
+ * it gets its own checked row above them instead of leaving the menu with no
+ * selection.
+ */
 export function SpeedMenu({ up = true, zClass = "z-50" }: { up?: boolean; zClass?: string }) {
   const speed = usePlayerStore((s) => s.speed);
   const setSpeed = usePlayerStore((s) => s.setSpeed);
   const [open, setOpen] = useState(false);
+  // Off-preset speeds (set with the `[` / `]` keys) lead the list so
+  // `aria-checked` always has a row to light up.
+  const options = SPEEDS.includes(speed) ? SPEEDS : [speed, ...SPEEDS];
   const btnRef = useRef<HTMLButtonElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
 
@@ -71,7 +79,7 @@ export function SpeedMenu({ up = true, zClass = "z-50" }: { up?: boolean; zClass
                style={menuStyle}
                className={`${zClass} flex flex-col gap-0.5 rounded-card border border-line bg-panel p-1 shadow-panel`}
              >
-              {SPEEDS.map((v) => (
+              {options.map((v) => (
                 <button
                   key={v}
                   role="menuitemradio"

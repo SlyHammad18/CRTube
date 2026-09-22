@@ -15,6 +15,19 @@ export interface PlayContext {
 export const SPEED_MIN = 0.25;
 export const SPEED_MAX = 4.0;
 
+/** Per-press step for the `[` / `]` speed shortcuts (§4.8). */
+export const SPEED_STEP = 0.05;
+
+/**
+ * Move `v` by one `SPEED_STEP` in `dir`, clamped to the supported range and
+ * rounded to 2dp so repeated presses can't accumulate float drift
+ * (0.9999999 → never shows up as `0.99×`).
+ */
+export function stepSpeed(v: number, dir: 1 | -1): number {
+  const next = Math.round((v + dir * SPEED_STEP) * 100) / 100;
+  return Math.min(SPEED_MAX, Math.max(SPEED_MIN, next));
+}
+
 export function linearOrder(n: number): number[] {
   return Array.from({ length: n }, (_, i) => i);
 }

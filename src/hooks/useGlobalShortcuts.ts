@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { usePlayerStore, selectCurrentEntry } from "../stores/player";
+import { usePlayerStore, selectCurrentEntry, stepSpeed } from "../stores/player";
 import { useLibraryStore } from "../stores/library";
 import { usePlaylistsStore } from "../stores/playlists";
 import { useUIStore } from "../stores/ui";
@@ -16,7 +16,7 @@ import { parseArtists } from "../lib/format";
  *   ↑  /  ↓          volume +1% / −1% (unmutes on raise)
  *   m                mute / unmute
  *   ,  /  .          previous / next
- *   [  /  ]          speed − / speed +
+ *   [  /  ]          speed −0.05× / speed +0.05×
  *   f                toggle favourite
  *   l                toggle lyrics dock
  *   r                cycle repeat (off → all → one)
@@ -133,17 +133,13 @@ export function useGlobalShortcuts() {
             }
             case "[": {
               e.preventDefault();
-              const speeds = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-              const cur = speeds.indexOf(player.speed);
-              if (cur > 0) player.setSpeed(speeds[cur - 1]);
+              player.setSpeed(stepSpeed(player.speed, -1));
               handled = true;
               break;
             }
             case "]": {
               e.preventDefault();
-              const speeds = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-              const cur = speeds.indexOf(player.speed);
-              if (cur < speeds.length - 1) player.setSpeed(speeds[cur + 1]);
+              player.setSpeed(stepSpeed(player.speed, 1));
               handled = true;
               break;
             }

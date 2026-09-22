@@ -258,7 +258,7 @@ Three panes inside the main view area:
 - Title (Chakra Petch 24, 2-line clamp) + channel (Manrope, `mute`).
 - Seek bar: 2px `line` track, `ice` fill, grows to 4px on hover; flanking times in mono (`0:00` elapsed / `-3:41` remaining toggleable by click).
 - Transport row: shuffle · previous · **play/pause (44px `ice` circle, `void` icon — the only filled accent circle in the app)** · next · repeat (cycles off → all → one; `one` shows mono superscript `1` badge).
-- Secondary row: volume slider (icon + thin slider) and **SpeedMenu** popover: `0.50× 0.75× 1× 1.25× 1.5× 1.75× 2×` mono pills, current selection `ice` fill. Volume + speed persist in settings (§5.5).
+- Secondary row: volume slider (icon + thin slider) and **SpeedMenu** popover: `0.50× 0.75× 1× 1.25× 1.5× 1.75× 2×` mono pills, current selection `ice` fill; the `[`/`]` shortcut steps ±0.05× anywhere inside the 0.25–4× range, and an off-preset value gets its own checked row above the presets (so the menu never shows no selection). Volume + speed persist in settings (§5.5).
 
 **Caption Deck — synced lyrics (the Player's signature motif)**
 
@@ -269,7 +269,7 @@ Three panes inside the main view area:
 - Fallback ladder: synced LRC → plain text (static scrollable block, same typography, no caret) → `instrumental` flag renders an `INSTRUMENTAL` status tag → no result: console prompt `> no lyrics found_ try manual search` with an inline artist/title override form prefilled from parsed metadata (§5.7).
 - Lyrics fetch lazily on first play of a track; cached hits render instantly (§5.7).
 
-**Keyboard map (global, ignored while focus is in a text-editable field):** `Space` play/pause · `←/→` seek ∓1s · `↑/↓` volume ±1% (unmutes on raise) · `m` mute/unmute · `,`/`.` next/previous track · `l` toggle lyrics dock · `r` cycle repeat · `s` toggle shuffle · `Ctrl+N` new playlist · `F2` rename selected playlist (else edit the playing song).
+**Keyboard map (global, ignored while focus is in a text-editable field):** `Space` play/pause · `←/→` seek ∓1s · `↑/↓` volume ±1% (unmutes on raise) · `m` mute/unmute · `[`/`]` speed ∓0.05× · `,`/`.` next/previous track · `l` toggle lyrics dock · `r` cycle repeat · `s` toggle shuffle · `Ctrl+N` new playlist · `F2` rename selected playlist (else edit the playing song).
 
 ### 4.9 Global Player Bar & Media Host
 
