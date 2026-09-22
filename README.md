@@ -114,4 +114,4 @@ npm run tauri dev
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for the full text.

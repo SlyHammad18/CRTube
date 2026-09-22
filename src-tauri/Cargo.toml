@@ -2,6 +2,7 @@
 name = "crtube"
 version = "0.3.0"
 description = "A YouTube downloader with cathode-ray-tube nostalgia"
+license = "MIT"
 edition = "2021"
 
 [lib]
