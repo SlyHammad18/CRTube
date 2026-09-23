@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { Play, Plus } from "@phosphor-icons/react";
 import { fmtDuration } from "../../lib/format";
-import { imgSrcOf } from "../../lib/asset";
+import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
 import type { LibraryEntry } from "../../types/library";
 import { useLibraryStore } from "../../stores/library";
 import { usePlayerStore } from "../../stores/player";
@@ -45,7 +45,7 @@ function TrackCard({
   entry: LibraryEntry;
   onPlay: () => void;
 }) {
-  const thumb = imgSrcOf(entry.thumbUrl);
+  const thumb = imgSrcOf(entryArtworkUrl(entry));
   return (
     <button
       onClick={onPlay}

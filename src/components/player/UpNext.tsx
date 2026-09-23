@@ -1,13 +1,12 @@
 import { memo, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import type { LibraryEntry } from "../../types/library";
+import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
 import { usePlayerStore } from "../../stores/player";
 import { stripMediaExt } from "../../lib/format";
 
-function thumbSrc(e: LibraryEntry): string | null {
-  if (!e.thumbUrl) return null;
-  return e.thumbUrl.startsWith("http") ? e.thumbUrl : convertFileSrc(e.thumbUrl);
+function thumbSrc(e: LibraryEntry): string | undefined {
+  return imgSrcOf(entryArtworkUrl(e));
 }
 
 const UpNextRow = memo(function UpNextRow({

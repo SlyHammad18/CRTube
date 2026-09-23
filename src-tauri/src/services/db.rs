@@ -66,6 +66,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE playlists ADD COLUMN cover_path TEXT;",
     "ALTER TABLE playlists ADD COLUMN cover_seed INTEGER NOT NULL DEFAULT 0;",
     "UPDATE playlists SET cover_seed = id WHERE cover_seed = 0;",
+    // v6 — per-track custom artwork; the original YouTube/cache thumb remains intact.
+    "ALTER TABLE downloads ADD COLUMN custom_thumb_path TEXT;",
 ];
 
 pub fn open(path: &Path) -> Result<Connection, rusqlite::Error> {
@@ -79,6 +81,7 @@ pub fn open(path: &Path) -> Result<Connection, rusqlite::Error> {
     // The migration counter has drifted across builds, so schema additions are
     // idempotent "add column if missing" checks rather than ordered ALTERs.
     ensure_artist_cover_schema(&conn)?;
+    ensure_custom_thumbnail_schema(&conn)?;
     Ok(conn)
 }
 
@@ -96,6 +99,20 @@ pub(crate) fn ensure_artist_cover_schema(conn: &Connection) -> Result<(), rusqli
         "artists",
         "cover_path",
         "ALTER TABLE artists ADD COLUMN cover_path TEXT;",
+    )?;
+    Ok(())
+}
+
+/// Repair the per-track artwork column even when an existing database has a
+/// `user_version` newer than this build's ordered migration list.
+pub(crate) fn ensure_custom_thumbnail_schema(
+    conn: &Connection,
+) -> Result<(), rusqlite::Error> {
+    ensure_column(
+        conn,
+        "downloads",
+        "custom_thumb_path",
+        "ALTER TABLE downloads ADD COLUMN custom_thumb_path TEXT;",
     )?;
     Ok(())
 }
@@ -159,6 +176,8 @@ pub struct LibraryEntry {
     pub path: String,
     pub size_bytes: Option<u64>,
     pub thumb_url: Option<String>,
+    /// User-selected app-only artwork. `thumb_url` remains the original source.
+    pub custom_thumb_path: Option<String>,
     pub status: String,
     pub created_at: i64,
     pub favourite: bool,
@@ -246,29 +265,56 @@ fn row_to_entry(r: &rusqlite::Row) -> Result<LibraryEntry, rusqlite::Error> {
         path: r.get::<_, Option<String>>("path")?.unwrap_or_default(),
         size_bytes: r.get::<_, Option<i64>>("size_bytes")?.map(|v| v as u64),
         thumb_url: r.get("thumb_url")?,
+        custom_thumb_path: r.get("custom_thumb_path")?,
         status: r.get("status")?,
         created_at: r.get("created_at")?,
         favourite: r.get::<_, i64>("favourite")? != 0,
     })
 }
 
-pub fn list_entries(conn: &Connection) -> Result<Vec<LibraryEntry>, rusqlite::Error> {
-    let mut stmt = conn.prepare(
-        "SELECT
+const LIBRARY_SELECT: &str = "SELECT
             d.id, d.video_id, d.url, d.title, d.duration_s, d.kind,
             d.quality, d.container, d.path, d.size_bytes, d.thumb_url,
-            d.status, d.created_at, d.favourite,
+            d.custom_thumb_path, d.status, d.created_at, d.favourite,
             (SELECT GROUP_CONCAT(name, ', ') FROM (
                 SELECT a.name AS name FROM track_artists ta
                 JOIN artists a ON a.id = ta.artist_id
                 WHERE ta.track_id = d.id
                 ORDER BY ta.position
             )) AS channel
-        FROM downloads d
-        ORDER BY d.created_at DESC, d.id DESC",
-    )?;
-    let entries = stmt.query_map([], row_to_entry)?.collect::<Result<_, _>>()?;
+        FROM downloads d";
+
+pub fn list_entries(conn: &Connection) -> Result<Vec<LibraryEntry>, rusqlite::Error> {
+    let mut stmt = conn.prepare(&format!(
+        "{LIBRARY_SELECT} ORDER BY d.created_at DESC, d.id DESC"
+    ))?;
+    let entries = stmt
+        .query_map([], row_to_entry)?
+        .collect::<Result<_, _>>()?;
     Ok(entries)
+}
+
+/// Fetch one hydrated library entry, including normalized artist credits and any
+/// custom app-only artwork selected for it.
+pub fn get_entry(conn: &Connection, id: i64) -> Result<LibraryEntry, rusqlite::Error> {
+    conn.query_row(
+        &format!("{LIBRARY_SELECT} WHERE d.id = ?1"),
+        params![id],
+        row_to_entry,
+    )
+}
+
+/// Set or clear a track's custom artwork without changing its original thumbnail.
+pub fn set_custom_thumbnail(
+    conn: &Connection,
+    id: i64,
+    path: Option<&str>,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE downloads SET custom_thumb_path = ?2 WHERE id = ?1",
+        params![id, path],
+    )?;
+    Ok(())
 }
 
 /// Check whether each entry's file still exists, updating statuses in a single
@@ -629,7 +675,7 @@ pub fn collage_from_thumbs(thumbs: &[Option<String>], seed: u64) -> Vec<String> 
 /// Ordered (non-null, non-empty) thumbnail values for a playlist's tracks.
 fn load_playlist_thumbs(conn: &Connection, playlist_id: i64) -> Result<Vec<Option<String>>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT d.thumb_url
+        "SELECT COALESCE(d.custom_thumb_path, d.thumb_url)
          FROM playlist_items pi JOIN downloads d ON d.id = pi.download_id
          WHERE pi.playlist_id = ?1
          ORDER BY pi.position ASC, pi.id ASC",
@@ -744,7 +790,7 @@ pub fn list_playlist_items(
             pi.id AS item_id, pi.position AS position, pi.added_at AS added_at,
             d.id, d.video_id, d.url, d.title, d.duration_s, d.kind,
             d.quality, d.container, d.path, d.size_bytes, d.thumb_url,
-            d.status, d.created_at, d.favourite,
+            d.custom_thumb_path, d.status, d.created_at, d.favourite,
             (SELECT GROUP_CONCAT(name, ', ') FROM (
                 SELECT a.name AS name FROM track_artists ta
                 JOIN artists a ON a.id = ta.artist_id
@@ -806,6 +852,7 @@ mod tests {
         conn.pragma_update(None, "foreign_keys", "ON").unwrap();
         migrate(&conn).unwrap();
         ensure_artist_cover_schema(&conn).unwrap();
+        ensure_custom_thumbnail_schema(&conn).unwrap();
         conn
     }
 
@@ -837,6 +884,48 @@ mod tests {
     }
 
     #[test]
+    fn v5_database_gains_custom_thumbnail_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in MIGRATIONS.iter().take(5) {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 5i64).unwrap();
+
+        migrate(&conn).unwrap();
+        let has_column = conn
+            .prepare("PRAGMA table_info(downloads)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|column| column == "custom_thumb_path");
+        assert!(has_column);
+    }
+
+    #[test]
+    fn newer_schema_version_still_repairs_custom_thumbnail_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        for sql in MIGRATIONS.iter().take(5) {
+            conn.execute_batch(sql).unwrap();
+        }
+        // Mirrors an existing installation whose migration counter advanced
+        // beyond the current ordered list before the artwork column was added.
+        conn.pragma_update(None, "user_version", 13i64).unwrap();
+
+        ensure_custom_thumbnail_schema(&conn).unwrap();
+        let mut original = rec("drifted00001", "/tmp/drifted.mp3");
+        original.thumb_url = Some("original.jpg".into());
+        let id = insert_download(&conn, &original).unwrap();
+
+        let entries = list_entries(&conn).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, id);
+        assert_eq!(entries[0].thumb_url.as_deref(), Some("original.jpg"));
+        assert!(entries[0].custom_thumb_path.is_none());
+    }
+
+    #[test]
     fn duplicate_video_ids_are_detected_not_duplicated() {
         let conn = mem();
         let a = insert_download(&conn, &rec("abc12345678", "/tmp/a.mp4")).unwrap();
@@ -847,6 +936,49 @@ mod tests {
 
         let entries = list_and_sync_statuses(&conn).unwrap();
         assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn custom_thumbnail_preserves_original_thumbnail() {
+        let conn = mem();
+        let mut original = rec("thumb000001", "/tmp/thumb.mp3");
+        original.thumb_url = Some("https://img.example/original.jpg".into());
+        let id = insert_download(&conn, &original).unwrap();
+
+        set_custom_thumbnail(&conn, id, Some("/app/covers/track-custom.png")).unwrap();
+        let custom = get_entry(&conn, id).unwrap();
+        assert_eq!(
+            custom.thumb_url.as_deref(),
+            Some("https://img.example/original.jpg")
+        );
+        assert_eq!(
+            custom.custom_thumb_path.as_deref(),
+            Some("/app/covers/track-custom.png")
+        );
+
+        set_custom_thumbnail(&conn, id, None).unwrap();
+        let reset = get_entry(&conn, id).unwrap();
+        assert_eq!(
+            reset.thumb_url.as_deref(),
+            Some("https://img.example/original.jpg")
+        );
+        assert!(reset.custom_thumb_path.is_none());
+    }
+
+    #[test]
+    fn playlist_collage_prefers_custom_track_artwork() {
+        let conn = mem();
+        let playlist = create_playlist(&conn, "Custom art").unwrap();
+        let mut original = rec("thumb000002", "/tmp/track.mp3");
+        original.thumb_url = Some("original.jpg".into());
+        let id = insert_download(&conn, &original).unwrap();
+        set_custom_thumbnail(&conn, id, Some("custom.png")).unwrap();
+        add_playlist_item(&conn, playlist.id, id).unwrap();
+
+        assert_eq!(
+            get_playlist(&conn, playlist.id).unwrap().cover_urls,
+            vec!["custom.png"]
+        );
     }
 
     #[test]

@@ -3,6 +3,7 @@ import {
   ArrowsOut,
   MusicNotes,
   Pause,
+  PencilSimple,
   Play,
   Repeat,
   RepeatOnce,
@@ -12,9 +13,11 @@ import {
   VideoCamera,
   VideoCameraSlash,
 } from "@phosphor-icons/react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
+import { useLibraryStore } from "../../stores/library";
 import { useUIStore } from "../../stores/ui";
+import { pushToast } from "../../stores/toast";
 import { setPrimarySlot } from "./../player-bar/mediaSlots";
 import { useLyrics } from "../../hooks/useLyrics";
 import { SeekBar } from "./SeekBar";
@@ -31,6 +34,7 @@ import { stripMediaExt } from "../../lib/format";
  */
 export function NowPlayingPane() {
   const entry = usePlayerStore(selectCurrentEntry);
+  const pickThumbnail = useLibraryStore((s) => s.pickThumbnail);
   const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
   const lyrics = useLyrics(entry);
   const lyricsFullscreen = useUIStore((s) => s.lyricsFullscreen);
@@ -40,11 +44,7 @@ export function NowPlayingPane() {
     return () => setPrimarySlot(null);
   }, [slotEl]);
 
-  const thumb =
-    entry?.thumbUrl &&
-    (entry.thumbUrl.startsWith("http")
-      ? entry.thumbUrl
-      : convertFileSrc(entry.thumbUrl));
+  const thumb = entry ? imgSrcOf(entryArtworkUrl(entry)) : undefined;
 
   const isVideo = entry?.kind === "video" && entry.path !== "";
   const videoDisabled = useUIStore((s) => s.videoDisabled);
@@ -66,11 +66,17 @@ export function NowPlayingPane() {
     );
   }
 
+  const editThumbnail = () => {
+    void pickThumbnail(entry.id).catch((error) => {
+      pushToast(`Thumbnail update failed — ${String(error)}`);
+    });
+  };
+
   return (
     <aside className="group flex h-full w-[320px] shrink-0 flex-col gap-4 overflow-hidden border-l border-line bg-panel/50 p-4">
       {/* Artwork frame — poster (cached thumbnail) behind the portaled <video>
           for video tracks, so the frame is never an empty black box. */}
-      <div className="relative aspect-square w-full shrink-0 rounded-card border border-line bg-raise">
+      <div className="group/artwork relative aspect-square w-full shrink-0 rounded-card border border-line bg-raise">
         {thumb ? (
           <img
             src={thumb}
@@ -85,6 +91,15 @@ export function NowPlayingPane() {
           </span>
         )}
         <div ref={setSlotEl} id="nowplaying-media-slot" className="absolute inset-0" />
+        <button
+          type="button"
+          aria-label="Change thumbnail"
+          title="Change thumbnail"
+          onClick={editThumbnail}
+          className="absolute bottom-2 left-2 z-30 grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink opacity-0 backdrop-blur-sm transition-[opacity,transform] duration-150 hover:bg-void hover:text-ice active:scale-[0.98] group-hover/artwork:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice"
+        >
+          <PencilSimple size={15} weight="light" aria-hidden />
+        </button>
         {isVideo && (
           <div className="absolute right-2 top-2 z-20 flex items-center gap-1.5">
             <button

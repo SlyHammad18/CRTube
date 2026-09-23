@@ -97,6 +97,8 @@ export const ipc = {
     invoke<void>("set_favourite", { id, favourite }),
   renameEntry: (id: number, title: string, artists: string[]) =>
     invoke<void>("rename_entry", { id, title, artists }),
+  pickTrackThumbnail: (id: number) =>
+    invoke<LibraryEntry | null>("pick_track_thumbnail", { id }),
   deleteEntry: (id: number, path: string) =>
     invoke<void>("delete_entry", { id, path }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),

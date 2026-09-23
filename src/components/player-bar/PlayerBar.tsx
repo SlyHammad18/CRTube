@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { CaretUp, Pause, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
 import { fmtDuration } from "../../lib/format";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
 import { useUIStore } from "../../stores/ui";
@@ -229,10 +229,8 @@ export function PlayerBar() {
 }
 
 function thumbSrc(entry: ReturnType<typeof selectCurrentEntry>) {
-  if (!entry?.thumbUrl) return null;
-  const src = entry.thumbUrl.startsWith("http")
-    ? entry.thumbUrl
-    : convertFileSrc(entry.thumbUrl);
+  const src = entry ? imgSrcOf(entryArtworkUrl(entry)) : undefined;
+  if (!src) return null;
   return (
     <img
       src={src}

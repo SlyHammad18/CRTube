@@ -106,7 +106,9 @@ interface PlayerState {
   /** Patch a queue entry's metadata in place (e.g. after a library rename). */
   patchEntry: (
     id: number,
-    patch: Partial<Pick<LibraryEntry, "title" | "channel">>,
+    patch: Partial<
+      Pick<LibraryEntry, "title" | "channel" | "customThumbPath">
+    >,
   ) => void;
 }
 

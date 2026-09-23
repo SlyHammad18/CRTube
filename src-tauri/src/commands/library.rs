@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use rusqlite::params;
 use serde::Deserialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
+use crate::commands::player::COVER_EXTS;
 use crate::services::db::{self, Db, DownloadRecord, LibraryEntry};
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +133,89 @@ pub fn rename_entry(
     db::rename_entry(&conn, id, title.trim(), &artists).map_err(|e| e.to_string())
 }
 
+/// Pick app-only artwork for a track. The selected image is copied into
+/// `{app_data}/covers/` and the original downloaded/cached thumbnail is kept in
+/// `downloads.thumb_url`. Cancelling the native picker is a successful no-op.
+#[tauri::command]
+pub async fn pick_track_thumbnail(
+    app: AppHandle,
+    db: State<'_, Arc<Db>>,
+    id: i64,
+) -> Result<Option<LibraryEntry>, String> {
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::get_entry(&conn, id).map_err(|_| "track no longer exists".to_string())?;
+    }
+
+    let picker_app = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        picker_app
+            .dialog()
+            .file()
+            .add_filter("Images", &COVER_EXTS)
+            .blocking_pick_file()
+            .and_then(|file| file.into_path().ok())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+
+    if !picked.is_file() {
+        return Err("selected image does not exist".into());
+    }
+    let ext = picked
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !COVER_EXTS.contains(&ext.as_str()) {
+        return Err("unsupported image type — use JPG, PNG or WebP".into());
+    }
+
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("covers");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let prefix = format!("track-{id}.");
+    let dest = dir.join(format!("{prefix}{stamp}.{ext}"));
+    let tmp = dir.join(format!(".{prefix}{stamp}.{ext}.tmp"));
+    if let Err(error) = std::fs::copy(&picked, &tmp) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("copy failed: {error}"));
+    }
+    if let Err(error) = std::fs::rename(&tmp, &dest) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("commit failed: {error}"));
+    }
+
+    let updated = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        (|| {
+            db::set_custom_thumbnail(&conn, id, Some(&dest.to_string_lossy()))?;
+            db::get_entry(&conn, id)
+        })()
+    };
+    match updated {
+        Ok(entry) => {
+            // Keep the freshly committed file and remove every older revision.
+            db::remove_cover_files(&dir, &prefix, Some(&dest));
+            Ok(Some(entry))
+        }
+        Err(error) => {
+            let _ = std::fs::remove_file(&dest);
+            Err(error.to_string())
+        }
+    }
+}
+
 #[tauri::command]
 pub fn has_download(db: State<'_, Arc<Db>>, video_id: String) -> Result<bool, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -140,10 +224,22 @@ pub fn has_download(db: State<'_, Arc<Db>>, video_id: String) -> Result<bool, St
 
 #[tauri::command]
 pub async fn delete_entry(
+    app: AppHandle,
     db: State<'_, Arc<Db>>,
     id: i64,
     path: String,
 ) -> Result<(), String> {
+    let custom_thumb_path: Option<String> = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT custom_thumb_path FROM downloads WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten()
+    };
+
     if !path.trim().is_empty() {
         match tokio::fs::remove_file(path.trim()).await {
             Ok(()) => {}
@@ -151,8 +247,19 @@ pub async fn delete_entry(
             Err(e) => return Err(e.to_string()),
         }
     }
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::delete_download(&conn, id).map_err(|e| e.to_string())
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::delete_download(&conn, id).map_err(|e| e.to_string())?;
+    }
+
+    if let Some(custom) = custom_thumb_path.filter(|path| !path.trim().is_empty()) {
+        let _ = std::fs::remove_file(&custom);
+        if let Ok(dir) = app.path().app_data_dir() {
+            let covers = dir.join("covers");
+            db::remove_cover_files(&covers, &format!("track-{id}."), None);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

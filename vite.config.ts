@@ -8,6 +8,11 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    watch: {
+      // Rust's target tree contains tens of thousands of generated files and
+      // can exhaust Linux's per-user inotify-watch limit when watched by Vite.
+      ignored: ["**/src-tauri/target/**"],
+    },
   },
   build: {
     target: "es2021",
