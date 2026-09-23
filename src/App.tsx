@@ -16,6 +16,7 @@ import { PlayerBar } from "./components/player-bar/PlayerBar";
 import { PlaylistNameDialog } from "./components/player/PlaylistNameDialog";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSession } from "./hooks/useSession";
+import { useMpris } from "./hooks/useMpris";
 import { MediaHost } from "./components/player-bar/MediaHost";
 import { VideoFullscreen } from "./components/player/VideoFullscreen";
 import { PlaceholderView } from "./components/common/PlaceholderView";
@@ -54,6 +55,8 @@ export default function App() {
   // Resume-session: hydrates settings, loads library/playlists, restores the
   // saved queue/song/timestamp/repeat/shuffle and persists it onward.
   useSession();
+  // Desktop media widget: publishes the player and applies its commands.
+  useMpris();
 
   useEffect(() => {
     void useToolsStore.getState().init();

@@ -1,0 +1,23 @@
+use tauri::State;
+
+use crate::services::mpris::{Mpris, MprisState, MprisTrack};
+
+/// Load (or replace) the track the desktop media widget shows. The widget only
+/// appears once a track is loaded — an idle CRTube owns no MPRIS name.
+#[tauri::command]
+pub async fn mpris_set_track(mpris: State<'_, Mpris>, track: MprisTrack) -> Result<(), String> {
+    mpris.set_track(track).await
+}
+
+/// Push the playback snapshot: immediately whenever playback, volume, speed or
+/// navigation changes, and about once a second while the position advances.
+#[tauri::command]
+pub async fn mpris_set_state(mpris: State<'_, Mpris>, state: MprisState) -> Result<(), String> {
+    mpris.set_state(state).await
+}
+
+/// Drop the player so the shell removes the media widget (empty queue).
+#[tauri::command]
+pub async fn mpris_clear(mpris: State<'_, Mpris>) -> Result<(), String> {
+    mpris.clear().await
+}

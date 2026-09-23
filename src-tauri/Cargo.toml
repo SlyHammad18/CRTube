@@ -27,6 +27,7 @@ tar = "0.4"
 xz2 = { version = "0.1", features = ["static"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+zbus = "5"
 
 [profile.release]
 codegen-units = 1

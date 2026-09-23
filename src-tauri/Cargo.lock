@@ -632,6 +632,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "xz2",
+ "zbus",
  "zip",
 ]
 

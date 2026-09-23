@@ -39,6 +39,42 @@ export interface DownloadRequest {
   expectedSize?: number;
 }
 
+/** Track shown by the desktop media widget (MPRIS). */
+export interface MprisTrack {
+  id: number;
+  title: string;
+  artist?: string;
+  durationS?: number;
+  /** http(s) artwork URL — the shell fetches it itself. */
+  artUrl?: string;
+}
+
+/** Playback snapshot the widget reads back. */
+export interface MprisState {
+  playing: boolean;
+  positionS: number;
+  volume: number;
+  muted: boolean;
+  speed: number;
+  canNext: boolean;
+  canPrevious: boolean;
+}
+
+/** Playback command from the media widget, applied by the player store. */
+export interface MprisCommand {
+  action:
+    | "play"
+    | "pause"
+    | "playpause"
+    | "next"
+    | "previous"
+    | "stop"
+    | "seek"
+    | "set_volume"
+    | "set_rate";
+  value?: number;
+}
+
 export const ipc = {
   ensureTools: () => invoke<EnsureResult>("ensure_tools"),
   toolVersions: () => invoke<VersionsResult>("tool_versions"),
@@ -73,6 +109,10 @@ export const ipc = {
   mediaUrl: (id: number) => invoke<string | null>("media_url", { id }),
   thumbMediaUrl: (videoId: string) =>
     invoke<string | null>("thumb_media_url", { videoId }),
+
+  mprisSetTrack: (track: MprisTrack) => invoke<void>("mpris_set_track", { track }),
+  mprisSetState: (state: MprisState) => invoke<void>("mpris_set_state", { state }),
+  mprisClear: () => invoke<void>("mpris_clear"),
   getSession: () => invoke<PlayerSession | null>("get_session"),
   setSession: (session: PlayerSession) =>
     invoke<void>("set_session", { session }),
@@ -148,4 +188,9 @@ export const ipc = {
     cb: (payload: ToolsStatusPayload) => void,
   ): Promise<UnlistenFn> =>
     listen<ToolsStatusPayload>("tools://status", (e) => cb(e.payload)),
+
+  onMprisCommand: async (
+    cb: (payload: MprisCommand) => void,
+  ): Promise<UnlistenFn> =>
+    listen<MprisCommand>("mpris://command", (e) => cb(e.payload)),
 };

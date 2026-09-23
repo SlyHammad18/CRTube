@@ -115,6 +115,11 @@ pub fn run() {
                 services::media::MediaServer::spawn(app.handle().clone(), media_roots),
             )?;
             app.manage(server);
+            // MPRIS player behind the desktop media widget: one long-lived
+            // session-bus connection, opened once here (see `services::mpris`).
+            let mpris =
+                tauri::async_runtime::block_on(services::mpris::Mpris::connect(app.handle().clone()));
+            app.manage(mpris);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -157,6 +162,9 @@ pub fn run() {
             commands::player::pick_playlist_cover,
             commands::player::clear_playlist_cover,
             commands::player::shuffle_playlist_cover,
+            commands::mpris::mpris_set_track,
+            commands::mpris::mpris_set_state,
+            commands::mpris::mpris_clear,
             commands::artists::list_artists,
             commands::artists::pick_artist_cover,
             commands::artists::clear_artist_cover,
