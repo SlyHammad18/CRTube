@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import { useSearchStore } from "../../stores/search";
+import { useSheetStore } from "../../stores/sheet";
 import { useToolsStore } from "../../stores/tools";
 import { ResultCard } from "./ResultCard";
 import { ResultSkeletonGrid } from "./ResultSkeleton";
@@ -161,6 +162,7 @@ function ResultsGrid() {
   const loadMore = useSearchStore((s) => s.loadMore);
   const status = useSearchStore((s) => s.status);
   const hasMore = useSearchStore((s) => s.hasMore);
+  const sheetOpen = useSheetStore((s) => s.open);
 
   const parentRef = useRef<HTMLDivElement>(null);
   const [cols, setCols] = useState(1);
@@ -205,7 +207,12 @@ function ResultsGrid() {
   }, [hasMore, status, loadMore]);
 
   return (
-    <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto pb-6 will-change-transform">
+    <div
+      ref={parentRef}
+      className={`min-h-0 flex-1 overflow-y-auto pb-6 ${
+        sheetOpen ? "no-scrollbar" : ""
+      }`}
+    >
       {items.length > 0 && (
         <div
           style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}
