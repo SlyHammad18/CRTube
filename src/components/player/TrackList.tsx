@@ -155,7 +155,7 @@ export function TrackList() {
   }, [selectionKey]);
 
   return (
-    <section className="flex h-full min-w-0 flex-1 flex-col">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Toolbar */}
       <div className="flex flex-nowrap items-center gap-2 px-6 pb-2 pt-1">
         <div role="group" aria-label="Filter tracks" className="flex shrink-0 gap-1.5">
