@@ -9,6 +9,7 @@ import {
   SidebarSimple,
   Trash,
 } from "@phosphor-icons/react";
+import { entryArtworkUrl } from "../../lib/asset";
 import { fmtDuration, parseArtists } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
 import { useLibraryStore } from "../../stores/library";
@@ -35,8 +36,8 @@ function collageOf(entries: LibraryEntry[]): {
     coverPath: null,
     coverUrls: entries
       .slice(0, 4)
-      .map((e) => e.thumbUrl ?? "")
-      .filter(Boolean),
+      .map(entryArtworkUrl)
+      .filter((url): url is string => !!url),
   };
 }
 

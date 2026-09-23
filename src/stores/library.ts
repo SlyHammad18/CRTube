@@ -29,6 +29,8 @@ interface LibraryStore {
   removeLocal: (id: number) => void;
   setFavourite: (id: number, favourite: boolean) => void;
   renameEntry: (id: number, title: string, artists: string[]) => void;
+  /** Returns false when the native image picker was cancelled. */
+  pickThumbnail: (id: number) => Promise<boolean>;
 }
 
 export function entriesToById(entries: LibraryEntry[]): Map<number, LibraryEntry> {
@@ -62,7 +64,9 @@ export const useLibraryStore = create<LibraryStore>((set) => ({
         entryById: entriesToById(entries),
         loaded: true,
       });
-    } catch {
+    } catch (error) {
+      console.error("listLibrary failed", error);
+      pushToast("Library failed to load — check the app log");
       set({ loaded: true });
     }
   },
@@ -155,5 +159,30 @@ export const useLibraryStore = create<LibraryStore>((set) => ({
           channel: joinArtists(artists) || undefined,
         });
       });
+  },
+
+  pickThumbnail: async (id) => {
+    const updated = await ipc.pickTrackThumbnail(id);
+    if (!updated) return false;
+
+    set((s) => {
+      const idx = s.entries.findIndex((entry) => entry.id === id);
+      if (idx < 0) return {};
+      const entries = s.entries.slice();
+      entries[idx] = updated;
+      const entryById = new Map(s.entryById);
+      entryById.set(id, updated);
+      return { entries, entryById };
+    });
+
+    usePlayerStore.getState().patchEntry(id, {
+      customThumbPath: updated.customThumbPath,
+    });
+    usePlaylistsStore.getState().patchOpenTrack(id, {
+      customThumbPath: updated.customThumbPath,
+    });
+    // Auto playlist collages are backend-derived from their track artwork.
+    void usePlaylistsStore.getState().refresh();
+    return true;
   },
 }));

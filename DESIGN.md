@@ -254,7 +254,7 @@ Three panes inside the main view area:
 
 **Now Playing pane (320px, collapsible via `PanelRight` toggle, state in ui store)**
 
-- Artwork frame: radius 10 + scanline overlay; shows cached thumbnail. For `kind === 'video'` tracks, the live `<video>` element overlays this frame (positioned by MediaHost over `#nowplaying-media-slot`, §4.9 — never reparented).
+- Artwork frame: radius 10 + scanline overlay; shows cached thumbnail. For `kind === 'video'` tracks, the live `<video>` element overlays this frame (positioned by MediaHost over `#nowplaying-media-slot`, §4.9 — never reparented). A pencil edit control appears only while the artwork frame is hovered (and on keyboard focus); it opens a native image picker and replaces the displayed artwork without modifying the downloaded media file.
 - Title (Chakra Petch 24, 2-line clamp) + channel (Manrope, `mute`).
 - Seek bar: 2px `line` track, `ice` fill, grows to 4px on hover; flanking times in mono (`0:00` elapsed / `-3:41` remaining toggleable by click).
 - Transport row: shuffle · previous · **play/pause (44px `ice` circle, `void` icon — the only filled accent circle in the app)** · next · repeat (cycles off → all → one; `one` shows mono superscript `1` badge).
@@ -336,6 +336,7 @@ add_playlist_item(db, playlist_id, download_id)
 remove_playlist_item(db, item_id)
 list_playlist_items(db, playlist_id) -> Vec<PlaylistTrack>   -- JOIN downloads, ordered by position
 reorder_playlist_items(db, playlist_id, item_ids: Vec<i64>)
+pick_track_thumbnail(app, db, id) -> Option<LibraryEntry>  -- app-only custom artwork
 fetch_lyrics(app, video_id, title, channel, duration_s) -> Option<LyricsPayload>
 -- LyricsPayload { synced, plain, instrumental, track_name, artist_name, cached }
 media_url(db, server, id) -> Option<String>                  -- loopback stream URL for a download
@@ -428,6 +429,10 @@ CREATE TABLE playlist_items (
   UNIQUE(playlist_id, download_id)
 );
 ```
+
+Later additive migration v6 stores per-track app artwork as
+`downloads.custom_thumb_path TEXT`; `thumb_url` remains the original YouTube/cache
+source so a custom cover never destroys the downloaded thumbnail.
 
 Settings persisted as JSON at `{app_config}/settings.json`: `{ download_dir, concurrent, autoupdate_ytdlp, filename_template, player_volume, player_speed }` — the two new fields carry serde defaults (`1.0`), so pre-v0.2 files load unchanged.
 

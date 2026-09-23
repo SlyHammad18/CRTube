@@ -135,6 +135,7 @@ pub fn run() {
             commands::library::has_download,
             commands::library::set_favourite,
             commands::library::rename_entry,
+            commands::library::pick_track_thumbnail,
             commands::library::delete_entry,
             commands::library::reveal_path,
             commands::library::open_path,

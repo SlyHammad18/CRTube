@@ -1,5 +1,6 @@
 import type { LibraryEntry } from "../types/library";
 import type { Artist, Playlist } from "../types/player";
+import { entryArtworkUrl } from "./asset";
 import { parseArtists } from "./format";
 
 /** Tracks whose artist credits include `name` (case-sensitive match on parsed credits). */
@@ -38,7 +39,7 @@ export function artistCoverUrls(entries: LibraryEntry[], name: string): string[]
   const seen = new Set<string>();
   const own: string[] = [];
   for (const e of artistTracks(entries, name)) {
-    const t = e.thumbUrl;
+    const t = entryArtworkUrl(e);
     if (t && t.trim() !== "" && !seen.has(t)) {
       seen.add(t);
       own.push(t);

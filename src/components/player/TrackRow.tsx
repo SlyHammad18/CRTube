@@ -10,7 +10,7 @@ import {
   Trash,
   X,
 } from "@phosphor-icons/react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
 import { fmtDuration, parseArtists } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
 import { pushToast } from "../../stores/toast";
@@ -23,10 +23,7 @@ import { FavouriteButton } from "./FavouriteButton";
 import { useRenameStore } from "../../stores/rename";
 
 export function thumbSrcOf(entry: LibraryEntry): string | undefined {
-  if (!entry.thumbUrl) return undefined;
-  return entry.thumbUrl.startsWith("http")
-    ? entry.thumbUrl
-    : convertFileSrc(entry.thumbUrl);
+  return imgSrcOf(entryArtworkUrl(entry));
 }
 
 /** §4.8 active-row glyph — three ice bars, staggered scaleY loop. */

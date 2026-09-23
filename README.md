@@ -37,6 +37,8 @@ queue downloads with live progress — everything runs locally through
   nudge each song's timing delay, or use them as subtitles in fullscreen video.
 - **Favourites** — heart any track into a Favourites playlist, rename tracks and
   artists, and reorder playlists with up/down arrows.
+- **Custom track artwork** — replace any song's displayed thumbnail from a
+  hover-only Now Playing control without modifying the downloaded media file.
 - **Ice Console design** — dark-only, cool-neutral palette with a single ice
   accent, monospaced numerics, and motion that collapses under
   `prefers-reduced-motion`.

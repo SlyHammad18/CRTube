@@ -29,7 +29,10 @@ interface PlaylistsState {
   openFavourites: () => void;
   openArtist: (name: string) => void;
   openPlaylist: (id: number) => Promise<void>;
-  patchOpenTrack: (id: number, patch: { title?: string; channel?: string }) => void;
+  patchOpenTrack: (
+    id: number,
+    patch: { title?: string; channel?: string; customThumbPath?: string },
+  ) => void;
   create: (name: string) => Promise<Playlist>;
   rename: (id: number, name: string) => Promise<void>;
   remove: (id: number) => Promise<void>;

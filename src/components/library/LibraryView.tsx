@@ -12,20 +12,18 @@ import {
   Trash,
   X,
 } from "@phosphor-icons/react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useLibraryStore, type LibraryFilter } from "../../stores/library";
 import { useUIStore } from "../../stores/ui";
 import { usePlayerStore } from "../../stores/player";
 import { pushToast } from "../../stores/toast";
 import { confirm } from "../../stores/confirm";
 import { ipc } from "../../lib/ipc";
+import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
 import { fmtBytes, fmtDuration } from "../../lib/format";
 import type { LibraryEntry } from "../../types/library";
 
 function thumbSrc(entry: LibraryEntry): string | undefined {
-  if (!entry.thumbUrl) return undefined;
-  if (entry.thumbUrl.startsWith("http")) return entry.thumbUrl;
-  return convertFileSrc(entry.thumbUrl);
+  return imgSrcOf(entryArtworkUrl(entry));
 }
 
 function TypeIcon({ kind }: { kind: string }) {
