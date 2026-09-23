@@ -128,7 +128,10 @@ function resolve(p: LyricsPayload): Resolved {
  * `search` lists candidate matches and `apply` persists a chosen/edited set as
  * a sticky per-song override (the fallback ladder for missing/wrong lyrics).
  */
-export function useLyrics(entry: LibraryEntry | null): LyricsState {
+export function useLyrics(
+  entry: LibraryEntry | null,
+  refreshKey?: number,
+): LyricsState {
   const [state, setState] = useState<LyricsState>(IDLE);
   const reqId = useRef(0);
   /** Last committed offset (ms) — synchronous twin of `state.offsetMs`. */
@@ -172,7 +175,7 @@ export function useLyrics(entry: LibraryEntry | null): LyricsState {
     }
     const e = entry;
     load(e);
-  }, [entry?.id, load]);
+  }, [entry?.id, refreshKey, load]);
 
   const search = useCallback(
     (query: string) => ipc.searchLyrics(query.trim()),

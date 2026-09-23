@@ -265,7 +265,7 @@ Three panes inside the main view area:
 - Fills the remainder of the Now Playing pane. Inner line-track translates vertically so the active line holds center; mask-image fade top/bottom edges; only `transform` animates.
 - Line states: past lines `dim` at 45% opacity · **active line `ink`, Chakra Petch, 4px `ice` caret bar on the left edge** · upcoming lines `mute`.
 - Click any line → seek to its timestamp (spring feedback on the deck).
-- Deck header: pencil (opens the LRCLIB edit/replace modal) · **per-song delay control** — `−`/`+` 50ms nudges flanking a mono text field showing the current offset (`+0.05s`); the field is editable, so the delay can be typed exactly (seconds by default — `0.5`, `-1.25` — or with an `ms` suffix, e.g. `250ms`), `Enter`/blur applies, `Escape` reverts without closing the dock/fullscreen behind it; values clamp to ±100s and persist per-song (§5.7) · expand-to-fullscreen.
+- Deck header: pencil (opens the LRCLIB edit/replace modal) · **per-song delay control** — `−`/`+` 50ms nudges flanking a mono text field showing the current offset (`+0.05s`); the field is editable, so the delay can be typed exactly (seconds by default — `0.5`, `-1.25` — or with an `ms` suffix, e.g. `250ms`), `Enter`/blur applies, `Escape` reverts without closing the dock/fullscreen behind it; values clamp to ±100s and persist per-song (§5.7) · PictureInPicture toggle for the floating lyrics window (§4.10) · expand-to-fullscreen.
 - Fallback ladder: synced LRC → plain text (static scrollable block, same typography, no caret) → `instrumental` flag renders an `INSTRUMENTAL` status tag → no result: console prompt `> no lyrics found_ try manual search` with an inline artist/title override form prefilled from parsed metadata (§5.7).
 - Lyrics fetch lazily on first play of a track; cached hits render instantly (§5.7).
 
@@ -286,6 +286,25 @@ Three panes inside the main view area:
 - **Media host contract:** exactly one `<video>` DOM node lives in a persistent `MediaHost` mounted at shell level. The node is **never reparented** — under WebKitGTK's GStreamer video sink, moving a `<video>` to a new DOM parent tears down the native compositing surface and blacks out / kills controls on Linux. Instead the single node stays mounted at app root and is *positioned over the active stage via CSS* (`top/left/width/height` from the target slot's measured rect, `object-fit` cover/contain). Slots `#nowplaying-media-slot` (Player tab artwork frame), `#playerbar-media-slot` (bar thumb), and the fullscreen stage are pure measurement placeholders; a rAF loop + ResizeObserver keeps the node tracking the stage through view transitions and the PlayerBar spring. Playback (audio included) is continuous across every view and fullscreen — the video keeps playing (picture shrinks into the bar) exactly like audio does.
 - Audio-only tracks never show video — the node hides (`visibility:hidden`, never `display:none`) while still decoding audio.
 
+### 4.10 Floating Lyrics Window
+
+- The Caption Deck's `PictureInPicture` control opens one optional, frameless
+  `lyrics-overlay` Tauri webview. It is transparent outside its radius-10 panel,
+  excluded from the taskbar, does not steal focus when opened, and remains
+  always-on-top across normal application windows.
+- Default logical size is `420 × 220` (user-resizable within `360–520 × 190–320`).
+  The compact surface shows the previous/current/next synced line, plain-text or
+  instrumental fallbacks, track identity, and mono elapsed/total time.
+- The title bar is the drag handle. After movement settles, each axis magnetically
+  snaps to left/center/right or top/middle/bottom within 24px, yielding all nine
+  corner/edge/screen anchors. Released positions away from an anchor remain free.
+- Enabled state and physical position persist atomically in
+  `{app_config}/lyrics-overlay.json`, separate from frequently-written player
+  settings. Restored coordinates are validated against current monitor work areas.
+- Playback stays owned by the main webview. The overlay polls a lightweight Rust
+  snapshot, interpolates between positions, and reuses the same cached lyrics and
+  per-song offset; it never creates or reparents a second media element.
+
 ---
 
 ## 5. Backend Architecture
@@ -299,11 +318,13 @@ src-tauri/src/
 │  ├─ download.rs    # start_download(opts) -> job_id, cancel_download(id)
 │  ├─ library.rs     # list_library, add_entry, delete_entry, reveal_path
 │  ├─ settings.rs    # get_settings / set_settings (JSON)
+│  ├─ lyrics_overlay.rs # floating window lifecycle, prefs, magnetic snap, snapshot
 │  └─ player.rs      # playlists CRUD, fetch_lyrics, media_url
 ├─ services/
 │  ├─ installer.rs   # GitHub release fetch, sha256 verify, atomic replace
 │  ├─ ytdlp.rs       # arg builders + progress-line parser (pure, unit-tested fns)
 │  ├─ lyrics.rs      # LRCLIB client + cache (pure helpers, unit-tested)
+│  ├─ lyrics_overlay.rs # atomic prefs + pure magnetic-snap helpers
 │  ├─ media.rs       # loopback Range-capable media streamer (pure helpers, unit-tested)
 │  └─ db.rs          # rusqlite migrations (v1 downloads, v2 playlists)
 └─ jobs.rs           # Mutex<HashMap<job_id, Child>> process registry
@@ -337,6 +358,10 @@ remove_playlist_item(db, item_id)
 list_playlist_items(db, playlist_id) -> Vec<PlaylistTrack>   -- JOIN downloads, ordered by position
 reorder_playlist_items(db, playlist_id, item_ids: Vec<i64>)
 pick_track_thumbnail(app, db, id) -> Option<LibraryEntry>  -- app-only custom artwork
+get_lyrics_overlay_prefs(app) -> LyricsOverlayPrefs
+set_lyrics_overlay_enabled(app, enabled) -> LyricsOverlayPrefs
+snap_lyrics_overlay(app) -> OverlayPosition
+lyrics_overlay_snapshot(db, mpris) -> Option<LyricsOverlaySnapshot>
 fetch_lyrics(app, video_id, title, channel, duration_s) -> Option<LyricsPayload>
 -- LyricsPayload { synced, plain, instrumental, track_name, artist_name, cached }
 media_url(db, server, id) -> Option<String>                  -- loopback stream URL for a download
@@ -438,7 +463,7 @@ Settings persisted as JSON at `{app_config}/settings.json`: `{ download_dir, con
 
 ### 5.6 Security & capabilities
 
-Minimal Tauri capability set: dialog, opener, core window permissions. The frontend never touches the fs plugin — file ops happen Rust-side; paths cross the bridge as strings only. No secrets involved; GitHub API used unauthenticated (rate limits acceptable for a desktop client); LRCLIB is keyless.
+Minimal Tauri capability set: dialog, opener, core window permissions. The main and `lyrics-overlay` labels share the existing drag/close window permissions; monitor geometry, persistence, and position mutation stay Rust-side. The frontend never touches the fs plugin — file ops happen Rust-side; paths cross the bridge as strings only. No secrets involved; GitHub API used unauthenticated (rate limits acceptable for a desktop client); LRCLIB is keyless.
 
 **Media serving.** WebKitGTK's media pipeline (GStreamer) cannot fetch from custom URI schemes, so the asset protocol can serve thumbnails but not playback. Downloaded audio/video is instead streamed by a loopback-only HTTP server (`services/media.rs`, tokio, no new crates):
 
@@ -488,10 +513,11 @@ src/
 │  │                         # CaptionDeck, Transport, SeekBar, SpeedMenu,
 │  │                         # VolumeSlider, AddToPlaylistMenu
 │  ├─ player-bar/            # global PlayerBar + MediaHost (portal slots)
+│  ├─ lyrics-overlay/         # always-on-top lightweight lyric webview
 │  ├─ settings/              # sections
 │  └─ common/                # toast stack, pills, empty states, confirm popover
 ├─ stores/                   # zustand: queue, settings, library, search, ui,
-│                            #           player, playlists
+│                            #           player, playlists, lyricsOverlay
 ├─ lib/
 │  ├─ ipc.ts                 # typed command wrappers + event listeners
 │  ├─ lrc.ts                 # pure LRC parser + active-line finder
@@ -603,6 +629,19 @@ Artwork frame + video portal swap between slots; SeekBar hover-grow + remaining-
  **Verify:** synced highlight stays within ~200ms of vocals on a known LRC-backed track; clicking a line seeks; video keeps playing (position + audio unbroken) while portaling between tab ↔ bar; offline relaunch replays cached lyrics instantly; fallback ladder exercised on an instrumental and a gibberish-title track; `cargo clippy` + `npm run build` clean.
 
  **Done (verified):** synced LRC highlight tracked playback live ("HIM - Join Me In Death" advanced 0:00 → 0:21); click-line-seek, SeekBar hover-grow + remaining toggle, transport row, VolumeSlider + SpeedMenu, and the instrumental/plain/none fallback ladder (with manual-search override) all implemented; reduced-motion collapses the deck spring. Clippy + build clean, 48 unit tests pass.
+
+### T16 — Floating lyrics window
+Dedicated always-on-top `lyrics-overlay` webview; PictureInPicture toggle; active
+line + neighbors; command-based playback snapshot with interpolation; cached
+lyrics revision refresh; atomic enabled/position persistence; magnetic nine-anchor
+snapping; multi-monitor validation; main-window shutdown cleanup.
+
+**Verify:** overlay stays above other normal app windows without stealing focus;
+track/pause/seek/speed changes stay synchronized; lyric and offset edits refresh;
+all nine anchors snap while open-space dragging remains free; position and enabled
+state survive restart; disconnecting the saved monitor falls back safely; closing
+the main window leaves no overlay process; `cargo test` + `cargo clippy` +
+`npm run build` clean.
 
 ---
 

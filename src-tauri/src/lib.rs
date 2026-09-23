@@ -9,7 +9,7 @@ use commands::tools::ToolService;
 use jobs::JobRegistry;
 use services::db::Db;
 use tauri::Manager;
-use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri::window::Color;
 
 /// Build the main window. Defined here (instead of tauri.conf.json) so the
@@ -92,6 +92,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(event, WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed)
+            {
+                commands::lyrics_overlay::close_existing(window.app_handle());
+            }
+        })
         .manage(ToolService::default())
         .manage(Arc::new(JobRegistry::default()))
         .setup(|app| {
@@ -120,6 +127,9 @@ pub fn run() {
             let mpris =
                 tauri::async_runtime::block_on(services::mpris::Mpris::connect(app.handle().clone()));
             app.manage(mpris);
+            // Restore the opt-in floating lyrics window after managed playback
+            // state exists, so its first snapshot can resolve immediately.
+            commands::lyrics_overlay::open_if_enabled(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -166,6 +176,10 @@ pub fn run() {
             commands::mpris::mpris_set_track,
             commands::mpris::mpris_set_state,
             commands::mpris::mpris_clear,
+            commands::lyrics_overlay::get_lyrics_overlay_prefs,
+            commands::lyrics_overlay::set_lyrics_overlay_enabled,
+            commands::lyrics_overlay::snap_lyrics_overlay,
+            commands::lyrics_overlay::lyrics_overlay_snapshot,
             commands::artists::list_artists,
             commands::artists::pick_artist_cover,
             commands::artists::clear_artist_cover,

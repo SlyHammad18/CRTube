@@ -2,6 +2,7 @@ pub mod db;
 pub mod download;
 pub mod installer;
 pub mod lyrics;
+pub mod lyrics_overlay;
 pub mod media;
 pub mod mpris;
 pub mod session;

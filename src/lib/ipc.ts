@@ -14,6 +14,11 @@ import type { PlayerSession } from "../types/session";
 import type { Artist, Playlist, PlaylistTrack } from "../types/player";
 import type { LyricsPayload, LyricsCandidate } from "../types/lyrics";
 import type {
+  LyricsOverlayPosition,
+  LyricsOverlayPrefs,
+  LyricsOverlaySnapshot,
+} from "../types/lyricsOverlay";
+import type {
   DlDonePayload,
   DlErrorPayload,
   DlProgressPayload,
@@ -138,6 +143,15 @@ export const ipc = {
     invoke<void>("clear_lyrics", { videoId }),
   setLyricsOffset: (videoId: string, offsetMs: number) =>
     invoke<void>("set_lyrics_offset", { videoId, offsetMs }),
+
+  getLyricsOverlayPrefs: () =>
+    invoke<LyricsOverlayPrefs>("get_lyrics_overlay_prefs"),
+  setLyricsOverlayEnabled: (enabled: boolean) =>
+    invoke<LyricsOverlayPrefs>("set_lyrics_overlay_enabled", { enabled }),
+  snapLyricsOverlay: () =>
+    invoke<LyricsOverlayPosition>("snap_lyrics_overlay"),
+  lyricsOverlaySnapshot: () =>
+    invoke<LyricsOverlaySnapshot | null>("lyrics_overlay_snapshot"),
 
   listPlaylists: () => invoke<Playlist[]>("list_playlists"),
   createPlaylist: (name: string) => invoke<Playlist>("create_playlist", { name }),

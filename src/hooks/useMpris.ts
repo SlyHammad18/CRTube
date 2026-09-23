@@ -2,12 +2,14 @@ import { useEffect } from "react";
 import { ipc } from "../lib/ipc";
 import { selectCurrentEntry, usePlayerStore } from "../stores/player";
 import type { LibraryEntry } from "../types/library";
+import { useLyricsOverlayStore } from "../stores/lyricsOverlay";
 
 /**
  * MPRIS exposes `Position` as a non-signalled property that consumers poll, so
  * the frontend only has to keep it roughly current.
  */
 const POSITION_PUSH_MS = 1000;
+const OVERLAY_POSITION_PUSH_MS = 200;
 
 /**
  * Publishes the player to the desktop media widget (MPRIS on Linux) and applies
@@ -20,6 +22,10 @@ const POSITION_PUSH_MS = 1000;
  */
 export function useMpris() {
   const entry = usePlayerStore(selectCurrentEntry);
+  const overlayEnabled = useLyricsOverlayStore((s) => s.enabled);
+  const positionPushMs = overlayEnabled
+    ? OVERLAY_POSITION_PUSH_MS
+    : POSITION_PUSH_MS;
 
   // WebKitGTK registers an MPRIS player of its own as soon as audio plays, and
   // carries over whatever the page publishes as media-session metadata. That
@@ -105,14 +111,14 @@ export function useMpris() {
         push();
         return;
       }
-      if (timer == null) timer = setTimeout(push, POSITION_PUSH_MS);
+      if (timer == null) timer = setTimeout(push, positionPushMs);
     });
 
     return () => {
       unsubscribe();
       if (timer != null) clearTimeout(timer);
     };
-  }, []);
+  }, [positionPushMs]);
 
   // Widget -> app. The player store owns playback; MPRIS only asks it to move.
   useEffect(() => {

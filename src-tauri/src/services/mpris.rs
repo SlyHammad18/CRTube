@@ -60,6 +60,14 @@ pub struct MprisState {
     pub can_previous: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct OverlayPlaybackSnapshot {
+    pub track_id: i64,
+    pub position_s: f64,
+    pub playing: bool,
+    pub speed: f64,
+}
+
 /// A playback command from the media widget, forwarded to the frontend — the
 /// player store owns playback, the shell only asks it to move.
 #[derive(Debug, Clone, Serialize)]
@@ -268,6 +276,22 @@ impl Mpris {
 
     fn lock(&self) -> Result<MutexGuard<'_, Snapshot>, String> {
         self.state.lock().map_err(|e| e.to_string())
+    }
+
+    /// Lightweight playback snapshot for the separate floating lyrics webview.
+    /// It intentionally does not depend on DBus ownership, so the overlay also
+    /// works on systems without a session media bus.
+    pub fn overlay_snapshot(&self) -> Result<Option<OverlayPlaybackSnapshot>, String> {
+        let snapshot = self.lock()?;
+        if snapshot.track.id == 0 {
+            return Ok(None);
+        }
+        Ok(Some(OverlayPlaybackSnapshot {
+            track_id: snapshot.track.id,
+            position_s: snapshot.position_us as f64 / 1_000_000.0,
+            playing: snapshot.playing,
+            speed: snapshot.rate,
+        }))
     }
 
     /// Export the MPRIS objects and own the bus name. Idempotent: the objects

@@ -142,6 +142,11 @@
     text-rendering: optimizeSpeed;
   }
 
+  html[data-surface="lyrics-overlay"],
+  html[data-surface="lyrics-overlay"] body {
+    background: transparent;
+  }
+
   input,
   textarea {
     user-select: text;

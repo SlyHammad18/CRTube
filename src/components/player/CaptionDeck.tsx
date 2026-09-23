@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
-import { ArrowsOut, Minus, PencilSimple, Plus } from "@phosphor-icons/react";
+import { ArrowsOut, Minus, PencilSimple, PictureInPicture, Plus } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
+import { useLyricsOverlayStore } from "../../stores/lyricsOverlay";
 import { useUIStore } from "../../stores/ui";
 import { activeIndex } from "../../lib/lrc";
 import { isUrduScript } from "../../lib/format";
@@ -53,6 +54,9 @@ export function CaptionDeck({
   const reduce = useReducedMotion();
   const currentTimeS = usePlayerStore((s) => s.currentTimeS);
   const seek = usePlayerStore((s) => s.seek);
+  const overlayEnabled = useLyricsOverlayStore((s) => s.enabled);
+  const overlayBusy = useLyricsOverlayStore((s) => s.busy);
+  const toggleOverlay = useLyricsOverlayStore((s) => s.toggle);
   const lyricsFullscreen = useUIStore((s) => s.lyricsFullscreen);
   const [lyricsModal, setLyricsModal] = useState<null | "edit" | "find">(null);
 
@@ -105,6 +109,20 @@ export function CaptionDeck({
               <Plus size={13} weight="light" aria-hidden />
             </button>
           </div>
+          <button
+            aria-label={overlayEnabled ? "Close floating lyrics" : "Open floating lyrics"}
+            aria-pressed={overlayEnabled}
+            title={overlayEnabled ? "Close floating lyrics" : "Keep lyrics on top"}
+            disabled={overlayBusy}
+            onClick={() => void toggleOverlay().catch(() => {})}
+            className={`grid h-7 w-7 shrink-0 place-items-center rounded-card transition-colors duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 ${
+              overlayEnabled
+                ? "bg-raise text-ice"
+                : "text-mute hover:bg-raise hover:text-ice"
+            }`}
+          >
+            <PictureInPicture size={13} weight="light" aria-hidden />
+          </button>
           {!lyricsFullscreen && (
             <button
               aria-label="Expand lyrics"
