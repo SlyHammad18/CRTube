@@ -11,3 +11,4 @@ ISSUES.md
 skills-lock.json
 .opencode
 .playwright-mcp
+.commandcode/*
