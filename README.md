@@ -1,122 +1,83 @@
 # CRTube
 
 <p align="center">
-  <img src="./docs/home.png" alt="CRTube home screen" width="720" />
+  <img src="./docs/home.png" alt="CRTube library" width="900" />
 </p>
 
 <p align="center">
   <a href="https://github.com/SlyHammad18/CRTube/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/SlyHammad18/CRTube?color=4DD8FF" /></a>
   <img alt="License" src="https://img.shields.io/badge/License-MIT-4DD8FF" />
-  <img alt="Tauri" src="https://img.shields.io/badge/Tauri-v2-4DD8FF?logo=tauri&logoColor=white" />
-  <img alt="React" src="https://img.shields.io/badge/React-18-4DD8FF?logo=react&logoColor=white" />
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-1.70%2B-4DD8FF?logo=rust&logoColor=white" />
   <img alt="Platforms" src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows-4DD8FF" />
-  <img alt="Engine" src="https://img.shields.io/badge/engine-yt--dlp-4DD8FF" />
 </p>
 
-A desktop client for downloading YouTube videos and audio, built on
-[Tauri v2](https://v2.tauri.app/) + React + Rust. Search, pick a format, and
-queue downloads with live progress — everything runs locally through
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) and ffmpeg, with no telemetry.
+CRTube is a local-first desktop YouTube downloader and media player built with
+[Tauri v2](https://v2.tauri.app/), React, and Rust. Search for a video, choose a
+format, download it, and keep playback, lyrics, playlists, and favourites in one
+place. Processing stays on your machine through
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) and ffmpeg; CRTube does not require a
+server or telemetry.
 
-## Features
+## Highlights
 
-- **Search & instant formats** — search YouTube or paste a link; the format
-  sheet shows real probed resolutions, codecs, and size estimates.
-- **Audio + video** — download as MP4 / WebM / MKV, or extract MP3 with
-  embedded cover art and tags.
-- **Live queue** — concurrent downloads with real-time progress, speed, and
-  ETA readouts, cancel, and a library that persists across restarts.
-- **Self-updating engine** — yt-dlp is kept current via atomic, checksummed
-  GitHub releases; ffmpeg is installed once. Updates never call `yt-dlp -U`.
-- **Resilient** — friendly messages for offline boots, region-blocked videos,
-  disk-full, rate limits, and bad links. Never crashes on a tool error.
-- **Resume where you left off** — the queue, current song, timestamp, repeat,
-  shuffle, and speed are remembered and reapplied on next launch.
-- **Editable lyrics** — fix synced lyrics via an LRCLIB search modal, type or
-  nudge each song's timing delay, or use them as subtitles in fullscreen video.
-- **Floating lyrics** — keep the active lyric in a small always-on-top window
-  that can snap to screen anchors or float freely between apps. On Linux,
-  CRTube prefers XWayland so the compositor can honor the topmost state.
-- **Favourites** — heart any track into a Favourites playlist, rename tracks and
-  artists, and reorder playlists with up/down arrows.
-- **Custom track artwork** — replace any song's displayed thumbnail from a
-  hover-only Now Playing control without modifying the downloaded media file.
-- **Ice Console design** — dark-only, cool-neutral palette with a single ice
-  accent, monospaced numerics, and motion that collapses under
-  `prefers-reduced-motion`.
+- **Download and play** — search YouTube or paste a link, choose audio/video
+  formats, queue concurrent downloads, and play the library with persistent
+  sessions.
+- **Lyrics everywhere** — LRCLIB synced lyrics, per-song timing offsets, manual
+  lyric search/override, bottom-docked lyrics, and an optional always-on-top
+  floating lyrics window.
+- **Full floating-player controls** — play/pause, previous/next, shuffle,
+  repeat, seek timeline, favourite, add-to-playlist, mute, and an “Open main
+  app” button without creating a second playback engine.
+- **Library organisation** — playlists, membership checkmarks, favourites,
+  track/artist renaming, reordering, custom artwork, and collapsible artist
+  views.
+- **Desktop integration** — MPRIS media controls, cached square artwork in the
+  system media card, keyboard shortcuts, resumable playback, and remembered
+  mute/volume/loop/shuffle/speed state.
+- **Local and resilient** — friendly tool/download errors, atomic yt-dlp
+  updates with checksum verification, cached thumbnails, and no cloud account.
 
-## What's new in v0.3.0
+## v0.4.0 release notes
 
-v0.3.0 builds on v0.2.0's in-app playback with a bigger lyrics experience,
-session resume, and library management:
-
-- **Resume session** — CRTube remembers where you left off: the open playlist,
-  the queue and current song, its timestamp, loop, shuffle, and speed are saved
-  and applied at the next launch (always resuming paused).
-- **Lyrics** — editable per-song lyrics with an LRCLIB search modal; per-song
-  sync-offset `+/-` nudges that persist; live lyrics as subtitles in fullscreen
-  video; and Now Playing re-ordered so lyrics sit above the transport row.
-- **Player** — fullscreen video controls (favourite, speed, loop-one), a
-  per-track "audio only" toggle with an auto-disable setting, global keyboard
-  shortcuts (Space, seek, volume, lyrics, repeat, shuffle, and more), and
-  shuffle/repeat/speed controls in the global player bar.
-- **Library & playlists** — a Favourites playlist with heart toggles, track
-  title + multi-artist renaming, a collapsible Artists tab, auto-scroll to the
-  playing track, and playlist reordering via up/down arrows.
-- **OS integration** — the GNOME Notification Center media card now shows
-  square-cropped, undistorted artwork from locally cached thumbnails.
-- **Polish** — faster startup (boot animation removed), hardened webview
-  (inspect/right-click/copy blocked), and a fixed volume-slider focus bug so
-  keyboard shortcuts always work after dragging the volume.
+- Added the floating lyrics control surface with transport, shuffle/repeat,
+  seeking, favourites, playlist membership, mute, and main-window focus.
+- Reworked floating-lyrics timing around an authoritative playback clock and
+  sequence-guarded snapshots to prevent stale lyric rollbacks.
+- Added smooth optimistic seeking so the overlay does not jump back while the
+  main player applies a seek.
+- Removed the translucent edge halo and persistent engine/version line from the
+  search surface; the transient `updating yt-dlp` state remains visible.
+- Persisted mute state in the resume session and fixed focus handling around
+  the floating seek bar.
 
 ## Download
 
-Prebuilt installers for Linux are attached to the latest
-[GitHub release](https://github.com/SlyHammad18/CRTube/releases):
+The v0.4.0 release includes a Debian/Ubuntu package:
 
-- **Debian / Ubuntu** — `CRTube_0.3.0_amd64.deb`
-- **Fedora / openSUSE / RHEL** — `CRTube-0.3.0-1.x86_64.rpm`
-- **Portable Linux** — `CRTube_0.3.0_amd64.AppImage` (make executable, then run)
+- **`CRTube_0.4.0_amd64.deb`**
 
-Windows (NSIS) installers are produced automatically when built on Windows.
+AppImage is not included in this release. Windows NSIS packages can be built on
+Windows with the Tauri CLI.
 
 ## Build from source
 
-Requirements: Rust toolchain, Node 20+, and the Tauri 2 Linux system
-dependencies (webkit2gtk-4.1, libsoup, etc.).
+Requirements: Node.js 20+, Rust, and the Tauri 2 Linux system dependencies
+(including WebKitGTK and libsoup).
 
 ```bash
 npm install
-npm run tauri build
+npm run tauri build -- --bundles deb
 ```
 
-The resulting artifacts land in `src-tauri/target/release/bundle/`.
+The Debian artifact is written to
+`src-tauri/target/release/bundle/deb/`.
 
-To run the dev server with hot reload:
+For development with hot reload:
 
 ```bash
 npm run tauri dev
 ```
 
-## Project layout
-
-| Path | Purpose |
-|------|---------|
-| `src-tauri/src/commands` | Tauri command handlers (search, tools, download, library, settings) |
-| `src-tauri/src/services` | installer, ytdlp arg builder + parser, download engine, db, thumbs |
-| `src-tauri/src/jobs.rs` | in-flight download process registry |
-| `src/components` | React UI (search, sheet, downloads, library, settings) |
-| `src/stores` | Zustand state |
-| `DESIGN.md` | Locked design + build spec (authoritative) |
-| `AGENTS.md` | Developer workflow notes |
-
-## Notes
-
-- Binaries, the library database, and cached thumbnails live under the app
-  data directory (`~/.local/share/io.github.slyhammad18.crtube` on Linux).
-- Downloads default to `~/Downloads/CRTube` and are configurable in Settings.
-
 ## License
 
-MIT — see [LICENSE](LICENSE) for the full text.
+MIT — see [LICENSE](LICENSE).
