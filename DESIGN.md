@@ -308,7 +308,10 @@ Three panes inside the main view area:
   settings. Restored coordinates are validated against current monitor work areas.
 - Playback stays owned by the main webview. The overlay polls a lightweight Rust
   snapshot, interpolates between positions, and reuses the same cached lyrics and
-  per-song offset; it never creates or reparents a second media element.
+  per-song offset; it never creates or reparents a second media element. State
+  pushes are sequence-numbered and coalesced, carry their sample time, and are
+  advanced authoritatively in Rust between samples so late IPC responses cannot
+  rewind the overlay clock or build an unbounded command backlog.
 
 ---
 

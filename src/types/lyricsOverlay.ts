@@ -13,6 +13,8 @@ export interface LyricsOverlayPosition {
 
 export interface LyricsOverlaySnapshot {
   entry: LibraryEntry;
+  /** Monotonic playback sequence used to reject stale overlay snapshots. */
+  sequence: number;
   positionS: number;
   playing: boolean;
   speed: number;

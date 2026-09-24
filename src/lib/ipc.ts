@@ -52,10 +52,18 @@ export interface MprisTrack {
   durationS?: number;
   /** http(s) artwork URL — the shell fetches it itself. */
   artUrl?: string;
+  /** Monotonic publisher sequence used to reject late IPC updates. */
+  sequence: number;
 }
 
 /** Playback snapshot the widget reads back. */
 export interface MprisState {
+  /** Track this state belongs to; prevents late updates from another queue item. */
+  trackId: number;
+  /** Monotonic publisher sequence used to reject out-of-order IPC calls. */
+  sequence: number;
+  /** Frontend wall-clock sample time, used to correct IPC latency in Rust. */
+  sampledAtMs?: number;
   playing: boolean;
   positionS: number;
   volume: number;

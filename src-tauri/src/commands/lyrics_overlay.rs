@@ -26,6 +26,7 @@ pub struct OverlayPosition {
 #[serde(rename_all = "camelCase")]
 pub struct LyricsOverlaySnapshot {
     pub entry: LibraryEntry,
+    pub sequence: u64,
     pub position_s: f64,
     pub playing: bool,
     pub speed: f64,
@@ -264,6 +265,7 @@ pub fn lyrics_overlay_snapshot(
     let entry = db::get_entry(&conn, playback.track_id).ok();
     Ok(entry.map(|entry| LyricsOverlaySnapshot {
         entry,
+        sequence: playback.sequence,
         position_s: playback.position_s,
         playing: playback.playing,
         speed: playback.speed,

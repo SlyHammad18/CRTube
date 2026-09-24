@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { ipc } from "../lib/ipc";
+import { useEffect, useRef } from "react";
+import { ipc, type MprisState } from "../lib/ipc";
 import { selectCurrentEntry, usePlayerStore } from "../stores/player";
 import type { LibraryEntry } from "../types/library";
 import { useLyricsOverlayStore } from "../stores/lyricsOverlay";
@@ -10,6 +10,26 @@ import { useLyricsOverlayStore } from "../stores/lyricsOverlay";
  */
 const POSITION_PUSH_MS = 1000;
 const OVERLAY_POSITION_PUSH_MS = 200;
+const MPRIS_STATE_TIMEOUT_MS = 1500;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(
+      () => reject(new Error("MPRIS state update timed out")),
+      timeoutMs,
+    );
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 /**
  * Publishes the player to the desktop media widget (MPRIS on Linux) and applies
@@ -26,6 +46,7 @@ export function useMpris() {
   const positionPushMs = overlayEnabled
     ? OVERLAY_POSITION_PUSH_MS
     : POSITION_PUSH_MS;
+  const sequence = useRef(0);
 
   // WebKitGTK registers an MPRIS player of its own as soon as audio plays, and
   // carries over whatever the page publishes as media-session metadata. That
@@ -45,6 +66,7 @@ export function useMpris() {
   // Track + artwork: released when the queue empties (the shell then drops the
   // media widget instead of leaving an inert entry behind).
   useEffect(() => {
+    const trackSequence = ++sequence.current;
     if (!entry) {
       void ipc.mprisClear().catch(() => {});
       return;
@@ -59,6 +81,7 @@ export function useMpris() {
           artist: entry.channel,
           durationS: entry.durationS,
           artUrl,
+          sequence: trackSequence,
         });
       })
       .catch(() => {});
@@ -68,29 +91,71 @@ export function useMpris() {
   }, [entry]);
 
   // Playback state: reported immediately whenever something other than the
-  // clock changes, and otherwise at most once a second while it advances.
+  // clock changes, and otherwise at the consumer's polling cadence.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let last = { playing: false, volume: -1, muted: false, speed: -1 };
+    let disposed = false;
+    let inFlight = false;
+    let pending: MprisState | null = null;
+    let last = {
+      trackId: -1,
+      playing: false,
+      volume: -1,
+      muted: false,
+      speed: -1,
+    };
+
+    // Keep at most one state IPC in flight. If the player changes again while
+    // Rust is busy, retain only the newest snapshot instead of building a queue
+    // of stale positions.
+    const flush = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      while (!disposed && pending !== null) {
+        const next = pending;
+        pending = null;
+        try {
+          await withTimeout(
+            ipc.mprisSetState(next),
+            MPRIS_STATE_TIMEOUT_MS,
+          );
+        } catch {
+          // The next player update will retry; do not block the publisher.
+        }
+      }
+      inFlight = false;
+    };
+
+    const enqueue = (
+      state: Omit<MprisState, "sequence" | "sampledAtMs">,
+    ) => {
+      pending = {
+        ...state,
+        sequence: ++sequence.current,
+        sampledAtMs: Date.now(),
+      };
+      void flush();
+    };
 
     const push = () => {
       timer = undefined;
       const player = usePlayerStore.getState();
+      const trackId = player.queue[player.order[player.pos]]?.id ?? 0;
       // Every push reports the queue's navigation ability: the widget greys out
       // next/previous when the queue has nowhere to go.
       const canNavigate = player.order.length > 1;
-      void ipc
-        .mprisSetState({
-          playing: player.playing,
-          positionS: player.currentTimeS,
-          volume: player.volume,
-          muted: player.muted,
-          speed: player.speed,
-          canNext: canNavigate,
-          canPrevious: canNavigate,
-        })
-        .catch(() => {});
+      enqueue({
+        trackId,
+        playing: player.playing,
+        positionS: player.currentTimeS,
+        volume: player.volume,
+        muted: player.muted,
+        speed: player.speed,
+        canNext: canNavigate,
+        canPrevious: canNavigate,
+      });
       last = {
+        trackId,
         playing: player.playing,
         volume: player.volume,
         muted: player.muted,
@@ -101,7 +166,9 @@ export function useMpris() {
     push();
     const unsubscribe = usePlayerStore.subscribe(() => {
       const player = usePlayerStore.getState();
+      const trackId = player.queue[player.order[player.pos]]?.id ?? 0;
       if (
+        trackId !== last.trackId ||
         player.playing !== last.playing ||
         player.volume !== last.volume ||
         player.muted !== last.muted ||
@@ -115,6 +182,8 @@ export function useMpris() {
     });
 
     return () => {
+      disposed = true;
+      pending = null;
       unsubscribe();
       if (timer != null) clearTimeout(timer);
     };

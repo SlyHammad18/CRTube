@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -33,6 +34,7 @@ const RATE_MIN: f64 = 0.25;
 const RATE_MAX: f64 = 4.0;
 
 const NO_BUS: &str = "no session bus connection";
+const MAX_SAMPLE_AGE_MS: u64 = 5_000;
 
 /// Track pushed by the frontend whenever the queue entry under the playhead
 /// changes.
@@ -44,13 +46,27 @@ pub struct MprisTrack {
     pub artist: Option<String>,
     pub duration_s: Option<f64>,
     pub art_url: Option<String>,
+    /// Monotonic publisher sequence used to reject a late track update.
+    #[serde(default)]
+    pub sequence: u64,
 }
 
-/// Playback state pushed by the frontend, throttled to ~1 Hz for the position
-/// and sent immediately when anything else changes.
-#[derive(Debug, Deserialize)]
+/// Playback state pushed by the frontend, throttled for the position and sent
+/// immediately when transport or volume changes.
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MprisState {
+    /// Track this state belongs to; prevents a late state from another queue
+    /// item from overwriting the current track.
+    #[serde(default)]
+    pub track_id: i64,
+    /// Monotonic publisher sequence used to reject out-of-order IPC calls.
+    #[serde(default)]
+    pub sequence: u64,
+    /// Wall-clock time at which the frontend sampled `position_s`, used to
+    /// correct for IPC latency without trusting a delayed sample forever.
+    #[serde(default)]
+    pub sampled_at_ms: Option<u64>,
     pub playing: bool,
     pub position_s: f64,
     pub volume: f64,
@@ -63,6 +79,7 @@ pub struct MprisState {
 #[derive(Debug, Clone, Copy)]
 pub struct OverlayPlaybackSnapshot {
     pub track_id: i64,
+    pub sequence: u64,
     pub position_s: f64,
     pub playing: bool,
     pub speed: f64,
@@ -89,11 +106,15 @@ struct Snapshot {
     track: Track,
     playing: bool,
     position_us: i64,
+    position_updated_at: Instant,
     volume: f64,
     muted: bool,
     rate: f64,
     can_next: bool,
     can_previous: bool,
+    last_track_sequence: u64,
+    last_state_sequence: u64,
+    pending_state: Option<MprisState>,
 }
 
 impl Snapshot {
@@ -102,13 +123,116 @@ impl Snapshot {
             track: Track::default(),
             playing: false,
             position_us: 0,
+            position_updated_at: Instant::now(),
             volume: 1.0,
             muted: false,
             rate: 1.0,
             can_next: false,
             can_previous: false,
+            last_track_sequence: 0,
+            last_state_sequence: 0,
+            pending_state: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct StateChanges {
+    status: bool,
+    volume: bool,
+    rate: bool,
+    navigation: bool,
+}
+
+/// Apply one publisher state only if it belongs to the current track and is
+/// newer than the last state already accepted by the overlay/MPRIS boundary.
+fn apply_state(snapshot: &mut Snapshot, state: &MprisState) -> Option<StateChanges> {
+    if state.track_id != snapshot.track.id {
+        if state.track_id != 0 {
+            let replace = snapshot
+                .pending_state
+                .as_ref()
+                .is_none_or(|pending| state.sequence >= pending.sequence);
+            if replace {
+                snapshot.pending_state = Some(state.clone());
+            }
+        }
+        return None;
+    }
+    snapshot.pending_state = None;
+    if state.sequence > 0 {
+        if state.sequence <= snapshot.last_state_sequence {
+            return None;
+        }
+        snapshot.last_state_sequence = state.sequence;
+    }
+
+    let changes = StateChanges {
+        status: snapshot.playing != state.playing,
+        volume: snapshot.volume != state.volume || snapshot.muted != state.muted,
+        rate: snapshot.rate != state.speed,
+        navigation: snapshot.can_next != state.can_next
+            || snapshot.can_previous != state.can_previous,
+    };
+
+    snapshot.playing = state.playing;
+    snapshot.position_us = sampled_position_us(state, unix_time_ms());
+    snapshot.position_updated_at = Instant::now();
+    snapshot.volume = state.volume.clamp(0.0, 1.0);
+    snapshot.muted = state.muted;
+    snapshot.rate = state.speed.clamp(RATE_MIN, RATE_MAX);
+    snapshot.can_next = state.can_next;
+    snapshot.can_previous = state.can_previous;
+    Some(changes)
+}
+
+fn unix_time_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn sampled_position_us(state: &MprisState, now_ms: u64) -> i64 {
+    let mut position_s = state.position_s;
+    if state.playing {
+        if let Some(sampled_at_ms) = state.sampled_at_ms {
+            let age_ms = now_ms
+                .saturating_sub(sampled_at_ms)
+                .min(MAX_SAMPLE_AGE_MS);
+            position_s += age_ms as f64 / 1_000.0 * state.speed.clamp(RATE_MIN, RATE_MAX);
+        }
+    }
+    position_to_us(position_s)
+}
+
+fn position_to_us(seconds: f64) -> i64 {
+    if !seconds.is_finite() {
+        return 0;
+    }
+    (seconds.max(0.0) * 1_000_000.0)
+        .min(i64::MAX as f64) as i64
+}
+
+/// Return the playback position at `now`, advancing the last accepted sample
+/// while the media is playing. This keeps the overlay smooth even when the
+/// frontend's next `timeupdate`/IPC sample is late.
+fn position_at(snapshot: &Snapshot, now: Instant) -> i64 {
+    let elapsed = now
+        .checked_duration_since(snapshot.position_updated_at)
+        .unwrap_or(Duration::ZERO);
+    let elapsed_us = if snapshot.playing {
+        (elapsed.as_secs_f64() * snapshot.rate.max(0.0) * 1_000_000.0)
+            .min(i64::MAX as f64) as i64
+    } else {
+        0
+    };
+    snapshot.position_us.saturating_add(elapsed_us)
+}
+
+fn rebase_position(snapshot: &mut Snapshot, now: Instant) {
+    snapshot.position_us = position_at(snapshot, now);
+    snapshot.position_updated_at = now;
 }
 
 /// `mpris:trackid` for a queue entry; MPRIS requires an object path.
@@ -188,8 +312,15 @@ impl Mpris {
 
     /// Load a track: publish (or refresh) the player and its metadata.
     pub async fn set_track(&self, track: MprisTrack) -> Result<(), String> {
-        {
+        let pending_changes = {
             let mut snapshot = self.lock()?;
+            if track.sequence > 0 && track.sequence <= snapshot.last_track_sequence {
+                return Ok(());
+            }
+            let same_track = snapshot.track.id == track.id;
+            if track.sequence > 0 {
+                snapshot.last_track_sequence = track.sequence;
+            }
             snapshot.track = Track {
                 id: track.id,
                 title: track.title,
@@ -197,37 +328,43 @@ impl Mpris {
                 duration_us: (track.duration_s.unwrap_or(0.0).max(0.0) * 1e6) as i64,
                 art_url: track.art_url,
             };
-            snapshot.position_us = 0;
-        }
+            if !same_track {
+                snapshot.position_us = 0;
+                snapshot.position_updated_at = Instant::now();
+            }
+            snapshot
+                .pending_state
+                .take()
+                .and_then(|state| {
+                    (state.track_id == track.id)
+                        .then(|| apply_state(&mut snapshot, &state))
+                        .flatten()
+                })
+                .unwrap_or_default()
+        };
         self.register().await?;
         self.emit_metadata().await?;
-        self.emit_playback_status().await
+        self.emit_playback_status().await?;
+        if pending_changes.volume {
+            self.emit_volume().await?;
+        }
+        if pending_changes.rate {
+            self.emit_rate().await?;
+        }
+        if pending_changes.navigation {
+            self.emit_navigation().await?;
+        }
+        Ok(())
     }
 
     /// Apply a playback state snapshot, signalling only what changed.
     pub async fn set_state(&self, state: MprisState) -> Result<(), String> {
-        let (status_changed, volume_changed, rate_changed, navigation_changed) = {
+        let changes = {
             let mut snapshot = self.lock()?;
-            let status_changed = snapshot.playing != state.playing;
-            let volume_changed = snapshot.volume != state.volume || snapshot.muted != state.muted;
-            let rate_changed = snapshot.rate != state.speed;
-            let navigation_changed =
-                snapshot.can_next != state.can_next || snapshot.can_previous != state.can_previous;
-
-            snapshot.playing = state.playing;
-            snapshot.position_us = (state.position_s.max(0.0) * 1e6) as i64;
-            snapshot.volume = state.volume.clamp(0.0, 1.0);
-            snapshot.muted = state.muted;
-            snapshot.rate = state.speed.clamp(RATE_MIN, RATE_MAX);
-            snapshot.can_next = state.can_next;
-            snapshot.can_previous = state.can_previous;
-
-            (
-                status_changed,
-                volume_changed,
-                rate_changed,
-                navigation_changed,
-            )
+            apply_state(&mut snapshot, &state)
+        };
+        let Some(changes) = changes else {
+            return Ok(());
         };
 
         if !self.owned()? {
@@ -235,16 +372,16 @@ impl Mpris {
             // `set_track` reads this snapshot when it registers.
             return Ok(());
         }
-        if status_changed {
+        if changes.status {
             self.emit_playback_status().await?;
         }
-        if volume_changed {
+        if changes.volume {
             self.emit_volume().await?;
         }
-        if rate_changed {
+        if changes.rate {
             self.emit_rate().await?;
         }
-        if navigation_changed {
+        if changes.navigation {
             self.emit_navigation().await?;
         }
         Ok(())
@@ -253,7 +390,16 @@ impl Mpris {
     /// Drop the player: releasing the name makes the shell remove the widget,
     /// so an idle CRTube leaves no dead media entry behind.
     pub async fn clear(&self) -> Result<(), String> {
-        *self.lock()? = Snapshot::new();
+        {
+            let mut snapshot = self.lock()?;
+            let last_track_sequence = snapshot.last_track_sequence;
+            let last_state_sequence = snapshot.last_state_sequence;
+            *snapshot = Snapshot::new();
+            // Do not let an IPC request from before clear become "new" after
+            // the player is reset and the same database track is loaded again.
+            snapshot.last_track_sequence = last_track_sequence;
+            snapshot.last_state_sequence = last_state_sequence;
+        }
         let Some(connection) = self.connection.as_ref() else {
             return Ok(());
         };
@@ -286,9 +432,11 @@ impl Mpris {
         if snapshot.track.id == 0 {
             return Ok(None);
         }
+        let position_us = position_at(&snapshot, Instant::now());
         Ok(Some(OverlayPlaybackSnapshot {
             track_id: snapshot.track.id,
-            position_s: snapshot.position_us as f64 / 1_000_000.0,
+            sequence: snapshot.last_state_sequence,
+            position_s: position_us as f64 / 1_000_000.0,
             playing: snapshot.playing,
             speed: snapshot.rate,
         }))
@@ -510,7 +658,12 @@ impl PlayerIface {
         offset_us: i64,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> zbus::fdo::Result<()> {
-        let target_us = (self.snapshot()?.position_us + offset_us).max(0);
+        let target_us = {
+            let snapshot = self.snapshot()?;
+            position_at(&snapshot, Instant::now())
+                .saturating_add(offset_us)
+                .max(0)
+        };
         self.emit_command("seek", Some(target_us as f64 / 1e6));
         emitter
             .seeked(target_us)
@@ -550,7 +703,8 @@ impl PlayerIface {
     /// Read-only and never signalled: consumers poll it at their own pace.
     #[zbus(property(emits_changed_signal = "false"))]
     fn position(&self) -> zbus::fdo::Result<i64> {
-        Ok(self.snapshot()?.position_us)
+        let snapshot = self.snapshot()?;
+        Ok(position_at(&snapshot, Instant::now()))
     }
 
     #[zbus(property)]
@@ -561,7 +715,12 @@ impl PlayerIface {
     #[zbus(property)]
     fn set_rate(&self, rate: f64) -> zbus::fdo::Result<()> {
         let rate = rate.clamp(RATE_MIN, RATE_MAX);
-        self.snapshot()?.rate = rate;
+        {
+            let mut snapshot = self.snapshot()?;
+            let now = Instant::now();
+            rebase_position(&mut snapshot, now);
+            snapshot.rate = rate;
+        }
         self.emit_command("set_rate", Some(rate));
         Ok(())
     }
@@ -648,6 +807,33 @@ mod tests {
     }
 
     #[test]
+    fn overlay_position_advances_between_samples_only_while_playing() {
+        let mut snapshot = Snapshot::new();
+        let now = Instant::now();
+        snapshot.playing = true;
+        snapshot.rate = 1.0;
+        snapshot.position_us = 1_000_000;
+        snapshot.position_updated_at = now - Duration::from_secs(2);
+
+        assert_eq!(position_at(&snapshot, now), 3_000_000);
+
+        snapshot.playing = false;
+        assert_eq!(position_at(&snapshot, now), 1_000_000);
+    }
+
+    #[test]
+    fn delayed_state_sample_advances_by_its_age_up_to_the_cap() {
+        let mut state = state(7, 4, 10.0);
+        state.sampled_at_ms = Some(1_000);
+
+        assert_eq!(sampled_position_us(&state, 1_500), 10_500_000);
+        assert_eq!(
+            sampled_position_us(&state, 1_000 + MAX_SAMPLE_AGE_MS + 1_000),
+            15_000_000
+        );
+    }
+
+    #[test]
     fn metadata_carries_the_track_identity_and_artwork() {
         let metadata = metadata_for(&Track {
             id: 83,
@@ -691,5 +877,57 @@ mod tests {
             metadata["mpris:trackid"],
             Value::from(OwnedObjectPath::try_from("/org/mpris/MediaPlayer2/track/4").unwrap())
         );
+    }
+
+    fn state(track_id: i64, sequence: u64, position_s: f64) -> MprisState {
+        MprisState {
+            track_id,
+            sequence,
+            sampled_at_ms: None,
+            playing: true,
+            position_s,
+            volume: 1.0,
+            muted: false,
+            speed: 1.0,
+            can_next: true,
+            can_previous: true,
+        }
+    }
+
+    #[test]
+    fn stale_state_is_ignored_without_rewinding_position() {
+        let mut snapshot = Snapshot::new();
+        snapshot.track.id = 7;
+
+        assert!(apply_state(&mut snapshot, &state(7, 4, 10.0)).is_some());
+        assert!(apply_state(&mut snapshot, &state(7, 3, 1.0)).is_none());
+        assert_eq!(snapshot.position_us, 10_000_000);
+        assert_eq!(snapshot.last_state_sequence, 4);
+
+        // A newer sequence may legitimately move backward for a user seek.
+        assert!(apply_state(&mut snapshot, &state(7, 5, 2.0)).is_some());
+        assert_eq!(snapshot.position_us, 2_000_000);
+    }
+
+    #[test]
+    fn state_before_track_metadata_is_replayed_for_that_track() {
+        let mut snapshot = Snapshot::new();
+        assert!(apply_state(&mut snapshot, &state(7, 4, 10.0)).is_none());
+        assert!(snapshot.pending_state.is_some());
+
+        snapshot.track.id = 7;
+        let pending = snapshot.pending_state.take().expect("pending state");
+        assert!(apply_state(&mut snapshot, &pending).is_some());
+        assert_eq!(snapshot.position_us, 10_000_000);
+    }
+
+    #[test]
+    fn state_for_another_track_is_ignored() {
+        let mut snapshot = Snapshot::new();
+        snapshot.track.id = 7;
+
+        assert!(apply_state(&mut snapshot, &state(8, 5, 10.0)).is_none());
+        assert_eq!(snapshot.position_us, 0);
+        assert_eq!(snapshot.last_state_sequence, 0);
     }
 }

@@ -14,6 +14,8 @@ export type LyricsStatus =
 
 export interface LyricsState {
   status: LyricsStatus;
+  /** Database entry + video identity that produced the current lyrics. */
+  trackKey: string | null;
   lines: LrcLine[];
   plain: string | null;
   source: "synced" | "plain" | null;
@@ -41,6 +43,7 @@ export interface LyricsState {
 
 const IDLE: LyricsState = {
   status: "idle",
+  trackKey: null,
   lines: [],
   plain: null,
   source: null,
@@ -139,7 +142,8 @@ export function useLyrics(
 
   const load = useCallback((e: LibraryEntry, override?: { title: string; artist: string }) => {
     const id = ++reqId.current;
-    setState((s) => ({ ...s, status: "loading", override: !!override }));
+    const trackKey = `${e.id}:${e.videoId}`;
+    setState((s) => ({ ...s, trackKey, status: "loading", override: !!override }));
     const title = override?.title ?? e.title;
     const artist = override?.artist ?? e.channel ?? "";
     ipc
@@ -153,16 +157,16 @@ export function useLyrics(
         if (id !== reqId.current) return;
         if (!payload) {
           offsetRef.current = 0;
-          setState({ ...IDLE, status: "none", override: !!override });
+          setState({ ...IDLE, trackKey, status: "none", override: !!override });
           return;
         }
         offsetRef.current = payload.offsetMs ?? 0;
-        setState({ ...IDLE, ...resolve(payload), override: !!override });
+        setState({ ...IDLE, ...resolve(payload), trackKey, override: !!override });
       })
       .catch(() => {
         if (id !== reqId.current) return;
         offsetRef.current = 0;
-        setState({ ...IDLE, status: "error", override: !!override });
+        setState({ ...IDLE, trackKey, status: "error", override: !!override });
       });
   }, []);
 
@@ -175,7 +179,7 @@ export function useLyrics(
     }
     const e = entry;
     load(e);
-  }, [entry?.id, refreshKey, load]);
+  }, [entry?.id, entry?.videoId, refreshKey, load]);
 
   const search = useCallback(
     (query: string) => ipc.searchLyrics(query.trim()),
@@ -192,11 +196,16 @@ export function useLyrics(
         .then(() => {
           if (reqId.current !== myReq) return;
           // Keep the user's tuned offset — changing the lyric text shouldn't reset it.
-          setState((s) => ({ ...IDLE, ...resolve(payload), override: true, offsetMs: s.offsetMs }));
+          setState((s) => ({
+            ...s,
+            ...resolve(payload),
+            override: true,
+            offsetMs: s.offsetMs,
+          }));
         })
         .catch(() => {
           if (reqId.current !== myReq) return;
-          setState({ ...IDLE, status: "error", override: true });
+          setState((s) => ({ ...s, status: "error", override: true }));
         });
     },
     [entry],

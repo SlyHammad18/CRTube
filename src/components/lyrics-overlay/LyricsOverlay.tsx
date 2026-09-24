@@ -10,22 +10,60 @@ import type { LyricsOverlaySnapshot } from "../../types/lyricsOverlay";
 
 const SNAP_DEBOUNCE_MS = 140;
 const SNAPSHOT_POLL_MS = 200;
+const SNAPSHOT_TIMEOUT_MS = 1000;
 const CLOCK_TICK_MS = 50;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(
+      () => reject(new Error("lyrics overlay snapshot timed out")),
+      timeoutMs,
+    );
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 function useOverlaySnapshot(): LyricsOverlaySnapshot | null {
   const [snapshot, setSnapshot] = useState<LyricsOverlaySnapshot | null>(null);
 
   useEffect(() => {
     let alive = true;
+    let requestId = 0;
     let timer: number | undefined;
     const poll = async () => {
+      const id = ++requestId;
       try {
-        const next = await ipc.lyricsOverlaySnapshot();
-        if (alive) setSnapshot(next);
+        const next = await withTimeout(
+          ipc.lyricsOverlaySnapshot(),
+          SNAPSHOT_TIMEOUT_MS,
+        );
+        if (!alive || id !== requestId) return;
+        if (next === null) {
+          setSnapshot(null);
+          return;
+        }
+        // The Rust response must carry the ordering token. Treat a malformed
+        // response as transient rather than silently disabling stale-sample
+        // protection with `undefined`.
+        if (Number.isFinite(next.sequence)) {
+          setSnapshot(next);
+        }
       } catch {
-        if (alive) setSnapshot(null);
+        // Keep the last good snapshot. A transient IPC/DB stall should not
+        // blank the overlay or stop the next poll from being scheduled.
       } finally {
-        if (alive) timer = window.setTimeout(poll, SNAPSHOT_POLL_MS);
+        if (alive && id === requestId) {
+          timer = window.setTimeout(poll, SNAPSHOT_POLL_MS);
+        }
       }
     };
     void poll();
@@ -41,9 +79,29 @@ function useOverlaySnapshot(): LyricsOverlaySnapshot | null {
 function useInterpolatedPosition(snapshot: LyricsOverlaySnapshot | null): number {
   const [positionS, setPositionS] = useState(0);
   const clock = useRef({ base: 0, at: 0, playing: false, speed: 1 });
+  const lastTrackId = useRef<number | null>(null);
+  const lastSequence = useRef(-1);
 
   useEffect(() => {
-    if (!snapshot) return;
+    if (!snapshot) {
+      lastTrackId.current = null;
+      lastSequence.current = -1;
+      clock.current = {
+        base: 0,
+        at: performance.now(),
+        playing: false,
+        speed: 1,
+      };
+      setPositionS(0);
+      return;
+    }
+
+    if (!Number.isFinite(snapshot.sequence)) return;
+    const sameTrack = lastTrackId.current === snapshot.entry.id;
+    if (sameTrack && snapshot.sequence <= lastSequence.current) return;
+    lastTrackId.current = snapshot.entry.id;
+    lastSequence.current = snapshot.sequence;
+
     clock.current = {
       base: snapshot.positionS,
       at: performance.now(),
@@ -106,7 +164,6 @@ function LyricLine({
   const urdu = isUrduScript(text);
   return (
     <motion.p
-      layout={!reduced}
       initial={reduced ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: active ? 1 : 0.62, y: 0 }}
       transition={{ duration: reduced ? 0 : 0.18 }}
@@ -130,21 +187,34 @@ export function LyricsOverlay() {
   const positionS = useInterpolatedPosition(snapshot);
   const entry = snapshot?.entry ?? null;
   const lyrics = useLyrics(entry, snapshot?.lyricsRevision);
+  const trackKey = entry ? `${entry.id}:${entry.videoId}` : null;
+  const lyricsMatch = lyrics.trackKey === trackKey;
   useMagneticSnap();
 
   const active = useMemo(() => {
-    if (lyrics.source !== "synced" || lyrics.lines.length === 0) return null;
+    if (!lyricsMatch || lyrics.source !== "synced" || lyrics.lines.length === 0) {
+      return null;
+    }
     const index = activeIndex(
       lyrics.lines,
       Math.max(0, positionS * 1000 - lyrics.offsetMs),
     );
-    const current = Math.max(0, Math.min(index, lyrics.lines.length - 1));
-    return {
-      previous: current > 0 ? lyrics.lines[current - 1]?.text : null,
-      current: lyrics.lines[current]?.text ?? "",
-      next: lyrics.lines[current + 1]?.text ?? null,
+    const currentIndex = Math.max(0, Math.min(index, lyrics.lines.length - 1));
+    const displayLine = (lineIndex: number, role: string) => {
+      const line = lyrics.lines[lineIndex];
+      return line
+        ? { key: `${role}-${line.tMs}-${line.text}`, text: line.text }
+        : null;
     };
-  }, [lyrics.lines, lyrics.offsetMs, lyrics.source, positionS]);
+    return {
+      previous: currentIndex > 0 ? displayLine(currentIndex - 1, "previous") : null,
+      current: displayLine(currentIndex, "current"),
+      next:
+        currentIndex + 1 < lyrics.lines.length
+          ? displayLine(currentIndex + 1, "next")
+          : null,
+    };
+  }, [lyricsMatch, lyrics.lines, lyrics.offsetMs, lyrics.source, positionS]);
 
   const beginDrag = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
@@ -163,7 +233,7 @@ export function LyricsOverlay() {
         &gt; nothing playing_
       </div>
     );
-  } else if (lyrics.status === "loading" || lyrics.status === "idle") {
+  } else if (!lyricsMatch || lyrics.status === "loading" || lyrics.status === "idle") {
     content = (
       <div className="grid h-full place-items-center font-mono text-12 text-dim">
         &gt; loading lyrics_
@@ -192,9 +262,30 @@ export function LyricsOverlay() {
   } else if (active) {
     content = (
       <div className="flex h-full flex-col justify-center gap-1.5 px-5 text-center">
-        {active.previous && <LyricLine text={active.previous} active={false} reduced={!!reduce} />}
-        <LyricLine text={active.current} active reduced={!!reduce} />
-        {active.next && <LyricLine text={active.next} active={false} reduced={!!reduce} />}
+        {active.previous && (
+          <LyricLine
+            key={active.previous.key}
+            text={active.previous.text}
+            active={false}
+            reduced={!!reduce}
+          />
+        )}
+        {active.current && (
+          <LyricLine
+            key={active.current.key}
+            text={active.current.text}
+            active
+            reduced={!!reduce}
+          />
+        )}
+        {active.next && (
+          <LyricLine
+            key={active.next.key}
+            text={active.next.text}
+            active={false}
+            reduced={!!reduce}
+          />
+        )}
       </div>
     );
   }
