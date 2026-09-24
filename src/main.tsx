@@ -11,9 +11,15 @@ import "@fontsource/noto-naskh-arabic/400.css";
 import "@fontsource/noto-naskh-arabic/700.css";
 import "./theme.css";
 import App from "./App";
+import { LyricsOverlay } from "./components/lyrics-overlay/LyricsOverlay";
+
+const lyricsOverlay = window.location.hash.startsWith("#lyrics-overlay");
+document.documentElement.dataset.surface = lyricsOverlay
+  ? "lyrics-overlay"
+  : "app";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    {lyricsOverlay ? <LyricsOverlay /> : <App />}
   </React.StrictMode>,
 );

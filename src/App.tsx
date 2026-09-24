@@ -17,6 +17,7 @@ import { PlaylistNameDialog } from "./components/player/PlaylistNameDialog";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSession } from "./hooks/useSession";
 import { useMpris } from "./hooks/useMpris";
+import { useLyricsOverlayController } from "./stores/lyricsOverlay";
 import { MediaHost } from "./components/player-bar/MediaHost";
 import { VideoFullscreen } from "./components/player/VideoFullscreen";
 import { PlaceholderView } from "./components/common/PlaceholderView";
@@ -57,6 +58,7 @@ export default function App() {
   useSession();
   // Desktop media widget: publishes the player and applies its commands.
   useMpris();
+  useLyricsOverlayController();
 
   useEffect(() => {
     void useToolsStore.getState().init();

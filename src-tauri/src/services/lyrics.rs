@@ -1,12 +1,38 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 pub const LRCLIB_BASE: &str = "https://lrclib.net";
 const USER_AGENT: &str = concat!("CRTube/", env!("CARGO_PKG_VERSION"), " (Tauri desktop player)");
+const LRCLIB_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const LRCLIB_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+
+fn lrclib_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .connect_timeout(LRCLIB_CONNECT_TIMEOUT)
+        .timeout(LRCLIB_REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| e.to_string())
+}
+
 /// Max allowed distance between the track duration and a search result's duration.
 const DURATION_TOLERANCE_S: u64 = 3;
+
+static LYRICS_REVISION: AtomicU64 = AtomicU64::new(1);
+
+/// Process-local cache revision used by the floating lyrics webview to notice
+/// lyric replacements and timing-offset edits without introducing a new event.
+pub fn revision() -> u64 {
+    LYRICS_REVISION.load(Ordering::Relaxed)
+}
+
+fn bump_revision() {
+    LYRICS_REVISION.fetch_add(1, Ordering::Relaxed);
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -213,6 +239,7 @@ fn write_cache(dir: &Path, video_id: &str, payload: &LyricsPayload) -> Option<()
     let tmp = dir.join(format!(".{video_id}.tmp"));
     std::fs::write(&tmp, body).ok()?;
     std::fs::rename(&tmp, &dest).ok()?;
+    bump_revision();
     Some(())
 }
 
@@ -267,10 +294,7 @@ pub async fn fetch_lyrics(
     }
 
     let (track, artist) = parse_title_artist(title, channel);
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = lrclib_client()?;
 
     let found = if track.is_empty() || artist.is_empty() {
         None
@@ -324,10 +348,7 @@ pub async fn fetch_lyrics(
 /// synced/plain text so the chosen one can be persisted directly. Near-duplicate
 /// (track, artist) rows are collapsed, keeping the synced/plain-richest variant.
 pub async fn search_lyrics(query: &str) -> Result<Vec<LyricsCandidate>, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = lrclib_client()?;
     let results = lrclib_search(&client, query).await?;
     let mut out: Vec<LyricsCandidate> = results
         .into_iter()
@@ -373,6 +394,7 @@ pub fn set_lyrics(
 pub fn set_offset(app: &AppHandle, video_id: &str, ms: i64) -> Result<(), String> {
     let dir = lyrics_dir(app).ok_or("cannot resolve app data dir")?;
     write_offset(&dir, video_id, ms).ok_or("failed to write lyrics offset")?;
+    bump_revision();
     Ok(())
 }
 
@@ -380,15 +402,19 @@ pub fn set_offset(app: &AppHandle, video_id: &str, ms: i64) -> Result<(), String
 /// Also clears the tuned sync offset sidecar.
 pub fn clear_lyrics(app: &AppHandle, video_id: &str) -> Result<(), String> {
     let dir = lyrics_dir(app).ok_or("cannot resolve app data dir")?;
+    let mut changed = false;
     for flag in [true, false] {
         let p = cached_path(&dir, video_id, flag);
         if p.exists() {
-            let _ = std::fs::remove_file(&p);
+            changed |= std::fs::remove_file(&p).is_ok();
         }
     }
     let off = offset_path(&dir, video_id);
     if off.exists() {
-        let _ = std::fs::remove_file(&off);
+        changed |= std::fs::remove_file(&off).is_ok();
+    }
+    if changed {
+        bump_revision();
     }
     Ok(())
 }

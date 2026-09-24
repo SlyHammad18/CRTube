@@ -14,6 +14,12 @@ import type { PlayerSession } from "../types/session";
 import type { Artist, Playlist, PlaylistTrack } from "../types/player";
 import type { LyricsPayload, LyricsCandidate } from "../types/lyrics";
 import type {
+  LyricsOverlayPosition,
+  LyricsOverlayPrefs,
+  LyricsOverlaySnapshot,
+  LyricsRepeatMode,
+} from "../types/lyricsOverlay";
+import type {
   DlDonePayload,
   DlErrorPayload,
   DlProgressPayload,
@@ -21,6 +27,7 @@ import type {
 
 export type DownloadKind = "video" | "audio";
 export type AudioQualityPref = "best" | "192" | "128";
+export type MprisRepeatMode = LyricsRepeatMode;
 
 export interface DownloadRequest {
   url: string;
@@ -47,10 +54,18 @@ export interface MprisTrack {
   durationS?: number;
   /** http(s) artwork URL — the shell fetches it itself. */
   artUrl?: string;
+  /** Monotonic publisher sequence used to reject late IPC updates. */
+  sequence: number;
 }
 
 /** Playback snapshot the widget reads back. */
 export interface MprisState {
+  /** Track this state belongs to; prevents late updates from another queue item. */
+  trackId: number;
+  /** Monotonic publisher sequence used to reject out-of-order IPC calls. */
+  sequence: number;
+  /** Frontend wall-clock sample time, used to correct IPC latency in Rust. */
+  sampledAtMs?: number;
   playing: boolean;
   positionS: number;
   volume: number;
@@ -58,6 +73,8 @@ export interface MprisState {
   speed: number;
   canNext: boolean;
   canPrevious: boolean;
+  shuffle: boolean;
+  repeat: MprisRepeatMode;
 }
 
 /** Playback command from the media widget, applied by the player store. */
@@ -71,7 +88,10 @@ export interface MprisCommand {
     | "stop"
     | "seek"
     | "set_volume"
-    | "set_rate";
+    | "set_rate"
+    | "toggle_mute"
+    | "toggle_shuffle"
+    | "cycle_repeat";
   value?: number;
 }
 
@@ -114,6 +134,8 @@ export const ipc = {
 
   mprisSetTrack: (track: MprisTrack) => invoke<void>("mpris_set_track", { track }),
   mprisSetState: (state: MprisState) => invoke<void>("mpris_set_state", { state }),
+  mprisCommand: (action: MprisCommand["action"], value?: number) =>
+    invoke<void>("mpris_command", { action, value }),
   mprisClear: () => invoke<void>("mpris_clear"),
   getSession: () => invoke<PlayerSession | null>("get_session"),
   setSession: (session: PlayerSession) =>
@@ -138,6 +160,15 @@ export const ipc = {
     invoke<void>("clear_lyrics", { videoId }),
   setLyricsOffset: (videoId: string, offsetMs: number) =>
     invoke<void>("set_lyrics_offset", { videoId, offsetMs }),
+
+  getLyricsOverlayPrefs: () =>
+    invoke<LyricsOverlayPrefs>("get_lyrics_overlay_prefs"),
+  setLyricsOverlayEnabled: (enabled: boolean) =>
+    invoke<LyricsOverlayPrefs>("set_lyrics_overlay_enabled", { enabled }),
+  snapLyricsOverlay: () =>
+    invoke<LyricsOverlayPosition>("snap_lyrics_overlay"),
+  lyricsOverlaySnapshot: () =>
+    invoke<LyricsOverlaySnapshot | null>("lyrics_overlay_snapshot"),
 
   listPlaylists: () => invoke<Playlist[]>("list_playlists"),
   createPlaylist: (name: string) => invoke<Playlist>("create_playlist", { name }),

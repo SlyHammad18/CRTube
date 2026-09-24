@@ -10,10 +10,21 @@ pub async fn mpris_set_track(mpris: State<'_, Mpris>, track: MprisTrack) -> Resu
 }
 
 /// Push the playback snapshot: immediately whenever playback, volume, speed or
-/// navigation changes, and about once a second while the position advances.
+/// navigation changes, and at the consumer's cadence while the position advances.
 #[tauri::command]
 pub async fn mpris_set_state(mpris: State<'_, Mpris>, state: MprisState) -> Result<(), String> {
     mpris.set_state(state).await
+}
+
+/// Forward a validated playback command from a secondary local webview to the
+/// main player, which remains the sole owner of playback state.
+#[tauri::command]
+pub fn mpris_command(
+    mpris: State<'_, Mpris>,
+    action: String,
+    value: Option<f64>,
+) -> Result<(), String> {
+    mpris.send_command(&action, value)
 }
 
 /// Drop the player so the shell removes the media widget (empty queue).
