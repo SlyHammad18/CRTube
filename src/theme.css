@@ -143,8 +143,11 @@
   }
 
   html[data-surface="lyrics-overlay"],
-  html[data-surface="lyrics-overlay"] body {
+  html[data-surface="lyrics-overlay"] body,
+  html[data-surface="lyrics-overlay"] #root {
     background: transparent;
+    margin: 0;
+    padding: 0;
   }
 
   input,
