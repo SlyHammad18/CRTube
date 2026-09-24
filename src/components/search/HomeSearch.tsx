@@ -45,26 +45,12 @@ function HeroWordmark({ size }: { size: "lg" | "sm" }) {
 
 function HeroStatus() {
   const state = useToolsStore((s) => s.state);
-  const ytdlp = useToolsStore((s) => s.ytdlpVersion);
-  const ffmpeg = useToolsStore((s) => s.ffmpegVersion);
   const reduce = useReducedMotion();
 
-  const dot =
-    state === "ready"
-      ? "bg-ice"
-      : state === "error"
-        ? "bg-signal"
-        : state === "updating"
-          ? "bg-amber"
-          : "bg-dim";
-  const text =
-    state === "ready"
-      ? `console ready: yt-dlp ${ytdlp}, ffmpeg ${ffmpeg}`
-      : state === "error"
-        ? "engine error, check settings"
-        : state === "updating"
-          ? "updating yt-dlp"
-          : "calibrating engines";
+  if (state !== "updating" && state !== "error") return null;
+
+  const dot = state === "error" ? "bg-signal" : "bg-amber";
+  const text = state === "error" ? "engine error, check settings" : "updating yt-dlp";
 
   return (
     <motion.p
