@@ -167,6 +167,7 @@ export const ipc = {
     invoke<LyricsOverlayPrefs>("set_lyrics_overlay_enabled", { enabled }),
   snapLyricsOverlay: () =>
     invoke<LyricsOverlayPosition>("snap_lyrics_overlay"),
+  focusMainWindow: () => invoke<void>("focus_main_window"),
   lyricsOverlaySnapshot: () =>
     invoke<LyricsOverlaySnapshot | null>("lyrics_overlay_snapshot"),
 

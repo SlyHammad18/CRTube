@@ -182,6 +182,7 @@ pub fn run() {
             commands::mpris::mpris_clear,
             commands::lyrics_overlay::get_lyrics_overlay_prefs,
             commands::lyrics_overlay::set_lyrics_overlay_enabled,
+            commands::lyrics_overlay::focus_main_window,
             commands::lyrics_overlay::snap_lyrics_overlay,
             commands::lyrics_overlay::lyrics_overlay_snapshot,
             commands::artists::list_artists,

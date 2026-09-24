@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { DotsSixVertical, MusicNotes, X } from "@phosphor-icons/react";
+import { ArrowSquareOut, DotsSixVertical, MusicNotes, X } from "@phosphor-icons/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ipc } from "../../lib/ipc";
 import { activeIndex } from "../../lib/lrc";
@@ -312,6 +312,15 @@ export function LyricsOverlay() {
                 {stripMediaExt(entry.channel)}
               </span>
             )}
+          </button>
+          <button
+            type="button"
+            aria-label="Open main app"
+            title="Open main app"
+            onClick={() => void ipc.focusMainWindow().catch(() => {})}
+            className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-card text-dim transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
+          >
+            <ArrowSquareOut size={12} weight="light" aria-hidden />
           </button>
           <button
             type="button"
