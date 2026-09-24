@@ -4,8 +4,5 @@
 - Sync Devices
 - Change Theme / Customize
 - Add a Search Mode
-- remove the cosole ready line
 - up button doesn't work in player tab
 - Add Stats to CRTube
-
-- remove console ready
