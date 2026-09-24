@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   Heart,
@@ -42,13 +42,28 @@ export function OverlayControls({
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+  const [seekOverride, setSeekOverride] = useState<number | null>(null);
 
   useEffect(() => {
     setFavourite(snapshot?.entry.favourite ?? false);
     setPlaylistOpen(false);
     setPlaylistError(null);
     setError(null);
+    setSeekOverride(null);
   }, [entryId]);
+
+  useEffect(() => {
+    if (seekOverride == null) return;
+    if (Math.abs(positionS - seekOverride) <= 0.75) {
+      setSeekOverride(null);
+    }
+  }, [positionS, seekOverride]);
+
+  useEffect(() => {
+    if (seekOverride == null) return;
+    const timeout = window.setTimeout(() => setSeekOverride(null), 2000);
+    return () => window.clearTimeout(timeout);
+  }, [seekOverride]);
 
   useEffect(() => {
     if (!playlistOpen) return;
@@ -61,14 +76,19 @@ export function OverlayControls({
 
   if (!snapshot) return null;
 
-  const runCommand = async (action: MprisCommand["action"]) => {
-    if (pending) return;
+  const runCommand = async (
+    action: MprisCommand["action"],
+    value?: number,
+  ): Promise<boolean> => {
+    if (pending) return false;
     setPending(action);
     setError(null);
     try {
-      await ipc.mprisCommand(action);
+      await ipc.mprisCommand(action, value);
+      return true;
     } catch {
       setError("control unavailable");
+      return false;
     } finally {
       setPending(null);
     }
@@ -161,12 +181,26 @@ export function OverlayControls({
       : snapshot.repeat === "all"
         ? "Repeat all"
         : "Repeat one";
+  const displayPositionS = seekOverride ?? positionS;
+  const seekToPosition = async (seconds: number): Promise<boolean> => {
+    setSeekOverride(seconds);
+    const ok = await runCommand("seek", seconds);
+    if (!ok) setSeekOverride(null);
+    return ok;
+  };
 
   return (
-    <div className="relative flex h-10 shrink-0 items-center gap-1 border-t border-line px-2 py-1 font-mono text-11 text-mute">
-      <span className="w-20 shrink-0 text-left tabular-nums">
-        {fmtDuration(positionS) ?? "0:00"} / {fmtDuration(snapshot.entry.durationS) ?? "—"}
-      </span>
+    <>
+      <OverlaySeekBar
+        snapshot={snapshot}
+        positionS={displayPositionS}
+        disabled={controlsDisabled}
+        onSeek={seekToPosition}
+      />
+      <div className="relative flex h-10 shrink-0 items-center gap-1 border-t border-line px-2 py-1 font-mono text-11 text-mute">
+        <span className="w-20 shrink-0 text-left tabular-nums text-mute">
+          {fmtDuration(displayPositionS) ?? "0:00"} / {fmtDuration(snapshot.entry.durationS) ?? "—"}
+        </span>
 
       <div className="flex min-w-0 flex-1 items-center justify-center gap-0.5">
         <ControlButton
@@ -272,8 +306,146 @@ export function OverlayControls({
           <WarningCircle size={13} weight="light" className="text-signal" aria-label="Control error" />
         ) : null}
       </div>
+      </div>
+    </>
+  );
+}
+
+function OverlaySeekBar({
+  snapshot,
+  positionS,
+  disabled,
+  onSeek,
+}: {
+  snapshot: LyricsOverlaySnapshot | null;
+  positionS: number;
+  disabled: boolean;
+  onSeek: (seconds: number) => Promise<boolean>;
+}) {
+  const durationS = snapshot?.entry.durationS ?? 0;
+  const trackId = snapshot?.entry.id ?? 0;
+  const barRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const dragValueRef = useRef<number | null>(null);
+  const [dragValue, setDragValue] = useState<number | null>(null);
+  const [gripping, setGripping] = useState(false);
+
+  useEffect(() => {
+    dragging.current = false;
+    dragValueRef.current = null;
+    setDragValue(null);
+    setGripping(false);
+  }, [trackId]);
+
+  const value = clampSeekValue(dragValue ?? positionS, durationS);
+  const progress = durationS > 0 ? value / durationS : 0;
+
+  const setPreview = (next: number) => {
+    const clamped = clampSeekValue(next, durationS);
+    dragValueRef.current = clamped;
+    setDragValue(clamped);
+  };
+
+  const seekToClientX = (clientX: number) => {
+    const bar = barRef.current;
+    if (!bar || durationS <= 0) return;
+    const rect = bar.getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    setPreview(fraction * durationS);
+  };
+
+  const commit = () => {
+    const next = dragValueRef.current;
+    if (next == null) return;
+    dragValueRef.current = null;
+    setDragValue(null);
+    void onSeek(next);
+  };
+
+  const keyboardStep = (key: string): number | null => {
+    const current = dragValueRef.current ?? positionS;
+    if (key === "ArrowLeft" || key === "ArrowDown") return current - 5;
+    if (key === "ArrowRight" || key === "ArrowUp") return current + 5;
+    if (key === "Home") return 0;
+    if (key === "End") return durationS;
+    return null;
+  };
+
+  return (
+    <div className="shrink-0 px-3 py-1">
+      <div
+        ref={barRef}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label="Seek"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(durationS)}
+        aria-valuenow={Math.round(value)}
+        aria-valuetext={`${fmtDuration(value) ?? "0:00"} of ${fmtDuration(durationS) ?? "—"}`}
+        aria-disabled={disabled}
+        onPointerDown={(event) => {
+          if (disabled) return;
+          // Prevent pointer interaction from focusing the slider; keyboard
+          // focus remains available through the native tab order.
+          event.preventDefault();
+          dragging.current = true;
+          setGripping(true);
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          seekToClientX(event.clientX);
+        }}
+        onPointerMove={(event) => {
+          if (dragging.current) seekToClientX(event.clientX);
+        }}
+        onPointerUp={(event) => {
+          if (!dragging.current) return;
+          dragging.current = false;
+          setGripping(false);
+          event.currentTarget.releasePointerCapture?.(event.pointerId);
+          commit();
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
+          dragValueRef.current = null;
+          setDragValue(null);
+          setGripping(false);
+        }}
+        onKeyDown={(event) => {
+          if (disabled) return;
+          const next = keyboardStep(event.key);
+          if (next == null) return;
+          event.preventDefault();
+          setPreview(next);
+        }}
+        onKeyUp={(event) => {
+          if (keyboardStep(event.key) != null) commit();
+        }}
+        className={`group relative flex h-4 items-center rounded-card ${
+          disabled ? "cursor-default opacity-50" : "cursor-pointer"
+        }`}
+      >
+        <div className="h-[2px] w-full rounded-full bg-line transition-[height] duration-150 group-hover:h-1">
+          <div
+            className="h-full origin-left rounded-full bg-ice transition-[width] duration-150"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-ice transition-[left,opacity,scale] duration-150 ${
+            gripping
+              ? "scale-100 opacity-100"
+              : "scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100"
+          }`}
+          style={{ left: `calc(${progress * 100}% - 5px)` }}
+        />
+      </div>
     </div>
   );
+}
+
+function clampSeekValue(value: number, durationS: number): number {
+  if (!Number.isFinite(value) || durationS <= 0) return 0;
+  return Math.min(durationS, Math.max(0, value));
 }
 
 function ControlButton({
