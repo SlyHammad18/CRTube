@@ -1,0 +1,16 @@
+- Seeking Should Pause on only move forward when released
+- Move Files to Other Folder
+- Loop Specific Parts
+- Sync Devices
+- Change Theme / Customize
+- Add a Search Mode
+- remove the cosole ready line
+- up button doesn't work in player tab
+
+- save mute on quit
+- in miniplayer make the notification open app
+- add play / pause / next / back
+- add volume
+- add timeline
+- no lyrics
+- scrollable lyrics with sync
