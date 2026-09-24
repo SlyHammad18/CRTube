@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
-import { CaretUp, Pause, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
+import { CaretUp, Pause, PictureInPicture, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
 import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
 import { fmtDuration } from "../../lib/format";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
+import { useLyricsOverlayStore } from "../../stores/lyricsOverlay";
 import { useUIStore } from "../../stores/ui";
 import { setSecondarySlot } from "./mediaSlots";
 import { VolumeSlider } from "../player/VolumeSlider";
@@ -50,6 +51,9 @@ export function PlayerBar() {
   const setView = useUIStore((s) => s.setView);
   const lyricsDockOpen = useUIStore((s) => s.lyricsDockOpen);
   const setLyricsDockOpen = useUIStore((s) => s.setLyricsDockOpen);
+  const overlayEnabled = useLyricsOverlayStore((s) => s.enabled);
+  const overlayBusy = useLyricsOverlayStore((s) => s.busy);
+  const toggleOverlay = useLyricsOverlayStore((s) => s.toggle);
   const videoDisabled = useUIStore((s) => s.videoDisabled);
   const store = usePlayerStore;
 
@@ -208,11 +212,19 @@ export function PlayerBar() {
               <TimeReadout />
               <div className="h-4 w-px bg-line" />
               <IconBtn
-                label="Lyrics"
+                label={lyricsDockOpen ? "Close lyrics dock" : "Open lyrics dock"}
                 active={lyricsDockOpen}
                 onClick={() => setLyricsDockOpen(!lyricsDockOpen)}
               >
                 <TextAlignLeft size={16} weight="light" aria-hidden />
+              </IconBtn>
+              <IconBtn
+                label={overlayEnabled ? "Close floating lyrics" : "Open floating lyrics"}
+                active={overlayEnabled}
+                disabled={overlayBusy}
+                onClick={() => void toggleOverlay().catch(() => {})}
+              >
+                <PictureInPicture size={16} weight="light" aria-hidden />
               </IconBtn>
               {entry && <FavouriteButton entryId={entry.id} size={16} />}
               <VolumeSlider />
@@ -245,11 +257,13 @@ function thumbSrc(entry: ReturnType<typeof selectCurrentEntry>) {
 function IconBtn({
   label,
   active = false,
+  disabled = false,
   onClick,
   children,
 }: {
   label: string;
   active?: boolean;
+  disabled?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -257,9 +271,10 @@ function IconBtn({
     <button
       aria-label={label}
       title={label}
+      disabled={disabled}
       onClick={onClick}
       className={`grid h-8 w-8 place-items-center rounded-card transition-colors duration-150 active:scale-[0.98] ${
-        active ? "text-ice" : "text-mute hover:bg-raise hover:text-ink"
+        disabled ? "pointer-events-none opacity-40" : active ? "text-ice" : "text-mute hover:bg-raise hover:text-ink"
       }`}
     >
       {children}
