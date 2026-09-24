@@ -250,7 +250,7 @@ export function LyricsOverlay() {
   } else if (lyrics.status === "none" || lyrics.status === "error") {
     content = (
       <div className="grid h-full place-items-center font-mono text-12 text-dim">
-        {lyrics.status === "error" ? "> lyrics service error_" : "> no lyrics found_"}
+        &gt; no lyrics_
       </div>
     );
   } else if (lyrics.source === "plain") {
