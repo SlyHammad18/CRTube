@@ -36,7 +36,8 @@ queue downloads with live progress — everything runs locally through
 - **Editable lyrics** — fix synced lyrics via an LRCLIB search modal, type or
   nudge each song's timing delay, or use them as subtitles in fullscreen video.
 - **Floating lyrics** — keep the active lyric in a small always-on-top window
-  that can snap to screen anchors or float freely between apps.
+  that can snap to screen anchors or float freely between apps. On Linux,
+  CRTube prefers XWayland so the compositor can honor the topmost state.
 - **Favourites** — heart any track into a Favourites playlist, rename tracks and
   artists, and reorder playlists with up/down arrows.
 - **Custom track artwork** — replace any song's displayed thumbnail from a

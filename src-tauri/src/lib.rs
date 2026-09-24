@@ -18,7 +18,9 @@ use tauri::window::Color;
 /// NOTE: video rendering is governed by the `WEBKIT_DISABLE_DMABUF_RENDERER`
 /// env var forced in `main.rs` — on Wayland, WebKitGTK's DMABUF path paints a
 /// black video surface (audio still plays), so the legacy/CPU GL path is
-/// forced. There is no in-app toggle for this.
+/// forced. There is no in-app toggle for this. On Linux, `main.rs` also
+/// prefers XWayland because GTK's native Wayland keep-above implementation is
+/// a no-op; the overlay needs X11/EWMH state to remain above other apps.
 ///
 /// In `tauri dev` a code-created window must point at the dev server
 /// (`app.dev_url`); `WebviewUrl::App` would otherwise load the built
@@ -93,6 +95,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .on_window_event(|window, event| {
+            commands::lyrics_overlay::handle_window_event(window, event);
             if window.label() == "main"
                 && matches!(event, WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed)
             {

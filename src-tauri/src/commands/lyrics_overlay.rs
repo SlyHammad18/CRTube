@@ -1,9 +1,11 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::window::Color;
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    Window, WindowEvent,
 };
 
 use crate::services::db::{self, Db, LibraryEntry};
@@ -104,10 +106,58 @@ fn place_initial_window(
     Ok(())
 }
 
+fn apply_topmost_to_webview(window: &WebviewWindow) -> Result<(), String> {
+    window
+        .set_always_on_top(true)
+        .map_err(|error| format!("failed to keep lyrics overlay on top: {error}"))?;
+    window
+        .set_visible_on_all_workspaces(true)
+        .map_err(|error| {
+            format!(
+                "failed to keep lyrics overlay on all workspaces: {error}"
+            )
+        })
+}
+
+/// Reassert the X11/EWMH compositor hints without focusing or raising the
+/// window through an activation request.
+pub fn reassert_topmost(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        if let Err(error) = apply_topmost_to_webview(&window) {
+            eprintln!("crtube: {error}");
+        }
+    }
+}
+
+/// Reapply the X11/EWMH hints after lifecycle events. The primary backend is
+/// selected in `main.rs`; native Wayland cannot provide this client-side state.
+pub fn handle_window_event(window: &Window, event: &WindowEvent) {
+    if window.label() != WINDOW_LABEL {
+        return;
+    }
+
+    match event {
+        WindowEvent::Focused(false) => {
+            reassert_topmost(window.app_handle());
+            let app = window.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(80)).await;
+                reassert_topmost(&app);
+            });
+        }
+        WindowEvent::Moved(_)
+        | WindowEvent::Resized(_)
+        | WindowEvent::ScaleFactorChanged { .. } => {
+            reassert_topmost(window.app_handle());
+        }
+        _ => {}
+    }
+}
+
 fn open_overlay_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
         window.show().map_err(|e| e.to_string())?;
-        window.set_always_on_top(true).map_err(|e| e.to_string())?;
+        apply_topmost_to_webview(&window)?;
         return Ok(());
     }
 
@@ -129,7 +179,9 @@ fn open_overlay_window(app: &AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     place_initial_window(app, &window, &prefs)?;
-    window.show().map_err(|e| e.to_string())
+    window.show().map_err(|e| e.to_string())?;
+    apply_topmost_to_webview(&window)?;
+    Ok(())
 }
 
 pub fn close_existing(app: &AppHandle) {
