@@ -299,7 +299,10 @@ Three panes inside the main view area:
   window.
 - Default logical size is `420 × 220` (user-resizable within `360–520 × 190–320`).
   The compact surface shows the previous/current/next synced line, plain-text or
-  instrumental fallbacks, track identity, and mono elapsed/total time.
+  instrumental fallbacks, track identity, and mono elapsed/total time. Its footer
+  exposes icon-only transport, shuffle/repeat, favourite, playlist, and mute
+  controls; each command is forwarded to the main player rather than creating a
+  second playback owner.
 - The title bar is the drag handle. After movement settles, each axis magnetically
   snaps to left/center/right or top/middle/bottom within 24px, yielding all nine
   corner/edge/screen anchors. Released positions away from an anchor remain free.

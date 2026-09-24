@@ -4,8 +4,9 @@ import { DotsSixVertical, MusicNotes, X } from "@phosphor-icons/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ipc } from "../../lib/ipc";
 import { activeIndex } from "../../lib/lrc";
-import { fmtDuration, isUrduScript, stripMediaExt } from "../../lib/format";
+import { isUrduScript, stripMediaExt } from "../../lib/format";
 import { useLyrics } from "../../hooks/useLyrics";
+import { OverlayControls } from "./OverlayControls";
 import type { LyricsOverlaySnapshot } from "../../types/lyricsOverlay";
 
 const SNAP_DEBOUNCE_MS = 140;
@@ -325,15 +326,7 @@ export function LyricsOverlay() {
 
         <div className="min-h-0 flex-1">{content}</div>
 
-        <div className="flex h-6 shrink-0 items-center justify-between border-t border-line px-2 font-mono text-11 text-mute">
-          <span className="tabular-nums">
-            {fmtDuration(positionS) ?? "0:00"} / {fmtDuration(entry?.durationS) ?? "—"}
-          </span>
-          <span className="flex items-center gap-1.5">
-            {snapshot?.playing && <span className="h-1 w-1 rounded-full bg-ice" aria-hidden />}
-            {snapshot?.playing ? "live" : "paused"}
-          </span>
-        </div>
+        <OverlayControls snapshot={snapshot} positionS={positionS} />
       </div>
     </div>
   );

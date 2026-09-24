@@ -17,6 +17,7 @@ import type {
   LyricsOverlayPosition,
   LyricsOverlayPrefs,
   LyricsOverlaySnapshot,
+  LyricsRepeatMode,
 } from "../types/lyricsOverlay";
 import type {
   DlDonePayload,
@@ -26,6 +27,7 @@ import type {
 
 export type DownloadKind = "video" | "audio";
 export type AudioQualityPref = "best" | "192" | "128";
+export type MprisRepeatMode = LyricsRepeatMode;
 
 export interface DownloadRequest {
   url: string;
@@ -71,6 +73,8 @@ export interface MprisState {
   speed: number;
   canNext: boolean;
   canPrevious: boolean;
+  shuffle: boolean;
+  repeat: MprisRepeatMode;
 }
 
 /** Playback command from the media widget, applied by the player store. */
@@ -84,7 +88,10 @@ export interface MprisCommand {
     | "stop"
     | "seek"
     | "set_volume"
-    | "set_rate";
+    | "set_rate"
+    | "toggle_mute"
+    | "toggle_shuffle"
+    | "cycle_repeat";
   value?: number;
 }
 
@@ -127,6 +134,8 @@ export const ipc = {
 
   mprisSetTrack: (track: MprisTrack) => invoke<void>("mpris_set_track", { track }),
   mprisSetState: (state: MprisState) => invoke<void>("mpris_set_state", { state }),
+  mprisCommand: (action: MprisCommand["action"], value?: number) =>
+    invoke<void>("mpris_command", { action, value }),
   mprisClear: () => invoke<void>("mpris_clear"),
   getSession: () => invoke<PlayerSession | null>("get_session"),
   setSession: (session: PlayerSession) =>

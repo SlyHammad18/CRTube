@@ -36,6 +36,13 @@ const RATE_MAX: f64 = 4.0;
 const NO_BUS: &str = "no session bus connection";
 const MAX_SAMPLE_AGE_MS: u64 = 5_000;
 
+fn normalize_repeat(value: &str) -> String {
+    match value {
+        "all" | "one" => value.to_string(),
+        _ => "off".to_string(),
+    }
+}
+
 /// Track pushed by the frontend whenever the queue entry under the playhead
 /// changes.
 #[derive(Debug, Deserialize)]
@@ -74,15 +81,25 @@ pub struct MprisState {
     pub speed: f64,
     pub can_next: bool,
     pub can_previous: bool,
+    #[serde(default)]
+    pub shuffle: bool,
+    #[serde(default)]
+    pub repeat: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct OverlayPlaybackSnapshot {
     pub track_id: i64,
     pub sequence: u64,
     pub position_s: f64,
     pub playing: bool,
     pub speed: f64,
+    pub volume: f64,
+    pub muted: bool,
+    pub can_next: bool,
+    pub can_previous: bool,
+    pub shuffle: bool,
+    pub repeat: String,
 }
 
 /// A playback command from the media widget, forwarded to the frontend — the
@@ -112,6 +129,8 @@ struct Snapshot {
     rate: f64,
     can_next: bool,
     can_previous: bool,
+    shuffle: bool,
+    repeat: String,
     last_track_sequence: u64,
     last_state_sequence: u64,
     pending_state: Option<MprisState>,
@@ -129,6 +148,8 @@ impl Snapshot {
             rate: 1.0,
             can_next: false,
             can_previous: false,
+            shuffle: false,
+            repeat: "off".to_string(),
             last_track_sequence: 0,
             last_state_sequence: 0,
             pending_state: None,
@@ -183,6 +204,8 @@ fn apply_state(snapshot: &mut Snapshot, state: &MprisState) -> Option<StateChang
     snapshot.rate = state.speed.clamp(RATE_MIN, RATE_MAX);
     snapshot.can_next = state.can_next;
     snapshot.can_previous = state.can_previous;
+    snapshot.shuffle = state.shuffle;
+    snapshot.repeat = normalize_repeat(&state.repeat);
     Some(changes)
 }
 
@@ -439,7 +462,33 @@ impl Mpris {
             position_s: position_us as f64 / 1_000_000.0,
             playing: snapshot.playing,
             speed: snapshot.rate,
+            volume: snapshot.volume,
+            muted: snapshot.muted,
+            can_next: snapshot.can_next,
+            can_previous: snapshot.can_previous,
+            shuffle: snapshot.shuffle,
+            repeat: snapshot.repeat.clone(),
         }))
+    }
+
+    /// Send a validated playback command from another local webview to the
+    /// main player. The main webview remains the only state owner.
+    pub fn send_command(&self, action: &str, value: Option<f64>) -> Result<(), String> {
+        let action = match action {
+            "play" | "pause" | "playpause" | "next" | "previous" | "stop"
+            | "seek" | "set_volume" | "set_rate" | "toggle_mute" | "toggle_shuffle"
+            | "cycle_repeat" => action,
+            _ => return Err(format!("unsupported playback command: {action}")),
+        };
+        self.app
+            .emit(
+                COMMAND_EVENT,
+                MprisCommand {
+                    action: action.to_string(),
+                    value,
+                },
+            )
+            .map_err(|error| error.to_string())
     }
 
     /// Export the MPRIS objects and own the bus name. Idempotent: the objects
@@ -891,6 +940,8 @@ mod tests {
             speed: 1.0,
             can_next: true,
             can_previous: true,
+            shuffle: false,
+            repeat: "off".to_string(),
         }
     }
 

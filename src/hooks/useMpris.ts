@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ipc, type MprisState } from "../lib/ipc";
+import { ipc, type MprisRepeatMode, type MprisState } from "../lib/ipc";
 import { selectCurrentEntry, usePlayerStore } from "../stores/player";
 import type { LibraryEntry } from "../types/library";
 import { useLyricsOverlayStore } from "../stores/lyricsOverlay";
@@ -103,6 +103,8 @@ export function useMpris() {
       volume: -1,
       muted: false,
       speed: -1,
+      shuffle: false,
+      repeat: "off" as MprisRepeatMode,
     };
 
     // Keep at most one state IPC in flight. If the player changes again while
@@ -153,6 +155,8 @@ export function useMpris() {
         speed: player.speed,
         canNext: canNavigate,
         canPrevious: canNavigate,
+        shuffle: player.shuffle,
+        repeat: player.repeat,
       });
       last = {
         trackId,
@@ -160,6 +164,8 @@ export function useMpris() {
         volume: player.volume,
         muted: player.muted,
         speed: player.speed,
+        shuffle: player.shuffle,
+        repeat: player.repeat,
       };
     };
 
@@ -172,7 +178,9 @@ export function useMpris() {
         player.playing !== last.playing ||
         player.volume !== last.volume ||
         player.muted !== last.muted ||
-        player.speed !== last.speed
+        player.speed !== last.speed ||
+        player.shuffle !== last.shuffle ||
+        player.repeat !== last.repeat
       ) {
         if (timer != null) clearTimeout(timer);
         push();
@@ -227,6 +235,17 @@ export function useMpris() {
             break;
           case "set_rate":
             if (typeof value === "number") player.setSpeed(value);
+            break;
+          case "toggle_mute":
+            if (player.muted) player.setMuted(false);
+            else if (player.volume > 0) player.setMuted(true);
+            else player.setVolume(1);
+            break;
+          case "toggle_shuffle":
+            player.toggleShuffle();
+            break;
+          case "cycle_repeat":
+            player.cycleRepeat();
             break;
         }
       })

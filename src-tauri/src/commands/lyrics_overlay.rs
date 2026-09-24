@@ -30,6 +30,12 @@ pub struct LyricsOverlaySnapshot {
     pub position_s: f64,
     pub playing: bool,
     pub speed: f64,
+    pub volume: f64,
+    pub muted: bool,
+    pub can_next: bool,
+    pub can_previous: bool,
+    pub shuffle: bool,
+    pub repeat: String,
     pub lyrics_revision: u64,
 }
 
@@ -269,6 +275,12 @@ pub fn lyrics_overlay_snapshot(
         position_s: playback.position_s,
         playing: playback.playing,
         speed: playback.speed,
+        volume: playback.volume,
+        muted: playback.muted,
+        can_next: playback.can_next,
+        can_previous: playback.can_previous,
+        shuffle: playback.shuffle,
+        repeat: playback.repeat,
         lyrics_revision: lyrics::revision(),
     }))
 }

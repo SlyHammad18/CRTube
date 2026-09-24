@@ -1,5 +1,7 @@
 import type { LibraryEntry } from "./library";
 
+export type LyricsRepeatMode = "off" | "all" | "one";
+
 export interface LyricsOverlayPrefs {
   enabled: boolean;
   x: number | null;
@@ -18,5 +20,11 @@ export interface LyricsOverlaySnapshot {
   positionS: number;
   playing: boolean;
   speed: number;
+  volume: number;
+  muted: boolean;
+  canNext: boolean;
+  canPrevious: boolean;
+  shuffle: boolean;
+  repeat: LyricsRepeatMode;
   lyricsRevision: number;
 }

@@ -178,6 +178,7 @@ pub fn run() {
             commands::player::shuffle_playlist_cover,
             commands::mpris::mpris_set_track,
             commands::mpris::mpris_set_state,
+            commands::mpris::mpris_command,
             commands::mpris::mpris_clear,
             commands::lyrics_overlay::get_lyrics_overlay_prefs,
             commands::lyrics_overlay::set_lyrics_overlay_enabled,
