@@ -8,5 +8,4 @@
 - up button doesn't work in player tab
 - Add Stats to CRTube
 
-- save mute on quit
 - remove console ready

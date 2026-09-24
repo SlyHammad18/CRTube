@@ -341,6 +341,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           playing: false,
           currentTimeS: 0,
           durationS: 0,
+          muted: !!session.muted,
           context: null,
         });
         return;
@@ -379,6 +380,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         playing: false,
         currentTimeS,
         durationS: pos >= 0 ? queue[order[pos]]?.durationS ?? 0 : 0,
+        muted: !!session.muted,
         repeat,
         shuffle: !!session.shuffle,
         context: session.context ?? null,

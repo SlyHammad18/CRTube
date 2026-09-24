@@ -9,10 +9,10 @@ import type { PlayerSession } from "../types/session";
 
 /**
  * Resume session (§requested): persists the play queue, current track +
- * timestamp, repeat/shuffle and the sidebar selection so the next launch picks
- * up where playback left off. Restored playback always starts *paused*, per
- * decision. Writes are debounced/throttled and flushed on hide so they never
- * spam the disk during a `timeupdate` storm.
+ * timestamp, mute state, repeat/shuffle and the sidebar selection so the next
+ * launch picks up where playback left off. Restored playback always starts
+ * *paused*, per decision. Writes are debounced/throttled and flushed on hide so
+ * they never spam the disk during a `timeupdate` storm.
  */
 export function useSession() {
   useEffect(() => {
@@ -29,6 +29,7 @@ export function useSession() {
         order: p.order,
         pos: p.pos,
         currentTimeS: p.currentTimeS,
+        muted: p.muted,
         repeat: p.repeat,
         shuffle: p.shuffle,
         context: p.context,
@@ -45,6 +46,7 @@ export function useSession() {
         p.order.join(","),
         p.pos,
         p.playing ? 1 : 0,
+        p.muted ? 1 : 0,
         p.repeat,
         p.shuffle ? 1 : 0,
         String(p.context?.id ?? p.context?.type ?? ""),

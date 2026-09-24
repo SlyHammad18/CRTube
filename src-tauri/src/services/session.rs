@@ -79,6 +79,7 @@ mod tests {
             "order": [0],
             "pos": 0,
             "currentTimeS": 12.5,
+            "muted": true,
             "repeat": "all",
             "shuffle": true,
             "context": {"type": "playlist", "id": 2}
@@ -88,6 +89,7 @@ mod tests {
         assert_eq!(loaded["version"], 1);
         assert_eq!(loaded["queue"][0]["id"], 7);
         assert_eq!(loaded["currentTimeS"], 12.5);
+        assert!(loaded["muted"].as_bool().unwrap());
         assert_eq!(loaded["repeat"], "all");
         assert!(loaded["shuffle"].as_bool().unwrap());
         let _ = std::fs::remove_file(&p);

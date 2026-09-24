@@ -17,6 +17,8 @@ export interface PlayerSession {
   pos: number;
   /** Saved playback position in seconds. */
   currentTimeS: number;
+  /** Whether audio was muted when the session was saved. */
+  muted: boolean;
   repeat: RepeatMode;
   shuffle: boolean;
   /** Play context (library / playlist) backing the queue. */

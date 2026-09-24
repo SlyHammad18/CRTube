@@ -543,7 +543,7 @@ Player store (`stores/player.ts`) shape:
 queue: LibraryEntry[]        // logical queue (play context snapshot)
 order: number[]              // permutation — shuffled or linear
 pos: number                  // index into order
-playing, currentTimeS, durationS
+playing, currentTimeS, durationS, muted
 repeat: 'off'|'all'|'one'    shuffle: boolean
 context: {type:'library'|'playlist', id?} | null
 actions: playAll(entries,start) enqueue toggle next prev cycleRepeat
