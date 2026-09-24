@@ -6,11 +6,7 @@
 - Add a Search Mode
 - remove the cosole ready line
 - up button doesn't work in player tab
+- Add Stats to CRTube
 
 - save mute on quit
-- in miniplayer make the notification open app
-- add play / pause / next / back
-- add volume
-- add timeline
-- no lyrics
-- scrollable lyrics with sync
+- remove console ready
