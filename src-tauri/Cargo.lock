@@ -616,10 +616,11 @@ checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
 name = "crtube"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "futures-util",
  "hex",
+ "raw-window-handle",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
@@ -631,6 +632,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tokio",
+ "x11",
  "xz2",
  "zbus",
  "zip",

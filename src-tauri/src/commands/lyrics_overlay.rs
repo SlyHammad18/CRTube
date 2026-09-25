@@ -1,6 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(target_os = "linux")]
+use std::os::raw::{c_int, c_uchar, c_ulong};
+#[cfg(target_os = "linux")]
+use std::slice;
+
 use serde::Serialize;
 use tauri::window::Color;
 use tauri::{
@@ -113,7 +118,151 @@ fn place_initial_window(
     Ok(())
 }
 
+/// Mutter's X11 backend treats a window as focusable when either
+/// `WM_HINTS.input` is true or the window advertises `WM_TAKE_FOCUS`.
+/// Tauri's `set_focusable(false)` only clears `WM_HINTS.input`; GTK still
+/// advertises `WM_TAKE_FOCUS`. A sticky overlay with that protocol can
+/// therefore be selected as the default focus window when the user changes
+/// workspaces. Remove only that protocol and preserve the close/ping protocols.
+#[cfg(target_os = "linux")]
+fn remove_wm_take_focus(window: &WebviewWindow) -> Result<(), String> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let raw_handle = match window.window_handle() {
+        Ok(handle) => handle,
+        // Tauri does not expose a native handle until a hidden window has
+        // been realized. The post-map pass below will enforce the protocol.
+        Err(_) => return Ok(()),
+    };
+    let window_id = match raw_handle.as_raw() {
+        RawWindowHandle::Xlib(handle) => handle.window,
+        _ => return Ok(()),
+    };
+
+    let display = unsafe { x11::xlib::XOpenDisplay(std::ptr::null()) };
+    if display.is_null() {
+        return Err(
+            "failed to open the X11 display for lyrics overlay focus policy".into(),
+        );
+    }
+
+    let result = (|| -> Result<(), String> {
+        let protocols_atom =
+            unsafe { x11::xlib::XInternAtom(display, c"WM_PROTOCOLS".as_ptr(), 0) };
+        let take_focus_atom =
+            unsafe { x11::xlib::XInternAtom(display, c"WM_TAKE_FOCUS".as_ptr(), 0) };
+
+        let mut actual_type: c_ulong = 0;
+        let mut actual_format: c_int = 0;
+        let mut items: c_ulong = 0;
+        let mut bytes_after: c_ulong = 0;
+        let mut data: *mut c_uchar = std::ptr::null_mut();
+        let status = unsafe {
+            x11::xlib::XGetWindowProperty(
+                display,
+                window_id,
+                protocols_atom,
+                0,
+                1024,
+                0,
+                x11::xlib::XA_ATOM,
+                &mut actual_type,
+                &mut actual_format,
+                &mut items,
+                &mut bytes_after,
+                &mut data,
+            )
+        };
+        if status != x11::xlib::Success as c_int {
+            if !data.is_null() {
+                unsafe {
+                    x11::xlib::XFree(data.cast());
+                }
+            }
+            return Err(
+                "failed to read the lyrics overlay WM_PROTOCOLS property".into(),
+            );
+        }
+        if data.is_null() {
+            return Ok(());
+        }
+        if actual_type != x11::xlib::XA_ATOM || actual_format != 32 {
+            unsafe {
+                x11::xlib::XFree(data.cast());
+            }
+            return Err(
+                "the lyrics overlay WM_PROTOCOLS property has an unexpected format".into(),
+            );
+        }
+        if bytes_after != 0 {
+            unsafe {
+                x11::xlib::XFree(data.cast());
+            }
+            return Err(
+                "the lyrics overlay WM_PROTOCOLS property is unexpectedly long".into(),
+            );
+        }
+
+        let protocols =
+            unsafe { slice::from_raw_parts(data.cast::<c_ulong>(), items as usize) };
+        let filtered = filter_window_protocols(protocols, take_focus_atom);
+        let changed = filtered.len() != protocols.len();
+        if changed {
+            unsafe {
+                x11::xlib::XChangeProperty(
+                    display,
+                    window_id,
+                    protocols_atom,
+                    x11::xlib::XA_ATOM,
+                    32,
+                    x11::xlib::PropModeReplace,
+                    filtered.as_ptr().cast::<c_uchar>(),
+                    filtered.len() as c_int,
+                );
+                x11::xlib::XFlush(display);
+            }
+        }
+
+        if !data.is_null() {
+            unsafe {
+                x11::xlib::XFree(data.cast());
+            }
+        }
+        Ok(())
+    })();
+
+    unsafe {
+        x11::xlib::XCloseDisplay(display);
+    }
+    result
+}
+
+#[cfg(target_os = "linux")]
+fn filter_window_protocols(
+    protocols: &[c_ulong],
+    take_focus_atom: c_ulong,
+) -> Vec<c_ulong> {
+    protocols
+        .iter()
+        .copied()
+        .filter(|protocol| *protocol != take_focus_atom)
+        .collect()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn remove_wm_take_focus(_window: &WebviewWindow) -> Result<(), String> {
+    Ok(())
+}
+
+fn enforce_non_activating_window(window: &WebviewWindow) -> Result<(), String> {
+    window
+        .set_focusable(false)
+        .map_err(|error| format!("failed to keep lyrics overlay unfocusable: {error}"))?;
+    remove_wm_take_focus(window)
+}
+
 fn apply_topmost_to_webview(window: &WebviewWindow) -> Result<(), String> {
+    enforce_non_activating_window(window)?;
     window
         .set_always_on_top(true)
         .map_err(|error| format!("failed to keep lyrics overlay on top: {error}"))?;
@@ -163,6 +312,9 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
 
 fn open_overlay_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        // Enforce the protocol before/after mapping so a recreated/sticky
+        // window is never a workspace focus candidate.
+        enforce_non_activating_window(&window)?;
         window.show().map_err(|e| e.to_string())?;
         apply_topmost_to_webview(&window)?;
         return Ok(());
@@ -183,9 +335,14 @@ fn open_overlay_window(app: &AppHandle) -> Result<(), String> {
         .shadow(false)
         .visible(false)
         .focused(false)
+        .focusable(false)
         .build()
         .map_err(|e| e.to_string())?;
     place_initial_window(app, &window, &prefs)?;
+    // Apply this before mapping when the native handle is already available;
+    // Tauri's hidden-window handle can be unavailable, so the post-map pass
+    // below is the authoritative enforcement point.
+    enforce_non_activating_window(&window)?;
     window.show().map_err(|e| e.to_string())?;
     apply_topmost_to_webview(&window)?;
     Ok(())
@@ -295,4 +452,21 @@ pub fn lyrics_overlay_snapshot(
         repeat: playback.repeat,
         lyrics_revision: lyrics::revision(),
     }))
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::filter_window_protocols;
+
+    #[test]
+    fn removes_only_wm_take_focus_from_protocols() {
+        let protocols = [10, 20, 30, 20];
+        assert_eq!(filter_window_protocols(&protocols, 20), [10, 30]);
+    }
+
+    #[test]
+    fn leaves_protocols_unchanged_without_take_focus() {
+        let protocols = [10, 20, 30];
+        assert_eq!(filter_window_protocols(&protocols, 40), protocols);
+    }
 }

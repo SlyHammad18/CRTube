@@ -1,6 +1,6 @@
 [package]
 name = "crtube"
-version = "0.4.0"
+version = "0.4.1"
 description = "A YouTube downloader with cathode-ray-tube nostalgia"
 license = "MIT"
 edition = "2021"
@@ -28,6 +28,10 @@ xz2 = { version = "0.1", features = ["static"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 zbus = "5"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+raw-window-handle = "0.6"
+x11 = { version = "2.21", features = ["xlib"] }
 
 [profile.release]
 codegen-units = 1

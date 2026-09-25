@@ -37,7 +37,12 @@ server or telemetry.
 - **Local and resilient** — friendly tool/download errors, atomic yt-dlp
   updates with checksum verification, cached thumbnails, and no cloud account.
 
-## v0.4.0 release notes
+## v0.4.1 release notes
+
+- Fixed XWayland workspace switching so the always-on-top floating lyrics
+  window no longer steals focus while remaining interactive and draggable.
+
+### Included from v0.4.0
 
 - Added the floating lyrics control surface with transport, shuffle/repeat,
   seeking, favourites, playlist membership, mute, and main-window focus.
@@ -52,9 +57,9 @@ server or telemetry.
 
 ## Download
 
-The v0.4.0 release includes a Debian/Ubuntu package:
+The v0.4.1 release includes a Debian/Ubuntu package:
 
-- **`CRTube_0.4.0_amd64.deb`**
+- **`CRTube_0.4.1_amd64.deb`**
 
 AppImage is not included in this release. Windows NSIS packages can be built on
 Windows with the Tauri CLI.

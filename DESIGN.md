@@ -290,13 +290,15 @@ Three panes inside the main view area:
 
 - The Caption Deck's `PictureInPicture` control opens one optional, frameless
   `lyrics-overlay` Tauri webview. It is transparent outside its radius-10 panel,
-  excluded from the taskbar, does not steal focus when opened, and remains
-  always-on-top across normal application windows. On Linux, the app prefers
-  XWayland (`GDK_BACKEND=x11,wayland`) because GTK3's native Wayland
+  excluded from the taskbar, non-focusable, does not steal focus when opened,
+  and remains always-on-top across normal application windows. On Linux, the app
+  prefers XWayland (`GDK_BACKEND=x11,wayland`) because GTK3's native Wayland
   keep-above implementation is a no-op; XWayland supplies the EWMH
-  `_NET_WM_STATE_ABOVE` state. The native topmost hint is reasserted after
-  focus, move, resize, and DPI transitions without activating or focusing the
-  window.
+  `_NET_WM_STATE_ABOVE` state. The X11 overlay also removes `WM_TAKE_FOCUS`
+  from `WM_PROTOCOLS`: GTK advertises it even when `WM_HINTS.input` is false,
+  and Mutter otherwise treats the sticky overlay as a workspace focus
+  candidate. The native topmost hint is reasserted after focus loss, move,
+  resize, and DPI transitions without activating or focusing the window.
 - Default logical size is `420 × 220` (user-resizable within `360–520 × 190–320`).
   The compact surface shows the previous/current/next synced line, plain-text or
   instrumental fallbacks, track identity, and mono elapsed/total time. A thin
