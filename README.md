@@ -57,25 +57,28 @@ server or telemetry.
 
 ## Download
 
-The v0.4.1 release includes a Debian/Ubuntu package:
+The v0.4.1 release includes:
 
-- **`CRTube_0.4.1_amd64.deb`**
+- **Windows 10/11 (x64): `CRTube_0.4.1_x64-setup.exe`**
+- **Debian/Ubuntu: `CRTube_0.4.1_amd64.deb`**
 
-AppImage is not included in this release. Windows NSIS packages can be built on
-Windows with the Tauri CLI.
+AppImage is not included in this release. The Windows installer is not
+code-signed, so SmartScreen may warn on first run — choose "More info" →
+"Run anyway".
 
 ## Build from source
 
-Requirements: Node.js 20+, Rust, and the Tauri 2 Linux system dependencies
-(including WebKitGTK and libsoup).
+Requirements: Node.js 20+, Rust, and the Tauri 2 system dependencies for your
+platform (WebKitGTK and libsoup on Linux; the WebView2 SDK and Visual Studio
+Build Tools on Windows).
 
 ```bash
 npm install
-npm run tauri build -- --bundles deb
+npm run tauri build -- --bundles deb   # Linux
+npm run tauri build -- --bundles nsis  # Windows
 ```
 
-The Debian artifact is written to
-`src-tauri/target/release/bundle/deb/`.
+Artifacts are written to `src-tauri/target/release/bundle/{deb,nsis}/`.
 
 For development with hot reload:
 
