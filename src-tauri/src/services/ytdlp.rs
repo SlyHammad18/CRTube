@@ -571,11 +571,12 @@ async fn run_ytdlp(
         full.push("--cookies-from-browser".to_string());
         full.push(cookie.to_string());
     }
-    let child = tokio::process::Command::new(ytdlp_path(bin))
-        .args(&full)
+    let mut cmd = tokio::process::Command::new(ytdlp_path(bin));
+    cmd.args(&full)
         .env("PATH", prepended_path(bin))
-        .kill_on_drop(true)
-        .output();
+        .kill_on_drop(true);
+    super::proc::no_window(&mut cmd);
+    let child = cmd.output();
 
     let output = tokio::time::timeout(Duration::from_secs(timeout_secs), child)
         .await

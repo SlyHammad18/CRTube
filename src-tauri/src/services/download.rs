@@ -44,13 +44,14 @@ pub enum DlEvent {
 }
 
 pub fn spawn_ytdlp(bin_dir: &Path, args: &[String]) -> std::io::Result<Child> {
-    tokio::process::Command::new(ytdlp_path(bin_dir))
-        .args(args)
+    let mut cmd = tokio::process::Command::new(ytdlp_path(bin_dir));
+    cmd.args(args)
         .env("PATH", prepended_path(bin_dir))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
+        .kill_on_drop(true);
+    super::proc::no_window(&mut cmd);
+    cmd.spawn()
 }
 
 pub fn find_final_file(

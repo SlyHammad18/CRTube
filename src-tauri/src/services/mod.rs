@@ -5,6 +5,7 @@ pub mod lyrics;
 pub mod lyrics_overlay;
 pub mod media;
 pub mod mpris;
+pub mod proc;
 pub mod session;
 pub mod thumbs;
 pub mod ytdlp;

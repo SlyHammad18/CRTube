@@ -12,6 +12,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::process::Command as TokioCommand;
 
 use super::db::Db;
+use super::proc::{no_window, no_window_std};
 use crate::services::installer;
 
 /// Loopback-only streaming server that feeds the webview's media element
@@ -97,20 +98,20 @@ pub fn probe_video_codec(path: &Path, ffprobe: &Path) -> Option<String> {
     if !ffprobe.exists() {
         return None;
     }
-    let out = std::process::Command::new(ffprobe)
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=codec_name,disposition:attached_pic",
-            "-of",
-            "csv=p=0",
-            &path.to_string_lossy(),
-        ])
-        .output()
-        .ok()?;
+    let mut cmd = std::process::Command::new(ffprobe);
+    cmd.args([
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,disposition:attached_pic",
+        "-of",
+        "csv=p=0",
+        &path.to_string_lossy(),
+    ]);
+    no_window_std(&mut cmd);
+    let out = cmd.output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -137,21 +138,20 @@ pub async fn probe_video_codec_async(path: PathBuf, ffprobe: PathBuf) -> Option<
     if !ffprobe.exists() {
         return None;
     }
-    let out = TokioCommand::new(&ffprobe)
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=codec_name,disposition:attached_pic",
-            "-of",
-            "csv=p=0",
-            &path.to_string_lossy(),
-        ])
-        .output()
-        .await
-        .ok()?;
+    let mut cmd = TokioCommand::new(&ffprobe);
+    cmd.args([
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,disposition:attached_pic",
+        "-of",
+        "csv=p=0",
+        &path.to_string_lossy(),
+    ]);
+    no_window(&mut cmd);
+    let out = cmd.output().await.ok()?;
     if !out.status.success() {
         return None;
     }
@@ -515,11 +515,12 @@ async fn square_thumb(
 
     let ok = if ffmpeg.exists() {
         let args = crop_square_ffmpeg_args(raw, &sq);
-        TokioCommand::new(&ffmpeg)
-            .args(&args)
+        let mut cmd = TokioCommand::new(&ffmpeg);
+        cmd.args(&args)
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
+            .stderr(Stdio::null());
+        no_window(&mut cmd);
+        cmd.status()
             .await
             .map(|s| s.success())
             .unwrap_or(false)
@@ -670,27 +671,29 @@ where
 
     let cache_arg = cache.to_str().unwrap_or("/dev/null").to_string();
     let path_arg = path.to_str().unwrap_or("").to_string();
-    let mut child = TokioCommand::new(&ffmpeg)
-        .args([
-            "-hide_banner",
-            "-i",
-            &path_arg,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-movflags",
-            "+frag_keyframes+empty_moov",
-            "-f",
-            "mp4",
-            &cache_arg,
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+    let mut child_cmd = TokioCommand::new(&ffmpeg);
+    child_cmd.args([
+        "-hide_banner",
+        "-i",
+        &path_arg,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+frag_keyframes+empty_moov",
+        "-f",
+        "mp4",
+        &cache_arg,
+    ])
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
+    no_window(&mut child_cmd);
+    let mut child = child_cmd
         .spawn()
         .map_err(|e| e.to_string())?;
 

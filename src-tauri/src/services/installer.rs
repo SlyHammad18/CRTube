@@ -325,11 +325,10 @@ fn cleanup(path: &Path) {
 }
 
 pub async fn probe_binary_version(path: &Path, args: &[&str]) -> Option<String> {
-    let out = tokio::process::Command::new(path)
-        .args(args)
-        .output()
-        .await
-        .ok()?;
+    let mut cmd = tokio::process::Command::new(path);
+    cmd.args(args);
+    super::proc::no_window(&mut cmd);
+    let out = cmd.output().await.ok()?;
     if !out.status.success() {
         return None;
     }
