@@ -8,9 +8,16 @@ fn main() {
     #[cfg(target_os = "linux")]
     std::env::set_var("GDK_BACKEND", "x11,wayland");
 
-    // WebKitGTK's DMABUF renderer paints a black video surface on Wayland
-    // while audio still decodes/plays. Force the legacy GL/CPU path so the
-    // <video> element actually renders. Harmless on X11 (ignored there).
-    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    // WebKitGPU note: the DMABUF renderer historically painted a black <video>
+    // surface on Wayland (audio played, video didn't), so this binary used to
+    // force the legacy CPU path via WEBKIT_DISABLE_DMABUF_RENDERER — at the
+    // cost of sluggish scroll/tab-switch under CPU compositing. Recent
+    // WebKitGTK (≥ 2.42) fixed most dmabuf bugs, and the app already prefers
+    // XWayland (GDK_BACKEND=x11) where that bug largely doesn't apply, so the
+    // renderer is now left at its default and you still get the GPU path.
+    //
+    // If video ever renders black on some system: prefer setting
+    // WEBKIT_DMABUF_RENDERER_DEVICE=/dev/dri/renderD128 (point at the primary
+    // render node); as a last resort launch with WEBKIT_DISABLE_DMABUF_RENDERER=1.
     crtube_lib::run()
 }

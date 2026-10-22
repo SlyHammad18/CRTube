@@ -38,6 +38,7 @@ export const Thumb = memo(function Thumb({
       width={width}
       height={height}
       loading="lazy"
+      decoding="async"
       onError={() => setError(true)}
       className={className}
     />

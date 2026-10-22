@@ -15,11 +15,10 @@ use tauri::window::Color;
 /// Build the main window. Defined here (instead of tauri.conf.json) so the
 /// window is code-created.
 ///
-/// NOTE: video rendering is governed by the `WEBKIT_DISABLE_DMABUF_RENDERER`
-/// env var forced in `main.rs` — on Wayland, WebKitGTK's DMABUF path paints a
-/// black video surface (audio still plays), so the legacy/CPU GL path is
-/// forced. There is no in-app toggle for this. On Linux, `main.rs` also
-/// prefers XWayland because GTK's native Wayland keep-above implementation is
+/// NOTE: WebKitGTK's DMABUF renderer is left enabled (see the comment in
+/// `main.rs` — it used to be disabled over a black video surface on Wayland,
+/// which made scrolling run on the CPU). On Linux, `main.rs` also prefers
+/// XWayland because GTK's native Wayland keep-above implementation is
 /// a no-op; the overlay needs X11/EWMH state to remain above other apps.
 ///
 /// In `tauri dev` a code-created window must point at the dev server

@@ -252,7 +252,7 @@ export function TrackList() {
                   data-index={vi.index}
                   data-track-id={e.id}
                   ref={rowVirtualizer.measureElement}
-                  className="list-none pb-1.5 cv-auto-list"
+                  className="list-none pb-1.5"
                   style={{
                     position: "absolute",
                     top: 0,

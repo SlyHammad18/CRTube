@@ -15,6 +15,7 @@ import { LyricsDock } from "./components/player/LyricsDock";
 import { PlayerBar } from "./components/player-bar/PlayerBar";
 import { PlaylistNameDialog } from "./components/player/PlaylistNameDialog";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { usePauseBackgroundAnimations } from "./hooks/usePauseBackgroundAnimations";
 import { useSession } from "./hooks/useSession";
 import { useMpris } from "./hooks/useMpris";
 import { useLyricsOverlayController } from "./stores/lyricsOverlay";
@@ -53,6 +54,7 @@ export default function App() {
   const reduce = useReducedMotion();
 
   useGlobalShortcuts();
+  usePauseBackgroundAnimations();
   // Resume-session: hydrates settings, loads library/playlists, restores the
   // saved queue/song/timestamp/repeat/shuffle and persists it onward.
   useSession();
@@ -83,13 +85,12 @@ export default function App() {
                 }`}
                   initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
                   animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
-                  exit={{
-                    opacity: 0,
-                    transition: {
-                      duration: reduce ? 0.01 : 0.12,
-                      ease: "easeIn",
-                    },
-                  }}
+                  // Exit effectively instantly: under WebKitGTK's compositing a
+                  // 240ms cross-fade keeps both full view trees mounted+animated
+                  // (AnimatePresence mode="sync"), which is the expensive part of
+                  // tab switching. Old view unmounts at once; only the entering
+                  // view animates.
+                  exit={{ opacity: 0, transition: { duration: 0.01 } }}
                   transition={{
                     duration: reduce ? 0.01 : 0.24,
                     ease: [0.16, 1, 0.3, 1],
@@ -125,7 +126,7 @@ export default function App() {
       <MediaHost />
       <FirstRunOverlay />
       <FormatSheet />
-      <Scanlines />
+      {!reduce && <Scanlines />}
       <Toasts />
       <ConfirmModal />
       <RenameTrackModal />

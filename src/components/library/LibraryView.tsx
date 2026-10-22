@@ -131,6 +131,7 @@ const EntryCard = memo(function EntryCard({
             width={480}
             height={360}
             loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover opacity-90"
           />
         )}
@@ -214,7 +215,7 @@ const EntryRow = memo(function EntryRow({
     >
       <div className="relative h-9 w-16 shrink-0 overflow-hidden rounded-card bg-raise">
         {thumb && !missing && (
-          <img src={thumb} alt="" width={160} height={90} loading="lazy" className="h-full w-full object-cover" />
+          <img src={thumb} alt="" width={160} height={90} loading="lazy" decoding="async" className="h-full w-full object-cover" />
         )}
       </div>
       <div className="min-w-0 flex-1">
@@ -433,8 +434,8 @@ function VirtualResults({
               ref={virtualizer.measureElement}
               className={
                 density === "grid"
-                  ? "absolute left-0 top-0 grid w-full gap-4 pb-4 cv-auto-grid"
-                  : "absolute left-0 top-0 flex w-full flex-col gap-2 pb-2 cv-auto-list"
+                  ? "absolute left-0 top-0 grid w-full gap-4 pb-4"
+                  : "absolute left-0 top-0 flex w-full flex-col gap-2 pb-2"
               }
               style={{
                 transform: `translateY(${vi.start}px)`,

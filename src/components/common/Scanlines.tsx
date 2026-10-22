@@ -1,4 +1,7 @@
 // z-index layers: views 0 · format sheet 40 · first-run overlay 60 · scanlines 90 · toasts 110
+// Not layer-promoted: a full-window composited layer blended every frame under
+// WebKitGTK's CPU path costs more than repainting into the host layer; it's
+// also rendered out entirely under prefers-reduced-motion (App.tsx).
 export function Scanlines() {
   return (
     <div
@@ -7,10 +10,6 @@ export function Scanlines() {
       style={{
         backgroundImage:
           "repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(7,9,12,0.9) 3px)",
-        // Promote to its own compositing layer so it never forces repaints of
-        // the content scrolling/below it (cheap on WebKitGTK).
-        transform: "translateZ(0)",
-        backfaceVisibility: "hidden",
       }}
     />
   );

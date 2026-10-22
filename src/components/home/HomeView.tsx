@@ -57,6 +57,7 @@ function TrackCard({
             src={thumb}
             alt=""
             loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover opacity-90"
           />
         )}

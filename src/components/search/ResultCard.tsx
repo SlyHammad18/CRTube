@@ -45,6 +45,7 @@ export const ResultCard = memo(function ResultCard({ item, index }: ResultCardPr
             width={480}
             height={360}
             loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover opacity-90 transition-opacity duration-150 group-hover:opacity-100"
           />
         )}
