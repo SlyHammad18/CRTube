@@ -292,51 +292,49 @@ export function LyricsOverlay() {
   }
 
   return (
-    <div className="h-full w-full p-1">
-      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-card border border-line bg-panel">
-        <div className="flex h-8 shrink-0 items-center border-b border-line bg-void/35">
-          <button
-            type="button"
-            aria-label="Drag floating lyrics"
-            title="Drag to move · edges snap automatically"
-            onMouseDown={beginDrag}
-            className="flex min-w-0 flex-1 cursor-grab items-center gap-2 px-2 text-left active:cursor-grabbing"
-          >
-            <DotsSixVertical size={13} weight="bold" className="shrink-0 text-dim" aria-hidden />
-            <MusicNotes size={12} weight="light" className="shrink-0 text-ice" aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-11 font-medium text-ink">
-              {entry?.title ?? "Floating lyrics"}
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-line bg-panel">
+      <div className="flex h-8 shrink-0 items-center border-b border-line bg-void/35">
+        <button
+          type="button"
+          aria-label="Drag floating lyrics"
+          title="Drag to move · edges snap automatically"
+          onMouseDown={beginDrag}
+          className="flex min-w-0 flex-1 cursor-grab items-center gap-2 px-2 text-left active:cursor-grabbing"
+        >
+          <DotsSixVertical size={13} weight="bold" className="shrink-0 text-dim" aria-hidden />
+          <MusicNotes size={12} weight="light" className="shrink-0 text-ice" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-11 font-medium text-ink">
+            {entry?.title ?? "Floating lyrics"}
+          </span>
+          {entry?.channel && (
+            <span className="max-w-28 shrink-0 truncate text-11 text-mute">
+              {stripMediaExt(entry.channel)}
             </span>
-            {entry?.channel && (
-              <span className="max-w-28 shrink-0 truncate text-11 text-mute">
-                {stripMediaExt(entry.channel)}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            aria-label="Open main app"
-            title="Open main app"
-            onClick={() => void ipc.focusMainWindow().catch(() => {})}
-            className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-card text-dim transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
-          >
-            <ArrowSquareOut size={12} weight="light" aria-hidden />
-          </button>
-          <button
-            type="button"
-            aria-label="Close floating lyrics"
-            title="Close floating lyrics"
-            onClick={close}
-            className="mr-1.5 grid h-7 w-7 shrink-0 place-items-center rounded-card text-dim transition-colors duration-150 hover:bg-signal hover:text-void active:scale-[0.98]"
-          >
-            <X size={12} weight="light" aria-hidden />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1">{content}</div>
-
-        <OverlayControls snapshot={snapshot} positionS={positionS} />
+          )}
+        </button>
+        <button
+          type="button"
+          aria-label="Open main app"
+          title="Open main app"
+          onClick={() => void ipc.focusMainWindow().catch(() => {})}
+          className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-card text-dim transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
+        >
+          <ArrowSquareOut size={12} weight="light" aria-hidden />
+        </button>
+        <button
+          type="button"
+          aria-label="Close floating lyrics"
+          title="Close floating lyrics"
+          onClick={close}
+          className="mr-1.5 grid h-7 w-7 shrink-0 place-items-center rounded-card text-dim transition-colors duration-150 hover:bg-signal hover:text-void active:scale-[0.98]"
+        >
+          <X size={12} weight="light" aria-hidden />
+        </button>
       </div>
+
+      <div className="min-h-0 flex-1">{content}</div>
+
+      <OverlayControls snapshot={snapshot} positionS={positionS} />
     </div>
   );
 }

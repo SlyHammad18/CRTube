@@ -37,7 +37,15 @@ server or telemetry.
 - **Local and resilient** — friendly tool/download errors, atomic yt-dlp
   updates with checksum verification, cached thumbnails, and no cloud account.
 
-## v0.4.1 release notes
+## v0.5.0 release notes
+
+- Removed transparency from the floating lyrics window completely: it is now an
+  opaque, bordered panel filling its window, with no transparent margin or
+  rounded corners. The alpha surface was flickering on XWayland — appearing when
+  the surrounding UI repainted and vanishing otherwise — especially while audio
+  was playing; an opaque window has no alpha surface to blank.
+
+### Included from v0.4.1
 
 - Fixed XWayland workspace switching so the always-on-top floating lyrics
   window no longer steals focus while remaining interactive and draggable.
@@ -57,14 +65,11 @@ server or telemetry.
 
 ## Download
 
-The v0.4.1 release includes:
+The v0.5.0 release includes:
 
-- **Windows 10/11 (x64): `CRTube_0.4.1_x64-setup.exe`**
-- **Debian/Ubuntu: `CRTube_0.4.1_amd64.deb`**
+- **Debian/Ubuntu: `CRTube_0.5.0_amd64.deb`**
 
-AppImage is not included in this release. The Windows installer is not
-code-signed, so SmartScreen may warn on first run — choose "More info" →
-"Run anyway".
+AppImage and the Windows installer are not included in this release.
 
 ## Build from source
 

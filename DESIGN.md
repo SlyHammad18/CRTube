@@ -289,7 +289,10 @@ Three panes inside the main view area:
 ### 4.10 Floating Lyrics Window
 
 - The Caption Deck's `PictureInPicture` control opens one optional, frameless
-  `lyrics-overlay` Tauri webview. It is transparent outside its radius-10 panel,
+  `lyrics-overlay` Tauri webview. It is fully opaque — a bordered panel filling
+  the window, with no transparent margin or rounded corners: an alpha surface
+  flickers on XWayland while WebKit repaints during playback, so the window is
+  created `.transparent(false)` with an opaque background. It is
   excluded from the taskbar, non-focusable, does not steal focus when opened,
   and remains always-on-top across normal application windows. On Linux, the app
   prefers XWayland (`GDK_BACKEND=x11,wayland`) because GTK3's native Wayland
