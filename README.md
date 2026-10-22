@@ -37,7 +37,25 @@ server or telemetry.
 - **Local and resilient** — friendly tool/download errors, atomic yt-dlp
   updates with checksum verification, cached thumbnails, and no cloud account.
 
-## v0.5.0 release notes
+## v0.5.1 release notes
+
+- The UI no longer runs on WebKitGTK's CPU compositing path: the forced
+  `WEBKIT_DISABLE_DMABUF_RENDERER` workaround was removed, so scrolling and tab
+  switching go back to the GPU (dmabuf) renderer on Linux. Recent WebKitGTK fixed
+  the Wayland black-video bug the workaround guarded, and the app prefers
+  XWayland anyway; if video ever renders black on some system, launch with
+  `WEBKIT_DMABUF_RENDERER_DEVICE=/dev/dri/renderD128` (or, last resort,
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1`).
+- Tab switches unmount the previous view immediately instead of cross-fading two
+  full view trees.
+- Perpetual animations (CRT wordmark burn, caret, sheen, EQ bars) pause while the
+  window is unfocused or hidden, and stale `will-change` hints were dropped.
+- Removed `content-visibility` estimates from virtualized rows that measured
+  themselves, so row heights can't snap mid-scroll.
+- The scanlines overlay no longer promotes a full-window compositing layer and is
+  skipped under prefers-reduced-motion; thumbnails decode asynchronously.
+
+### Included from v0.5.0
 
 - Removed transparency from the floating lyrics window completely: it is now an
   opaque, bordered panel filling its window, with no transparent margin or
@@ -65,9 +83,9 @@ server or telemetry.
 
 ## Download
 
-The v0.5.0 release includes:
+The v0.5.1 release includes:
 
-- **Debian/Ubuntu: `CRTube_0.5.0_amd64.deb`**
+- **Debian/Ubuntu: `CRTube_0.5.1_amd64.deb`**
 
 AppImage and the Windows installer are not included in this release.
 
