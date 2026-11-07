@@ -219,6 +219,14 @@ pub fn thumb_media_url(
     Ok(Some(server.thumb_url_for(&video_id)))
 }
 
+/// Loopback base for the cached-thumb route so the frontend can build variant
+/// URLs (`{base}/{video_id}`, `/{video_id}/sq`, `/{video_id}/micro`) without
+/// one IPC per card.
+#[tauri::command]
+pub fn thumb_base_url(server: State<'_, media::MediaServer>) -> Result<String, String> {
+    Ok(server.thumb_base())
+}
+
 /// Resume session (queue, timestamp, repeat/shuffle, sidebar selection) or
 /// `None` when nothing was saved yet. Opaque JSON — the frontend owns schema.
 #[tauri::command]

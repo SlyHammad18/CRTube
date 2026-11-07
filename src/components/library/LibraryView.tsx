@@ -20,6 +20,7 @@ import { confirm } from "../../stores/confirm";
 import { ipc } from "../../lib/ipc";
 import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
 import { fmtBytes, fmtDuration } from "../../lib/format";
+import { ThumbImage } from "../common/ThumbImage";
 import type { LibraryEntry } from "../../types/library";
 
 function thumbSrc(entry: LibraryEntry): string | undefined {
@@ -125,15 +126,7 @@ const EntryCard = memo(function EntryCard({
     >
       <div className="relative aspect-square w-full overflow-hidden bg-raise">
         {thumb && !missing && (
-          <img
-            src={thumb}
-            alt=""
-            width={480}
-            height={360}
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full object-cover opacity-90"
-          />
+          <ThumbImage src={thumb} className="h-full w-full opacity-90" />
         )}
         <TypeIcon kind={entry.kind} />
         {entry.durationS != null && (
@@ -214,9 +207,7 @@ const EntryRow = memo(function EntryRow({
       }`}
     >
       <div className="relative h-9 w-16 shrink-0 overflow-hidden rounded-card bg-raise">
-        {thumb && !missing && (
-          <img src={thumb} alt="" width={160} height={90} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-        )}
+        {thumb && !missing && <ThumbImage src={thumb} className="h-full w-full" />}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-13 text-ink">{entry.title}</p>

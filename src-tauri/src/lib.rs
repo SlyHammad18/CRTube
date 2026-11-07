@@ -176,6 +176,7 @@ pub fn run() {
             commands::player::media_url,
             commands::player::stream_media_url,
             commands::player::thumb_media_url,
+            commands::player::thumb_base_url,
             commands::player::get_session,
             commands::player::set_session,
             commands::player::pick_playlist_cover,

@@ -141,18 +141,25 @@ export function useMpris() {
       void flush();
     };
 
+    // Buffering is a stream-only signal: local files decode from disk, so the
+    // transient `waiting` blips on seeks and source swaps would only flash the
+    // overlay badge. Derived here so both push paths agree.
+    const bufferingOf = (cur: PlayableTrack | null, buffering: boolean) =>
+      cur != null && isStreamTrack(cur) && buffering;
+
     const push = () => {
       timer = undefined;
       const player = usePlayerStore.getState();
       const cur = player.queue[player.order[player.pos]];
       const trackId = cur != null && !isStreamTrack(cur) ? cur.id : 0;
+      const buffering = bufferingOf(cur, player.buffering);
       // Every push reports the queue's navigation ability: the widget greys out
       // next/previous when the queue has nowhere to go.
       const canNavigate = player.order.length > 1;
       enqueue({
         trackId,
         playing: player.playing,
-        buffering: player.buffering,
+        buffering,
         positionS: player.currentTimeS,
         volume: player.volume,
         muted: player.muted,
@@ -165,7 +172,7 @@ export function useMpris() {
       last = {
         trackId,
         playing: player.playing,
-        buffering: player.buffering,
+        buffering: bufferingOf(cur, player.buffering),
         volume: player.volume,
         muted: player.muted,
         speed: player.speed,
@@ -179,10 +186,11 @@ export function useMpris() {
       const player = usePlayerStore.getState();
       const cur = player.queue[player.order[player.pos]];
       const trackId = cur != null && !isStreamTrack(cur) ? cur.id : 0;
+      const buffering = bufferingOf(cur, player.buffering);
       if (
         trackId !== last.trackId ||
         player.playing !== last.playing ||
-        player.buffering !== last.buffering ||
+        buffering !== last.buffering ||
         player.volume !== last.volume ||
         player.muted !== last.muted ||
         player.speed !== last.speed ||

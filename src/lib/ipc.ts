@@ -140,6 +140,7 @@ export const ipc = {
     invoke<string | null>("stream_media_url", { videoId, kind, force }),
   thumbMediaUrl: (videoId: string) =>
     invoke<string | null>("thumb_media_url", { videoId }),
+  thumbBaseUrl: () => invoke<string>("thumb_base_url"),
 
   mprisSetTrack: (track: MprisTrack) => invoke<void>("mpris_set_track", { track }),
   mprisSetState: (state: MprisState) => invoke<void>("mpris_set_state", { state }),

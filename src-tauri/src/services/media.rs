@@ -295,16 +295,20 @@ impl MediaServer {
         format!("http://127.0.0.1:{}/{}/fonts/{}", self.port, self.token, name)
     }
 
+    /// Loopback base for the cached-thumb route: `{base}/{video_id}` serves
+    /// the raw 16:9 cache, `{base}/{video_id}/sq` the 960px square crop, and
+    /// `{base}/{video_id}/micro` the 200px placeholder variant.
+    pub fn thumb_base(&self) -> String {
+        format!("http://127.0.0.1:{}/{}/thumbs", self.port, self.token)
+    }
+
     /// Loopback URL for a cached thumbnail, rendered as a centered square crop
     /// (GNOME's media card stretches 16:9 art when it has to fill its square
     /// slot). WebKit only publishes artwork it can fetch like an `<img>` and
     /// the shell then re-fetches that `mpris:artUrl` itself, so both sides
     /// need an http(s) URL. Path: /{token}/thumbs/{video_id}/sq.
     pub fn thumb_url_for(&self, video_id: &str) -> String {
-        format!(
-            "http://127.0.0.1:{}/{}/thumbs/{}/sq",
-            self.port, self.token, video_id
-        )
+        format!("{}/{}/sq", self.thumb_base(), video_id)
     }
 
     pub async fn set_roots(&self, roots: Vec<PathBuf>) {
@@ -323,22 +327,49 @@ struct Request {
     transcode: bool,
     /// `/{token}/thumbs/{video_id}` — cached thumbnail request.
     video_id: Option<String>,
-    /// `/{token}/thumbs/{video_id}/sq` requests the centered-square-cropped
-    /// variant (GNOME stretches 16:9 mpris artwork to fit its square card).
-    square: bool,
+    /// Thumb variant: raw 16:9, `/sq` centered square (GNOME's media card),
+    /// or `/micro` tiny square (library grid placeholder).
+    thumb: ThumbKind,
     /// `/{token}/stream/{v|a}/{video_id}` — remote stream preview relay.
     stream: Option<(StreamKind, String)>,
     /// `/{token}/fonts/{name}` — cached font file (e.g. Jameel Noori).
     font: Option<String>,
 }
 
-/// Parsed request target: `(transcode, download_id, thumb_video_id, square,
-/// stream, font)`.
+/// Variant requested for the `thumbs` route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThumbKind {
+    Raw,
+    Square,
+    Micro,
+}
+
+/// Output shape of a cropped thumb variant: file suffix, square size in px,
+/// ffmpeg `-q:v` quality (2 = high, 7 = small placeholder).
+struct ThumbCrop {
+    suffix: &'static str,
+    size: u32,
+    quality: u32,
+}
+
+const SQ_THUMB: ThumbCrop = ThumbCrop {
+    suffix: "sq",
+    size: 960,
+    quality: 2,
+};
+const MICRO_THUMB: ThumbCrop = ThumbCrop {
+    suffix: "micro",
+    size: 200,
+    quality: 7,
+};
+
+/// Parsed request target: `(transcode, download_id, thumb_video_id, thumb
+/// kind, stream, font)`.
 type ParsedTarget = (
     bool,
     Option<i64>,
     Option<String>,
-    bool,
+    ThumbKind,
     Option<(StreamKind, String)>,
     Option<String>,
 );
@@ -357,15 +388,22 @@ pub(crate) fn is_font_name(name: &str) -> bool {
 
 /// Pure: parse a request target. Shapes: `/{token}/{id}`,
 /// `/{token}/t/{id}`, `/{token}/thumbs/{video_id}`,
-/// `/{token}/thumbs/{video_id}/sq`, `/{token}/stream/{v|a}/{video_id}`,
-/// `/{token}/fonts/{name}`.
+/// `/{token}/thumbs/{video_id}/sq`, `/{token}/thumbs/{video_id}/micro`,
+/// `/{token}/stream/{v|a}/{video_id}`, `/{token}/fonts/{name}`.
 fn parse_target(target: &str) -> ParsedTarget {
     let segments: Vec<&str> = target.trim_matches('/').split('/').collect();
     if segments.len() == 3 && segments.get(1) == Some(&"fonts") {
         if is_font_name(segments[2]) {
-            return (false, None, None, false, None, Some(segments[2].to_string()));
+            return (
+                false,
+                None,
+                None,
+                ThumbKind::Raw,
+                None,
+                Some(segments[2].to_string()),
+            );
         }
-        return (false, None, None, false, None, None);
+        return (false, None, None, ThumbKind::Raw, None, None);
     }
     if segments.len() == 4 && segments.get(1) == Some(&"stream") {
         let kind = match segments[2] {
@@ -378,21 +416,34 @@ fn parse_target(target: &str) -> ParsedTarget {
                 false,
                 None,
                 None,
-                false,
+                ThumbKind::Raw,
                 Some((kind, segments[3].to_string())),
                 None,
             );
         }
     }
     match segments.len() {
-        4 if segments.get(1) == Some(&"thumbs") && segments.get(3) == Some(&"sq") => {
-            (false, None, Some(segments[2].to_string()), true, None, None)
-        }
+        4 if segments.get(1) == Some(&"thumbs") && segments.get(3) == Some(&"sq") => (
+            false,
+            None,
+            Some(segments[2].to_string()),
+            ThumbKind::Square,
+            None,
+            None,
+        ),
+        4 if segments.get(1) == Some(&"thumbs") && segments.get(3) == Some(&"micro") => (
+            false,
+            None,
+            Some(segments[2].to_string()),
+            ThumbKind::Micro,
+            None,
+            None,
+        ),
         3 if segments.get(1) == Some(&"thumbs") => (
             false,
             None,
             Some(segments[2].to_string()),
-            false,
+            ThumbKind::Raw,
             None,
             None,
         ),
@@ -400,7 +451,7 @@ fn parse_target(target: &str) -> ParsedTarget {
             true,
             segments.get(2).and_then(|s| s.parse::<i64>().ok()),
             None,
-            false,
+            ThumbKind::Raw,
             None,
             None,
         ),
@@ -408,11 +459,11 @@ fn parse_target(target: &str) -> ParsedTarget {
             false,
             segments.get(1).and_then(|s| s.parse::<i64>().ok()),
             None,
-            false,
+            ThumbKind::Raw,
             None,
             None,
         ),
-        _ => (false, None, None, false, None, None),
+        _ => (false, None, None, ThumbKind::Raw, None, None),
     }
 }
 
@@ -462,7 +513,7 @@ where
     let target = target.split('?').next().unwrap_or_default();
     let segments: Vec<&str> = target.trim_matches('/').split('/').collect();
     let token = segments.first().copied().unwrap_or_default().to_string();
-    let (transcode, id, video_id, square, stream, font) = parse_target(target);
+    let (transcode, id, video_id, thumb, stream, font) = parse_target(target);
     Ok(Some(Request {
         want_body: method != "HEAD",
         range,
@@ -470,7 +521,7 @@ where
         id,
         transcode,
         video_id,
-        square,
+        thumb,
         stream,
         font,
     }))
@@ -494,8 +545,10 @@ async fn serve_connection(
     }
 
     // Thumb route: {app_data}/thumbs/{video_id}.jpg — app-owned cache, no
-    // DB/roots lookup needed (still token-gated above). The `/sq` variant is
-    // center-cropped to a square so GNOME's media card does not stretch it.
+    // DB/roots lookup needed (still token-gated above). Variants: `/sq` is
+    // center-cropped to a square so GNOME's media card does not stretch it;
+    // `/micro` is a tiny square that paints instantly as the library's
+    // low-res placeholder while the full image decodes.
     if let Some(video_id) = req.video_id {
         let dir = match app.path().app_data_dir() {
             Ok(d) => d.join("thumbs"),
@@ -505,10 +558,14 @@ async fn serve_connection(
         if !raw.is_file() {
             return respond_text(&mut stream, 404, "not found").await;
         }
-        let path = if req.square {
-            square_thumb(&app, &dir, &video_id, &raw, thumb_transcoding).await
-        } else {
-            raw
+        let path = match req.thumb {
+            ThumbKind::Raw => raw,
+            ThumbKind::Square => {
+                cropped_thumb(&app, &dir, &video_id, &raw, &SQ_THUMB, thumb_transcoding).await
+            }
+            ThumbKind::Micro => {
+                cropped_thumb(&app, &dir, &video_id, &raw, &MICRO_THUMB, thumb_transcoding).await
+            }
         };
         return serve_file(stream, path, req.range, req.want_body, "").await;
     }
@@ -587,9 +644,10 @@ async fn serve_connection(
 }
 
 /// Pure: ffmpeg args that center-crop the cached (16:9) thumbnail to a 1:1
-/// square. `force_original_aspect_ratio=increase` scales until it fills the
-/// target, then `crop` keeps the center — no distortion, sides trimmed.
-fn crop_square_ffmpeg_args(input: &Path, output: &Path) -> Vec<String> {
+/// square of `size` px. `force_original_aspect_ratio=increase` scales until it
+/// fills the target, then `crop` keeps the center — no distortion, sides
+/// trimmed. `quality` is ffmpeg's `-q:v` (2 = high, 7 = small placeholder).
+fn crop_square_ffmpeg_args(input: &Path, output: &Path, size: u32, quality: u32) -> Vec<String> {
     vec![
         "-hide_banner".to_string(),
         "-loglevel".to_string(),
@@ -598,37 +656,40 @@ fn crop_square_ffmpeg_args(input: &Path, output: &Path) -> Vec<String> {
         "-i".to_string(),
         input.to_string_lossy().into_owned(),
         "-vf".to_string(),
-        "scale=960:960:force_original_aspect_ratio=increase,crop=960:960".to_string(),
+        format!("scale={size}:{size}:force_original_aspect_ratio=increase,crop={size}:{size}"),
         "-frames:v".to_string(),
         "1".to_string(),
         "-q:v".to_string(),
-        "2".to_string(),
+        quality.to_string(),
         output.to_string_lossy().into_owned(),
     ]
 }
 
-/// Render (or reuse) the square-cropped `{video_id}.sq.jpg` next to the raw
-/// thumb. Falls back to the raw (16:9) file when ffmpeg is unavailable or
-/// fails, so the OS card still shows something rather than nothing.
-/// A per-video_id lock prevents concurrent ffmpeg runs on the same file.
-async fn square_thumb(
+/// Render (or reuse) a center-cropped `{video_id}.{suffix}.jpg` variant next to
+/// the raw thumb (`sq` = 960px for GNOME's card, `micro` = 200px library
+/// placeholder). Falls back to the raw (16:9) file when ffmpeg is unavailable
+/// or fails, so the card still shows something rather than nothing. A
+/// per-variant lock prevents concurrent ffmpeg runs on the same file.
+async fn cropped_thumb(
     app: &AppHandle,
     dir: &Path,
     video_id: &str,
     raw: &Path,
+    crop: &ThumbCrop,
     in_flight: Arc<tokio::sync::Mutex<HashSet<String>>>,
 ) -> PathBuf {
-    let sq = dir.join(format!("{video_id}.sq.jpg"));
-    if sq.is_file() {
-        return sq;
+    let dest = dir.join(format!("{}.{}.jpg", video_id, crop.suffix));
+    if dest.is_file() {
+        return dest;
     }
 
+    let lock_key = format!("{}:{}", video_id, crop.suffix);
     let owner = {
         let mut g = in_flight.lock().await;
-        if g.contains(video_id) {
+        if g.contains(&lock_key) {
             false
         } else {
-            g.insert(video_id.to_string());
+            g.insert(lock_key.clone());
             true
         }
     };
@@ -636,25 +697,25 @@ async fn square_thumb(
     if !owner {
         for _ in 0..50 {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            if sq.is_file() {
-                remove_thumb_lock(&in_flight, video_id).await;
-                return sq;
+            if dest.is_file() {
+                remove_thumb_lock(&in_flight, &lock_key).await;
+                return dest;
             }
         }
-        remove_thumb_lock(&in_flight, video_id).await;
+        remove_thumb_lock(&in_flight, &lock_key).await;
         return raw.to_path_buf();
     }
 
     let ffmpeg = match installer::bin_dir(app) {
         Ok(b) => installer::ffmpeg_path(&b),
         Err(_) => {
-            remove_thumb_lock(&in_flight, video_id).await;
+            remove_thumb_lock(&in_flight, &lock_key).await;
             return raw.to_path_buf();
         }
     };
 
     let ok = if ffmpeg.exists() {
-        let args = crop_square_ffmpeg_args(raw, &sq);
+        let args = crop_square_ffmpeg_args(raw, &dest, crop.size, crop.quality);
         let mut cmd = TokioCommand::new(&ffmpeg);
         cmd.args(&args)
             .stdout(Stdio::null())
@@ -668,9 +729,9 @@ async fn square_thumb(
         false
     };
 
-    remove_thumb_lock(&in_flight, video_id).await;
-    if ok && sq.is_file() {
-        sq
+    remove_thumb_lock(&in_flight, &lock_key).await;
+    if ok && dest.is_file() {
+        dest
     } else {
         raw.to_path_buf()
     }
@@ -1166,23 +1227,70 @@ mod tests {
 
     #[test]
     fn parse_target_shapes() {
-        assert_eq!(parse_target("/tok/42"), (false, Some(42), None, false, None, None));
-        assert_eq!(parse_target("/tok/t/7"), (true, Some(7), None, false, None, None));
+        assert_eq!(
+            parse_target("/tok/42"),
+            (false, Some(42), None, ThumbKind::Raw, None, None)
+        );
+        assert_eq!(
+            parse_target("/tok/t/7"),
+            (true, Some(7), None, ThumbKind::Raw, None, None)
+        );
         assert_eq!(
             parse_target("/tok/thumbs/abc123def"),
-            (false, None, Some("abc123def".into()), false, None, None)
+            (
+                false,
+                None,
+                Some("abc123def".into()),
+                ThumbKind::Raw,
+                None,
+                None
+            )
         );
         assert_eq!(
             parse_target("/tok/thumbs/abc123def/sq"),
-            (false, None, Some("abc123def".into()), true, None, None)
+            (
+                false,
+                None,
+                Some("abc123def".into()),
+                ThumbKind::Square,
+                None,
+                None
+            )
+        );
+        assert_eq!(
+            parse_target("/tok/thumbs/abc123def/micro"),
+            (
+                false,
+                None,
+                Some("abc123def".into()),
+                ThumbKind::Micro,
+                None,
+                None
+            )
         );
         assert_eq!(
             parse_target("/tok/thumbs/123/sq"),
-            (false, None, Some("123".into()), true, None, None)
+            (
+                false,
+                None,
+                Some("123".into()),
+                ThumbKind::Square,
+                None,
+                None
+            )
         );
-        assert_eq!(parse_target("/tok"), (false, None, None, false, None, None));
-        assert_eq!(parse_target("/tok/bad"), (false, None, None, false, None, None));
-        assert_eq!(parse_target(""), (false, None, None, false, None, None));
+        assert_eq!(
+            parse_target("/tok"),
+            (false, None, None, ThumbKind::Raw, None, None)
+        );
+        assert_eq!(
+            parse_target("/tok/bad"),
+            (false, None, None, ThumbKind::Raw, None, None)
+        );
+        assert_eq!(
+            parse_target(""),
+            (false, None, None, ThumbKind::Raw, None, None)
+        );
     }
 
     #[test]
@@ -1193,7 +1301,7 @@ mod tests {
                 false,
                 None,
                 None,
-                false,
+                ThumbKind::Raw,
                 Some((StreamKind::Video, "jNQXAC9IVRw".into())),
                 None
             )
@@ -1204,7 +1312,7 @@ mod tests {
                 false,
                 None,
                 None,
-                false,
+                ThumbKind::Raw,
                 Some((StreamKind::Audio, "dQw4w9WgXcQ".into())),
                 None
             )
@@ -1212,9 +1320,12 @@ mod tests {
         // Unknown kind / malformed shapes fall through to non-stream routes.
         assert_eq!(
             parse_target("/tok/stream/x/abc"),
-            (false, None, None, false, None, None)
+            (false, None, None, ThumbKind::Raw, None, None)
         );
-        assert_eq!(parse_target("/tok/stream/v"), (false, None, None, false, None, None));
+        assert_eq!(
+            parse_target("/tok/stream/v"),
+            (false, None, None, ThumbKind::Raw, None, None)
+        );
     }
 
     #[test]
@@ -1225,7 +1336,7 @@ mod tests {
                 false,
                 None,
                 None,
-                false,
+                ThumbKind::Raw,
                 None,
                 Some("JameelNooriNastaleeq.ttf".into())
             )
@@ -1233,17 +1344,20 @@ mod tests {
         // Traversal and dotfile names never resolve.
         assert_eq!(
             parse_target("/tok/fonts/.."),
-            (false, None, None, false, None, None)
+            (false, None, None, ThumbKind::Raw, None, None)
         );
         assert_eq!(
             parse_target("/tok/fonts/.hidden"),
-            (false, None, None, false, None, None)
+            (false, None, None, ThumbKind::Raw, None, None)
         );
         assert_eq!(
             parse_target("/tok/fonts/a/b"),
-            (false, None, None, false, None, None)
+            (false, None, None, ThumbKind::Raw, None, None)
         );
-        assert_eq!(parse_target("/tok/fonts"), (false, None, None, false, None, None));
+        assert_eq!(
+            parse_target("/tok/fonts"),
+            (false, None, None, ThumbKind::Raw, None, None)
+        );
     }
 
     #[test]
@@ -1259,12 +1373,20 @@ mod tests {
     #[test]
     fn crop_square_args_crop_center() {
         use PathBuf as P;
-        let args = crop_square_ffmpeg_args(&P::from("/th/a.jpg"), &P::from("/th/a.sq.jpg"));
+        let args = crop_square_ffmpeg_args(&P::from("/th/a.jpg"), &P::from("/th/a.sq.jpg"), 960, 2);
         let joined = args.join(" ");
         assert!(joined.contains("scale=960:960:force_original_aspect_ratio=increase,crop=960:960"));
         assert!(args.contains(&"-y".to_string()));
         assert!(joined.contains("-frames:v 1"));
         assert!(args.last().unwrap().ends_with("a.sq.jpg"));
+
+        // The micro placeholder is a smaller, more compressed square.
+        let micro =
+            crop_square_ffmpeg_args(&P::from("/th/a.jpg"), &P::from("/th/a.micro.jpg"), 200, 7);
+        let joined = micro.join(" ");
+        assert!(joined.contains("scale=200:200:force_original_aspect_ratio=increase,crop=200:200"));
+        assert!(joined.contains("-q:v 7"));
+        assert!(micro.last().unwrap().ends_with("a.micro.jpg"));
     }
 
     #[test]

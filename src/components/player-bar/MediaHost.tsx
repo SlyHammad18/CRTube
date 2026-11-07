@@ -131,7 +131,10 @@ export function MediaHost() {
       el.removeAttribute("src");
       el.dataset.srcKey = "";
       el.load();
-      usePlayerStore.getState().setBuffering(true);
+      // Buffering is a stream-only signal: local files decode from disk, so
+      // the resolve gap here is a blink, and the veil on the artwork would
+      // just flash on every next/previous.
+      if (stream) usePlayerStore.getState().setBuffering(true);
       let alive = true;
       const resolve = stream
         ? ipc.streamMediaUrl(stream.videoId, stream.kind)
@@ -391,7 +394,9 @@ export function MediaHost() {
   // effect below.
   const onWaiting = () => {
     const el = videoRef.current;
-    if (el && !el.paused) usePlayerStore.getState().setBuffering(true);
+    // Stream-only: local media fires `waiting` only on sub-frame seek stalls.
+    if (el && !el.paused && streamRef.current)
+      usePlayerStore.getState().setBuffering(true);
   };
   const onBufferedReady = () => usePlayerStore.getState().setBuffering(false);
 
