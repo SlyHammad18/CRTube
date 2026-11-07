@@ -37,7 +37,25 @@ server or telemetry.
 - **Local and resilient** — friendly tool/download errors, atomic yt-dlp
   updates with checksum verification, cached thumbnails, and no cloud account.
 
-## v0.5.1 release notes
+## v0.6.0 release notes
+
+- Added a live YouTube streaming engine: video can play directly from the
+  network without a completed download, with a buffering-aware playback core,
+  prefetch of the next track, and fullscreen video output.
+- Unified search now runs inside both Home and the Player tab, backed by a
+  reliability pass on the yt-dlp invocation layer (fonts, playback, progress).
+- Floating lyrics got a resilient lookup chain and a track-first search modal;
+  the overlay follows live streams with a buffering state, sizes its lyric deck
+  to the window, and honours the custom Urdu font.
+- Lyrics rendering polish: the lyric deck reserves its height and crossfades
+  between lyric states, and the active caption line gets a wash highlight.
+- The titlebar gained a tool-status chip that reflects honest yt-dlp update
+  states instead of a silent spinner.
+- Library performance: micro-thumbnail placeholders while images load, and
+  stream-only buffering so long media rows stay responsive.
+- Theme tokens, build configuration, and docs were refreshed.
+
+### Included from v0.5.1
 
 - The UI no longer runs on WebKitGTK's CPU compositing path: the forced
   `WEBKIT_DISABLE_DMABUF_RENDERER` workaround was removed, so scrolling and tab
@@ -88,9 +106,9 @@ server or telemetry.
 
 ## Download
 
-The v0.5.1 release includes:
+The v0.6.0 release includes:
 
-- **Debian/Ubuntu: `CRTube_0.5.1_amd64.deb`**
+- **Debian/Ubuntu: `CRTube_0.6.0_amd64.deb`**
 
 AppImage and the Windows installer are not included in this release.
 

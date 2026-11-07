@@ -1,6 +1,6 @@
 [package]
 name = "crtube"
-version = "0.5.1"
+version = "0.6.0"
 description = "A YouTube downloader with cathode-ray-tube nostalgia"
 license = "MIT"
 edition = "2021"
