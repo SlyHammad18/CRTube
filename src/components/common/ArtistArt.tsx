@@ -4,6 +4,7 @@ import { useLibraryStore } from "../../stores/library";
 import { artistArtModel } from "../../lib/artistArt";
 import { fetchArtistImage } from "../../lib/artistExternalArt";
 import { PlaylistArt } from "./PlaylistArt";
+import { ThumbImage } from "./ThumbImage";
 
 /**
  * Artist artwork. Resolution order:
@@ -47,13 +48,17 @@ export const ArtistArt = memo(function ArtistArt({
     return <PlaylistArt playlist={model} className={className} />;
   }
 
-  // 2. Wikipedia image found — render it full-bleed.
+  // 2. External photo found — layer it over the local collage and fade it in
+  // once loaded. The lookup is network-bound (Deezer → Wikipedia), so a hard
+  // swap would blank the art for seconds; this way the local thumbs show
+  // instantly and the photo upgrades in place. A dead URL simply never loads
+  // and the collage stays.
   if (externalUrl) {
     return (
-      <PlaylistArt
-        playlist={{ ...model, coverUrls: [externalUrl] }}
-        className={className}
-      />
+      <span className={`grid overflow-hidden ${className}`}>
+        <PlaylistArt playlist={model} className="col-start-1 row-start-1" />
+        <ThumbImage src={externalUrl} className="col-start-1 row-start-1" />
+      </span>
     );
   }
 

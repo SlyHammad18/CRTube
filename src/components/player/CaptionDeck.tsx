@@ -310,7 +310,9 @@ const Line = memo(function Line({
     );
   }
   // Urdu active line steps up ×4⁄3 (the Nastaliq karaoke hierarchy — 18→24 at
-  // defaults); Latin lines stay equal-size.
+  // defaults); Latin lines stay equal-size. The active line is marked by a
+  // soft ice wash behind the block (follows multiline wraps) — a fixed-height
+  // caret bar can't track wrapped lines.
   const activeUrduSize = Math.round((urduSize * 4) / 3);
   return (
     <button
@@ -326,25 +328,17 @@ const Line = memo(function Line({
             }
           : { fontSize: `${latinSize}px` }
       }
-      className={`flex items-start gap-2 rounded-card py-1 ${
-        urdu ? "font-urdu" : "text-left"
-      } transition-colors duration-200 ${
+      className={`block w-full rounded-card px-3 py-1 text-start ${
+        urdu ? "font-urdu" : ""
+      } ${
         active
-          ? `${urdu ? "font-urdu" : "font-display"} font-semibold text-ink`
+          ? `${urdu ? "font-urdu" : "font-display"} bg-ice/10 font-semibold text-ink`
           : past
             ? "text-dim"
             : "text-mute"
       }`}
     >
-      <span
-        className={`${urdu && active ? "mt-2 h-6" : "mt-1 h-4"} w-1 shrink-0 rounded-full bg-ice`}
-        style={{ visibility: active ? "visible" : "hidden" }}
-        aria-hidden
-      />
-      <span
-        className={`min-w-0${urdu ? " font-urdu" : ""}`}
-        dir={urdu ? "auto" : undefined}
-      >
+      <span className="min-w-0" dir={urdu ? "auto" : undefined}>
         {line.text}
       </span>
     </button>
