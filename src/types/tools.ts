@@ -6,7 +6,7 @@ export interface ToolsProgressPayload {
   pct: number;
 }
 
-export type ToolsStatus = "updating" | "ready" | "error";
+export type ToolsStatus = "checking" | "updating" | "ready" | "error";
 
 export interface ToolsStatusPayload {
   state: ToolsStatus;

@@ -23,7 +23,9 @@ interface ToolsStore {
 
 async function runEnsure(set: (partial: Partial<ToolsStore>) => void) {
   const firstRun = useToolsStore.getState().showOverlay;
-  set({ state: "updating", error: null });
+  // The backend refines this to "updating" only when a download actually
+  // starts; a no-op check goes straight to "ready".
+  set({ state: "checking", error: null });
   try {
     const res = await ipc.ensureTools();
     set({

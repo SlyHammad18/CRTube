@@ -3,6 +3,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, Minus, Square, X } from "@phosphor-icons/react";
 import type { IconProps } from "@phosphor-icons/react";
 import type { ComponentType } from "react";
+import { useToolsStore } from "../../stores/tools";
+import { useUIStore } from "../../stores/ui";
 
 type ControlIcon = ComponentType<IconProps>;
 
@@ -23,6 +25,59 @@ function useMaximized() {
     };
   }, []);
   return maximized;
+}
+
+/** yt-dlp engine status, top-right of the titlebar (§4.1). "checking for
+ *  updates" → "updating yt-dlp" (only while a download actually runs) → the
+ *  busy label lingers ~2s after completion and the chip hides entirely — no
+ *  permanent version readout. Errors stay visible (they need attention).
+ *  Click opens Settings (the manual update lives there). */
+function ToolStatusChip() {
+  const state = useToolsStore((s) => s.state);
+  const error = useToolsStore((s) => s.error);
+  const setView = useUIStore((s) => s.setView);
+  const [label, setLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (state === "checking") {
+      setLabel("checking for updates");
+      return;
+    }
+    if (state === "updating") {
+      setLabel("updating yt-dlp");
+      return;
+    }
+    if (state === "error") {
+      setLabel("update failed");
+      return;
+    }
+    // ready: keep the last busy label for a beat, then hide the chip.
+    setLabel((cur) =>
+      cur === "checking for updates" || cur === "updating yt-dlp" ? cur : null,
+    );
+    const t = window.setTimeout(() => setLabel(null), 2000);
+    return () => window.clearTimeout(t);
+  }, [state]);
+
+  if (!label) return null;
+
+  const look =
+    label === "checking for updates"
+      ? { dot: "bg-ice animate-pulse", cls: "text-mute" }
+      : label === "updating yt-dlp"
+        ? { dot: "bg-amber", cls: "text-mute" }
+        : { dot: "bg-signal", cls: "text-mute" };
+
+  return (
+    <button
+      onClick={() => setView("settings")}
+      title={state === "error" ? error ?? "Tool update failed — open settings" : "Tool status — open settings"}
+      className={`flex items-center gap-1.5 font-mono text-11 transition-colors duration-150 hover:text-ink ${look.cls}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${look.dot}`} aria-hidden />
+      {label}
+    </button>
+  );
 }
 
 export function Titlebar() {
@@ -59,7 +114,10 @@ export function Titlebar() {
           CRTUBE
         </span>
       </div>
-      <div className="ml-auto flex items-stretch">
+      <div data-tauri-drag-region className="ml-auto flex items-center pr-3">
+        <ToolStatusChip />
+      </div>
+      <div className="flex items-stretch">
         {controls.map(({ label, icon: ControlIcon, danger, onClick }) => (
           <button
             key={label}
