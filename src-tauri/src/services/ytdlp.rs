@@ -520,6 +520,150 @@ pub fn normalize_info(payload: &Value) -> Result<VideoInfo> {
     })
 }
 
+/// Which flavor of pre-download stream preview to resolve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StreamKind {
+    Video,
+    Audio,
+}
+
+/// A resolved, directly-playable remote stream (one progressive HTTP URL plus
+/// the headers the upstream expects on fetches).
+#[derive(Debug, Clone)]
+pub struct StreamSource {
+    pub url: String,
+    pub user_agent: Option<String>,
+    pub referer: Option<String>,
+    pub ext: String,
+    pub height: Option<u32>,
+}
+
+/// Highest muxed (video+audio in one file) height considered for previews.
+/// 360p (YouTube's itag 18, ~300–500 kbps) minimizes time-to-first-frame in
+/// the small popup; higher qualities are separate streams a `<video>` element
+/// cannot combine anyway. Downloads still get full quality.
+const STREAM_MAX_HEIGHT: u64 = 360;
+
+fn is_progressive_protocol(v: &Value) -> bool {
+    let proto = v.get("protocol").and_then(Value::as_str).unwrap_or("");
+    proto == "https" || proto == "http"
+}
+
+fn codec_str<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
+    v.get(key)?
+        .as_str()
+        .filter(|s| !s.is_empty() && *s != "none")
+}
+
+fn http_header(format: &Value, name: &str) -> Option<String> {
+    value_str(format.get("http_headers")?, name)
+}
+
+/// Pure: pick a directly-playable stream from a full probe payload.
+///
+/// `<video>` can only play a single progressive stream, so `Video` selects the
+/// best *muxed* format at or below `STREAM_MAX_HEIGHT`, preferring
+/// H.264-in-MP4 (the combination WebKitGTK reliably decodes); when nothing
+/// fits under the cap it falls back to the smallest muxed format rather than
+/// failing. `Audio` selects the best audio-only format, preferring AAC/m4a.
+pub fn pick_stream_format(payload: &Value, kind: StreamKind) -> Option<StreamSource> {
+    let formats = payload.get("formats").and_then(Value::as_array)?;
+    let mut muxed: Vec<(u64, bool, StreamSource)> = Vec::new();
+    let mut audio: Vec<(bool, StreamSource)> = Vec::new();
+    for f in formats {
+        if !is_progressive_protocol(f) {
+            continue;
+        }
+        let Some(url) = value_str(f, "url") else {
+            continue;
+        };
+        let src = StreamSource {
+            url,
+            user_agent: http_header(f, "User-Agent"),
+            referer: http_header(f, "Referer"),
+            ext: value_str(f, "ext").unwrap_or_default(),
+            height: f.get("height").and_then(Value::as_u64).map(|h| h as u32),
+        };
+        match kind {
+            StreamKind::Video => {
+                let (Some(vcodec), Some(acodec)) =
+                    (codec_str(f, "vcodec"), codec_str(f, "acodec"))
+                else {
+                    continue;
+                };
+                let height = src.height.unwrap_or(0) as u64;
+                let web_friendly = src.ext == "mp4" && vcodec.starts_with("avc") && acodec == "mp4a";
+                muxed.push((height, web_friendly, src));
+            }
+            StreamKind::Audio => {
+                if codec_str(f, "vcodec").is_some() {
+                    continue;
+                }
+                let Some(acodec) = codec_str(f, "acodec") else {
+                    continue;
+                };
+                let is_aac = src.ext == "m4a" || acodec.starts_with("mp4a");
+                audio.push((is_aac, src));
+            }
+        }
+    }
+    match kind {
+        StreamKind::Video => {
+            let best = muxed
+                .iter()
+                .filter(|(h, _, _)| *h > 0 && *h <= STREAM_MAX_HEIGHT)
+                .max_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)))
+                .or_else(|| {
+                    // Nothing muxed under the cap — degrade to the smallest
+                    // muxed format instead of failing outright.
+                    muxed
+                        .iter()
+                        .min_by_key(|(h, _, _)| if *h > 0 { *h } else { u64::MAX })
+                })
+                .map(|(_, _, src)| src.clone())?;
+            Some(best)
+        }
+        StreamKind::Audio => audio
+            .iter()
+            .find(|(aac, _)| *aac)
+            .or_else(|| audio.first())
+            .map(|(_, src)| src.clone()),
+    }
+}
+
+/// Resolve a directly-playable stream for a video by running the pinned probe
+/// invocation (cookies + JS runtime handled by `run_ytdlp`) and picking a
+/// format the webview can actually play.
+pub async fn extract_stream_source(
+    bin: &Path,
+    video_id: &str,
+    kind: StreamKind,
+    cookie: &str,
+    cookie_file: &str,
+) -> Result<StreamSource> {
+    let url = format!("https://www.youtube.com/watch?v={video_id}");
+    let stdout =
+        run_ytdlp(bin, &probe_args(&url), PROBE_TIMEOUT_SECS, cookie, cookie_file).await?;
+    let payload =
+        serde_json::from_str::<Value>(&stdout).map_err(|e| YtDlpError::Parse(e.to_string()))?;
+    if payload.get("is_live").and_then(Value::as_bool).unwrap_or(false) {
+        return Err(YtDlpError::Failed(
+            "Live streams can't be previewed".to_string(),
+        ));
+    }
+    pick_stream_format(&payload, kind).ok_or_else(|| {
+        YtDlpError::Failed(
+            match kind {
+                StreamKind::Video => {
+                    "No directly playable stream for this video — try downloading it instead"
+                }
+                StreamKind::Audio => "No directly playable audio for this video",
+            }
+            .to_string(),
+        )
+    })
+}
+
 /// Resolve a usable `node` binary. The GUI app often launches without node on
 /// its `PATH` (e.g. nvm isn't sourced), so we probe nvm's version dirs and
 /// common system locations explicitly.
@@ -983,5 +1127,83 @@ mod tests {
         // unknown error condenses instead of crashing
         let msg = friendly_message("some random failure with no known pattern");
         assert!(!msg.is_empty());
+    }
+
+    fn stream_payload(formats: Value) -> Value {
+        json!({ "id": "jNQXAC9IVRw", "title": "t", "formats": formats })
+    }
+
+    #[test]
+    fn picks_best_muxed_video_under_cap_preferring_h264_mp4() {
+        let payload = stream_payload(json!([
+            // Separate streams — never eligible for <video> preview.
+            {"ext":"webm","height":1080,"protocol":"https","vcodec":"vp9","acodec":"none","url":"https://u/v-only","http_headers":{"User-Agent":"ua-1"}},
+            {"ext":"m4a","protocol":"https","vcodec":"none","acodec":"mp4a","url":"https://u/a-only"},
+            // HLS manifest — skipped even though it is "muxed-ish".
+            {"ext":"mp4","height":720,"protocol":"m3u8_native","vcodec":"avc1","acodec":"mp4a","url":"https://u/hls"},
+            // Above the 360p preview cap — skipped despite being muxed.
+            {"ext":"mp4","height":720,"protocol":"https","vcodec":"avc1","acodec":"mp4a","url":"https://u/mux-720"},
+            // Muxed candidates at or below the cap.
+            {"ext":"webm","height":360,"protocol":"https","vcodec":"vp9","acodec":"opus","url":"https://u/mux-360"},
+            {"ext":"mp4","height":360,"protocol":"https","vcodec":"avc1","acodec":"mp4a","url":"https://u/mux-360-mp4"}
+        ]));
+        let src = pick_stream_format(&payload, StreamKind::Video).expect("picks");
+        assert_eq!(src.url, "https://u/mux-360-mp4");
+        assert_eq!(src.height, Some(360));
+        assert_eq!(src.ext, "mp4");
+        assert!(src.user_agent.is_none());
+    }
+
+    #[test]
+    fn video_tie_breaks_toward_h264_mp4_and_keeps_headers() {
+        let payload = stream_payload(json!([
+            {"ext":"webm","height":360,"protocol":"https","vcodec":"vp9","acodec":"opus","url":"https://u/webm"},
+            {"ext":"mp4","height":360,"protocol":"https","vcodec":"avc1","acodec":"mp4a","url":"https://u/mp4","http_headers":{"User-Agent":"yt-ua","Referer":"https://r"}}
+        ]));
+        let src = pick_stream_format(&payload, StreamKind::Video).expect("picks");
+        assert_eq!(src.url, "https://u/mp4");
+        assert_eq!(src.user_agent.as_deref(), Some("yt-ua"));
+        assert_eq!(src.referer.as_deref(), Some("https://r"));
+    }
+
+    #[test]
+    fn video_falls_back_to_smallest_muxed_when_all_above_cap() {
+        let payload = stream_payload(json!([
+            {"ext":"mp4","height":1440,"protocol":"https","vcodec":"avc1","acodec":"mp4a","url":"https://u/1440"},
+            {"ext":"mp4","height":1080,"protocol":"https","vcodec":"avc1","acodec":"mp4a","url":"https://u/1080"}
+        ]));
+        let src = pick_stream_format(&payload, StreamKind::Video).expect("falls back");
+        assert_eq!(src.url, "https://u/1080");
+        assert_eq!(src.height, Some(1080));
+    }
+
+    #[test]
+    fn video_returns_none_without_progressive_muxed_formats() {
+        let payload = stream_payload(json!([
+            {"ext":"webm","height":1080,"protocol":"https","vcodec":"vp9","acodec":"none","url":"https://u/v"},
+            {"ext":"mp4","height":720,"protocol":"m3u8_native","vcodec":"avc1","acodec":"mp4a","url":"https://u/hls"}
+        ]));
+        assert!(pick_stream_format(&payload, StreamKind::Video).is_none());
+        assert!(pick_stream_format(&json!({"formats": []}), StreamKind::Video).is_none());
+    }
+
+    #[test]
+    fn audio_prefers_aac_m4a_over_opus() {
+        let payload = stream_payload(json!([
+            {"ext":"webm","protocol":"https","vcodec":"none","acodec":"opus","url":"https://u/opus"},
+            {"ext":"m4a","protocol":"https","vcodec":"none","acodec":"mp4a","url":"https://u/m4a","http_headers":{"User-Agent":"ua-a"}}
+        ]));
+        let src = pick_stream_format(&payload, StreamKind::Audio).expect("picks");
+        assert_eq!(src.url, "https://u/m4a");
+        assert_eq!(src.user_agent.as_deref(), Some("ua-a"));
+        assert_eq!(src.height, None);
+    }
+
+    #[test]
+    fn audio_skips_formats_with_video_and_returns_none_when_empty() {
+        let payload = stream_payload(json!([
+            {"ext":"mp4","height":360,"protocol":"https","vcodec":"avc1","acodec":"mp4a","url":"https://u/mux"}
+        ]));
+        assert!(pick_stream_format(&payload, StreamKind::Audio).is_none());
     }
 }

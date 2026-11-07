@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 use std::path::PathBuf;
 
@@ -7,6 +8,11 @@ pub const DEFAULT_CONCURRENT: u32 = 3;
 /// §4.8 — playback speed menu spans 0.5×–2×; clamp wider inputs into a safe range.
 pub const SPEED_MIN: f32 = 0.25;
 pub const SPEED_MAX: f32 = 4.0;
+
+/// Urdu lyrics font choices (§2.2): "naskh" (bundled default) or "custom" —
+/// a font file the user picked themselves (see `urdu_custom_file` /
+/// `pick_urdu_font`).
+pub const URDU_FONTS: [&str; 2] = ["naskh", "custom"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -30,6 +36,15 @@ pub struct AppSettings {
     pub filename_template: Option<String>,
     pub player_volume: f32,
     pub player_speed: f32,
+    /// Urdu lyrics font: "naskh" (bundled default) or "custom" (a font file
+    /// the user picked — see `urdu_custom_file`).
+    pub urdu_font: String,
+    /// Cached font file in `{app_data}/fonts/` backing `urdu_font: "custom"`.
+    pub urdu_custom_file: Option<String>,
+    /// Caption Deck font size (px) for Latin lyric lines.
+    pub lyrics_size_latin: u32,
+    /// Caption Deck font size (px) for Urdu lyric lines (active line ×4⁄3).
+    pub lyrics_size_urdu: u32,
 }
 
 impl Default for AppSettings {
@@ -44,6 +59,10 @@ impl Default for AppSettings {
             filename_template: None,
             player_volume: 1.0,
             player_speed: 1.0,
+            urdu_font: "naskh".to_string(),
+            urdu_custom_file: None,
+            lyrics_size_latin: 15,
+            lyrics_size_urdu: 18,
         }
     }
 }
@@ -113,6 +132,11 @@ fn sanitize(mut s: AppSettings) -> AppSettings {
     s.download_dir = s.download_dir.trim().to_string();
     s.concurrent = s.concurrent.clamp(1, 5);
     s.player_volume = s.player_volume.clamp(0.0, 1.0);
+    if !URDU_FONTS.contains(&s.urdu_font.as_str()) {
+        s.urdu_font = "naskh".to_string();
+    }
+    s.lyrics_size_latin = s.lyrics_size_latin.clamp(12, 32);
+    s.lyrics_size_urdu = s.lyrics_size_urdu.clamp(14, 40);
     if !s.player_speed.is_finite() || s.player_speed < SPEED_MIN {
         s.player_speed = SPEED_MIN;
     } else if s.player_speed > SPEED_MAX {
@@ -151,6 +175,93 @@ pub fn set_settings(app: AppHandle, settings: AppSettings) -> Result<AppSettings
     Ok(s)
 }
 
+/// Cached metadata for a user-picked Urdu font file.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedUrduFont {
+    /// File name inside `{app_data}/fonts/` (persisted in settings).
+    pub file: String,
+    /// Original file stem, for display.
+    pub label: String,
+}
+
+/// Native file dialog → copy the picked font into the app-owned fonts cache.
+/// One custom slot: older `custom-*` files are swept so the webview always
+/// gets a fresh URL (and never loads a stale cached face).
+#[tauri::command]
+pub async fn pick_urdu_font(app: AppHandle) -> Result<PickedUrduFont, String> {
+    use crate::services::fonts::{file_is_font, fonts_dir};
+
+    let picker_app = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        picker_app
+            .dialog()
+            .file()
+            .add_filter("Fonts", &["ttf", "otf", "woff", "woff2"])
+            .blocking_pick_file()
+            .and_then(|p| p.into_path().ok())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "no font selected".to_string())?;
+
+    if !file_is_font(&picked) {
+        return Err("that file is not a supported font (ttf / otf / woff / woff2)".into());
+    }
+
+    let dir = fonts_dir(&app)?;
+    let ext = picked
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_else(|| "ttf".to_string());
+    if !matches!(ext.as_str(), "ttf" | "otf" | "woff" | "woff2") {
+        return Err("unsupported font format — use ttf, otf, woff or woff2".into());
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let file = format!("custom-{stamp}.{ext}");
+    std::fs::copy(&picked, dir.join(&file)).map_err(|e| format!("copy failed: {e}"))?;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("custom-") && name != file {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    let label = picked
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Custom")
+        .to_string();
+    Ok(PickedUrduFont { file, label })
+}
+
+/// Loopback URL for the persisted custom Urdu font (for the runtime FontFace).
+#[tauri::command]
+pub fn urdu_custom_font_url(
+    app: AppHandle,
+    server: State<'_, crate::services::media::MediaServer>,
+) -> Result<String, String> {
+    use crate::services::fonts::fonts_dir;
+
+    let s = load_settings(&app);
+    let file = s
+        .urdu_custom_file
+        .ok_or_else(|| "no custom Urdu font is set".to_string())?;
+    if !crate::services::media::is_font_name(&file) {
+        return Err("invalid custom font name".into());
+    }
+    let dir = fonts_dir(&app)?;
+    if !dir.join(&file).is_file() {
+        return Err("the custom font file is missing — pick it again".into());
+    }
+    Ok(server.font_url_for(&file))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +285,7 @@ mod tests {
         // v0.2 player fields default to unity.
         assert_eq!(s.player_volume, 1.0);
         assert_eq!(s.player_speed, 1.0);
+        assert_eq!(s.urdu_font, "naskh");
         let _ = std::fs::remove_file(&p);
     }
 
@@ -276,6 +388,38 @@ mod tests {
         });
         assert_eq!(s.player_volume, 0.35);
         assert_eq!(s.player_speed, 1.5);
+    }
+
+    #[test]
+    fn sanitize_rejects_unknown_urdu_font() {
+        let s = sanitize(AppSettings {
+            urdu_font: "comic-sans".into(),
+            ..Default::default()
+        });
+        assert_eq!(s.urdu_font, "naskh");
+        let s = sanitize(AppSettings {
+            urdu_font: "custom".into(),
+            ..Default::default()
+        });
+        assert_eq!(s.urdu_font, "custom");
+    }
+
+    #[test]
+    fn sanitize_clamps_lyrics_sizes() {
+        let s = sanitize(AppSettings {
+            lyrics_size_latin: 5,
+            lyrics_size_urdu: 99,
+            ..Default::default()
+        });
+        assert_eq!(s.lyrics_size_latin, 12);
+        assert_eq!(s.lyrics_size_urdu, 40);
+        let s = sanitize(AppSettings {
+            lyrics_size_latin: 20,
+            lyrics_size_urdu: 24,
+            ..Default::default()
+        });
+        assert_eq!(s.lyrics_size_latin, 20);
+        assert_eq!(s.lyrics_size_urdu, 24);
     }
 
     #[test]

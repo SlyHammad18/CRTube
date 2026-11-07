@@ -124,13 +124,34 @@ fn strip_noise(title: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Clean a YouTube channel name into a usable artist hint. Auto-generated
+/// music channels carry suffixes ("WEA - Topic", "HIMVEVO") and some channels
+/// are pure noise (numeric ids) — worse than no artist at all.
+fn clean_artist_channel(channel: Option<&str>) -> String {
+    let Some(c) = channel else {
+        return String::new();
+    };
+    let mut s = c.trim().to_string();
+    for suffix in [" - Topic", " – Topic", "- Topic", "VEVO", "vevo"] {
+        if let Some(stripped) = s.strip_suffix(suffix) {
+            s = stripped.trim_end().to_string();
+        }
+    }
+    let s = s.trim();
+    if s.chars().count() < 2 || s.chars().all(|c| c.is_ascii_digit()) {
+        String::new()
+    } else {
+        s.to_string()
+    }
+}
+
 /// Derive `(track, artist)` search terms from a download's title + channel.
 ///
 /// Handles the dominant YouTube patterns:
 /// - `"Artist - Title"` / `"Artist – Title"` / `"Artist — Title"` → split on first dash
 /// - `"Artist | Title"` → split on pipe
 /// - decoration like `"(Official Video)"`, `"[HD]"` is dropped
-/// - fallback: track = whole title, artist = channel
+/// - fallback: track = whole title, artist = cleaned channel (junk → "")
 pub fn parse_title_artist(title: &str, channel: Option<&str>) -> (String, String) {
     let cleaned = strip_noise(title.trim());
     for sep in [" - ", " – ", " — ", " | "] {
@@ -141,10 +162,7 @@ pub fn parse_title_artist(title: &str, channel: Option<&str>) -> (String, String
             }
         }
     }
-    (
-        cleaned.clone(),
-        channel.unwrap_or_default().trim().to_string(),
-    )
+    (cleaned.clone(), clean_artist_channel(channel))
 }
 
 fn duration_delta(track: &LrcLibTrack, target: Option<u64>) -> Option<u64> {
@@ -273,7 +291,38 @@ async fn lrclib_search(
     Ok(resp.json::<Vec<LrcLibTrack>>().await.unwrap_or_default())
 }
 
+/// Free-text search with LRCLIB's structured parameters — far better signal
+/// than `q=` when the (track, artist) split is known.
+async fn lrclib_search_named(
+    client: &reqwest::Client,
+    track: &str,
+    artist: &str,
+) -> Result<Vec<LrcLibTrack>, String> {
+    let mut url = reqwest::Url::parse(&format!("{LRCLIB_BASE}/api/search")).expect("static base URL");
+    url.query_pairs_mut()
+        .append_pair("track_name", track)
+        .append_pair("artist_name", artist);
+    let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(Vec::new());
+    }
+    let resp = resp.error_for_status().map_err(|e| e.to_string())?;
+    Ok(resp.json::<Vec<LrcLibTrack>>().await.unwrap_or_default())
+}
+
+fn has_lyrics(t: &LrcLibTrack) -> bool {
+    has_synced(t) || t.plain_lyrics.is_some() || t.instrumental
+}
+
 /// Cache-first LRCLIB lookup. Returns `Ok(None)` when nothing trustworthy is found.
+///
+/// The lookup is a staged chain, each stage gated by `pick_best`'s duration
+/// check so a looser query can't surface the wrong song:
+/// 1. `/api/get` with the exact (track, artist)
+/// 2. `/api/search?track_name&artist_name` — structured search
+/// 3. `/api/search?q="song name artist"` (or just the song name without an artist)
+///
+/// A stage that errors is remembered but never aborts the chain.
 pub async fn fetch_lyrics(
     app: &AppHandle,
     video_id: &str,
@@ -296,35 +345,41 @@ pub async fn fetch_lyrics(
     let (track, artist) = parse_title_artist(title, channel);
     let client = lrclib_client()?;
 
-    let found = if track.is_empty() || artist.is_empty() {
-        None
-    } else {
-        match lrclib_get(&client, &artist, &track, duration_s).await {
-            Ok(Some(t)) => Some(t),
-            Ok(None) => None,
-            Err(e) => return Err(format!("lrclib get failed: {e}")),
-        }
-    };
+    let mut last_err: Option<String> = None;
+    let mut chosen: Option<LrcLibTrack> = None;
 
-    let chosen = match found {
-        Some(t) if has_synced(&t) || t.plain_lyrics.is_some() || t.instrumental => Some(t),
-        _ => {
-            let query = if artist.is_empty() {
-                track.clone()
-            } else {
-                format!("{artist} {track}")
-            };
-            if query.trim().is_empty() {
-                None
-            } else {
-                let results = lrclib_search(&client, &query).await?;
-                pick_best(&results, duration_s).cloned()
-            }
+    if !track.is_empty() && !artist.is_empty() {
+        match lrclib_get(&client, &artist, &track, duration_s).await {
+            Ok(Some(t)) if has_lyrics(&t) => chosen = Some(t),
+            Ok(_) => {}
+            Err(e) => last_err = Some(format!("lyrics service error — {e}")),
         }
-    };
+    }
+
+    if chosen.is_none() && !track.is_empty() && !artist.is_empty() {
+        match lrclib_search_named(&client, &track, &artist).await {
+            Ok(results) => chosen = pick_best(&results, duration_s).cloned(),
+            Err(e) => last_err = Some(format!("lyrics service error — {e}")),
+        }
+    }
+
+    if chosen.is_none() && !track.is_empty() {
+        let query = if artist.is_empty() {
+            track.clone()
+        } else {
+            format!("{track} {artist}")
+        };
+        match lrclib_search(&client, &query).await {
+            Ok(results) => chosen = pick_best(&results, duration_s).cloned(),
+            Err(e) => last_err = Some(format!("lyrics service error — {e}")),
+        }
+    }
 
     let Some(mut t) = chosen else {
-        return Ok(None);
+        return match last_err {
+            Some(e) => Err(e),
+            None => Ok(None),
+        };
     };
 
     let synced = t.synced_lyrics.take_if(|s| !s.trim().is_empty());
@@ -345,11 +400,71 @@ pub async fn fetch_lyrics(
 
 /// Return every LRCLIB `/api/search` hit for `query` (not just the single best
 /// one) so the UI can offer multiple candidates. Each candidate carries its raw
-/// synced/plain text so the chosen one can be persisted directly. Near-duplicate
+/// synced/plain text so applying a choice is one IPC call. Near-duplicate
 /// (track, artist) rows are collapsed, keeping the synced/plain-richest variant.
+///
+/// Beyond the free-text `q=` search the query is re-read structurally, because
+/// users type things like "Nawazishein Karam Shuja Haider" (track + artist) or
+/// "Shuja Haider - Nawazishein Karam" (artist - track):
+/// - dash-separated → structured `track_name`/`artist_name` searches, both readings;
+/// - bare multi-word → every 2-way word split as (track, artist), then (artist,
+///   track) — the right split point is only knowable from the results;
+/// - still nothing → contiguous **sub-phrases** as free-text queries (longest
+///   first: "Nawazishein Karam" rescues tracks recorded under different
+///   metadata, e.g. "Tera Woh Pyar (Nawazishein Karam)").
 pub async fn search_lyrics(query: &str) -> Result<Vec<LyricsCandidate>, String> {
     let client = lrclib_client()?;
-    let results = lrclib_search(&client, query).await?;
+    let cleaned = strip_noise(query);
+    let mut results = lrclib_search(&client, query).await?;
+    if let Some((left, right)) = cleaned.split_once(" - ") {
+        let (a, t) = (left.trim(), right.trim());
+        if !a.is_empty() && !t.is_empty() {
+            if let Ok(named) = lrclib_search_named(&client, t, a).await {
+                results.extend(named);
+            }
+            if let Ok(named) = lrclib_search_named(&client, a, t).await {
+                results.extend(named);
+            }
+        }
+    } else {
+        let words: Vec<&str> = cleaned.split_whitespace().collect();
+        if (2..=8).contains(&words.len()) {
+            // (track, artist) readings, then (artist, track) fallbacks.
+            for reversed in [false, true] {
+                for i in 1..words.len() {
+                    let (first, second) = if reversed {
+                        (words[i..].join(" "), words[..i].join(" "))
+                    } else {
+                        (words[..i].join(" "), words[i..].join(" "))
+                    };
+                    if let Ok(named) = lrclib_search_named(&client, &first, &second).await {
+                        results.extend(named);
+                    }
+                    if results.len() >= 12 {
+                        break;
+                    }
+                }
+                if results.len() >= 12 {
+                    break;
+                }
+            }
+            // Contiguous sub-phrases as free-text queries, longest first.
+            if results.is_empty() && words.len() >= 2 {
+                'windows: for len in (2..words.len()).rev() {
+                    for start in 0..=words.len() - len {
+                        let phrase = words[start..start + len].join(" ");
+                        if let Ok(hits) = lrclib_search(&client, &phrase).await {
+                            results.extend(hits);
+                        }
+                        if results.len() >= 12 {
+                            break 'windows;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    results.truncate(60);
     let mut out: Vec<LyricsCandidate> = results
         .into_iter()
         .map(|t| {
@@ -458,6 +573,15 @@ mod tests {
             ("Some Standalone Track".into(), "LoFi Girl".into())
         );
         assert_eq!(parse_title_artist("No Channel Here", None).1, "");
+    }
+
+    #[test]
+    fn channel_cleanup_strips_suffixes_and_junk() {
+        assert_eq!(clean_artist_channel(Some("WEA - Topic")), "WEA");
+        assert_eq!(clean_artist_channel(Some("HIMVEVO")), "HIM");
+        assert_eq!(clean_artist_channel(Some("12345")), "");
+        assert_eq!(clean_artist_channel(Some("LoFi Girl")), "LoFi Girl");
+        assert_eq!(clean_artist_channel(None), "");
     }
 
     #[test]

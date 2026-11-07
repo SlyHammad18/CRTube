@@ -124,6 +124,9 @@ pub fn run() {
                 services::media::MediaServer::spawn(app.handle().clone(), media_roots),
             )?;
             app.manage(server);
+            // Pre-download stream previews: resolved upstream URLs cached here,
+            // consumed by the loopback proxy route (§5.6).
+            app.manage(services::stream::StreamSessions::default());
             // MPRIS player behind the desktop media widget: one long-lived
             // session-bus connection, opened once here (see `services::mpris`).
             let mpris =
@@ -154,6 +157,8 @@ pub fn run() {
             commands::library::pick_folder,
             commands::settings::get_settings,
             commands::settings::set_settings,
+            commands::settings::pick_urdu_font,
+            commands::settings::urdu_custom_font_url,
             commands::player::list_playlists,
             commands::player::create_playlist,
             commands::player::rename_playlist,
@@ -169,6 +174,7 @@ pub fn run() {
             commands::player::clear_lyrics,
             commands::player::set_lyrics_offset,
             commands::player::media_url,
+            commands::player::stream_media_url,
             commands::player::thumb_media_url,
             commands::player::get_session,
             commands::player::set_session,

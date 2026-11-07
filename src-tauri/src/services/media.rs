@@ -13,6 +13,8 @@ use tokio::process::Command as TokioCommand;
 
 use super::db::Db;
 use super::proc::{no_window, no_window_std};
+use super::stream::StreamSessions;
+use super::ytdlp::StreamKind;
 use crate::services::installer;
 
 /// Loopback-only streaming server that feeds the webview's media element
@@ -38,6 +40,9 @@ pub struct MediaServer {
     pub transcoding: Arc<tokio::sync::Mutex<HashSet<i64>>>,
     /// Guards per-video square-thumbnail renders (OS media-session artwork).
     pub thumb_transcoding: Arc<tokio::sync::Mutex<HashSet<String>>>,
+    /// Shared HTTP client for relaying remote stream previews (no redirects —
+    /// googlevideo URLs are fetched directly).
+    pub http: reqwest::Client,
 }
 
 /// Pure: parse a single-range `Range: bytes=...` header against a file length.
@@ -70,15 +75,9 @@ pub fn parse_range(header: Option<&str>, len: u64) -> Option<(u64, u64)> {
     Some((start, end.min(len - 1)))
 }
 
-/// Pure: best-effort Content-Type for downloaded containers.
-pub fn content_type_for(path: &Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or_default()
-        .to_lowercase()
-        .as_str()
-    {
+/// Pure: best-effort Content-Type for a container/track extension.
+pub fn content_type_for_ext(ext: &str) -> &'static str {
+    match ext.to_lowercase().as_str() {
         "mp3" => "audio/mpeg",
         "m4a" | "mp4" | "m4v" => "video/mp4",
         "webm" => "video/webm",
@@ -87,8 +86,21 @@ pub fn content_type_for(path: &Path) -> &'static str {
         "ogg" | "opus" => "audio/ogg",
         "wav" => "audio/wav",
         "jpg" | "jpeg" => "image/jpeg",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
         _ => "application/octet-stream",
     }
+}
+
+/// Pure: best-effort Content-Type for downloaded containers.
+pub fn content_type_for(path: &Path) -> &'static str {
+    content_type_for_ext(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default(),
+    )
 }
 
 /// Probe the video codec of a file via ffprobe. Returns `None` when there is
@@ -203,12 +215,17 @@ impl MediaServer {
             .await
             .map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| e.to_string())?;
         let server = Self {
             port,
             token: generate_token(),
             roots: Arc::new(tokio::sync::RwLock::new(roots)),
             transcoding: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             thumb_transcoding: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            http,
         };
 
         let token = server.token.clone();
@@ -256,6 +273,28 @@ impl MediaServer {
         format!("http://127.0.0.1:{}/{}/t/{}", self.port, self.token, download_id)
     }
 
+    /// Loopback URL that relays a *remote* stream (pre-download preview).
+    /// The direct URL itself is resolved separately into `StreamSessions` and
+    /// never leaves the backend. Path: /{token}/stream/{v|a}/{video_id}.
+    pub fn stream_url_for(&self, video_id: &str, kind: StreamKind) -> String {
+        format!(
+            "http://127.0.0.1:{}/{}/stream/{}/{}",
+            self.port,
+            self.token,
+            match kind {
+                StreamKind::Video => "v",
+                StreamKind::Audio => "a",
+            },
+            video_id
+        )
+    }
+
+    /// Loopback URL for a cached font file (e.g. the Jameel Noori Nastaleeq
+    /// downloaded for the lyrics selector). Path: /{token}/fonts/{name}.
+    pub fn font_url_for(&self, name: &str) -> String {
+        format!("http://127.0.0.1:{}/{}/fonts/{}", self.port, self.token, name)
+    }
+
     /// Loopback URL for a cached thumbnail, rendered as a centered square crop
     /// (GNOME's media card stretches 16:9 art when it has to fill its square
     /// slot). WebKit only publishes artwork it can fetch like an `<img>` and
@@ -287,33 +326,93 @@ struct Request {
     /// `/{token}/thumbs/{video_id}/sq` requests the centered-square-cropped
     /// variant (GNOME stretches 16:9 mpris artwork to fit its square card).
     square: bool,
+    /// `/{token}/stream/{v|a}/{video_id}` — remote stream preview relay.
+    stream: Option<(StreamKind, String)>,
+    /// `/{token}/fonts/{name}` — cached font file (e.g. Jameel Noori).
+    font: Option<String>,
 }
 
-/// Pure: parse a request target into `(transcode, id, video_id, square)`.
-/// Shapes: `/{token}/{id}`, `/{token}/t/{id}`, `/{token}/thumbs/{video_id}`,
-/// `/{token}/thumbs/{video_id}/sq`.
-fn parse_target(target: &str) -> (bool, Option<i64>, Option<String>, bool) {
+/// Parsed request target: `(transcode, download_id, thumb_video_id, square,
+/// stream, font)`.
+type ParsedTarget = (
+    bool,
+    Option<i64>,
+    Option<String>,
+    bool,
+    Option<(StreamKind, String)>,
+    Option<String>,
+);
+
+/// Pure: only simple font file names reach the `fonts` route — no paths, no
+/// leading dots (blocks `..` traversal).
+pub(crate) fn is_font_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 100
+        && !name.starts_with('.')
+        && !name.contains("..")
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// Pure: parse a request target. Shapes: `/{token}/{id}`,
+/// `/{token}/t/{id}`, `/{token}/thumbs/{video_id}`,
+/// `/{token}/thumbs/{video_id}/sq`, `/{token}/stream/{v|a}/{video_id}`,
+/// `/{token}/fonts/{name}`.
+fn parse_target(target: &str) -> ParsedTarget {
     let segments: Vec<&str> = target.trim_matches('/').split('/').collect();
+    if segments.len() == 3 && segments.get(1) == Some(&"fonts") {
+        if is_font_name(segments[2]) {
+            return (false, None, None, false, None, Some(segments[2].to_string()));
+        }
+        return (false, None, None, false, None, None);
+    }
+    if segments.len() == 4 && segments.get(1) == Some(&"stream") {
+        let kind = match segments[2] {
+            "v" => Some(StreamKind::Video),
+            "a" => Some(StreamKind::Audio),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            return (
+                false,
+                None,
+                None,
+                false,
+                Some((kind, segments[3].to_string())),
+                None,
+            );
+        }
+    }
     match segments.len() {
         4 if segments.get(1) == Some(&"thumbs") && segments.get(3) == Some(&"sq") => {
-            (false, None, Some(segments[2].to_string()), true)
+            (false, None, Some(segments[2].to_string()), true, None, None)
         }
-        3 if segments.get(1) == Some(&"thumbs") => {
-            (false, None, Some(segments[2].to_string()), false)
-        }
+        3 if segments.get(1) == Some(&"thumbs") => (
+            false,
+            None,
+            Some(segments[2].to_string()),
+            false,
+            None,
+            None,
+        ),
         3 if segments.get(1) == Some(&"t") => (
             true,
             segments.get(2).and_then(|s| s.parse::<i64>().ok()),
             None,
             false,
+            None,
+            None,
         ),
         2 => (
             false,
             segments.get(1).and_then(|s| s.parse::<i64>().ok()),
             None,
             false,
+            None,
+            None,
         ),
-        _ => (false, None, None, false),
+        _ => (false, None, None, false, None, None),
     }
 }
 
@@ -359,9 +458,11 @@ where
     //   /{token}/t/{id}          on-the-fly transcode
     //   /{token}/thumbs/{video_id}     cached thumbnail
     //   /{token}/thumbs/{video_id}/sq  square-cropped thumbnail
+    //   /{token}/stream/{v|a}/{video_id}  remote stream preview relay
+    let target = target.split('?').next().unwrap_or_default();
     let segments: Vec<&str> = target.trim_matches('/').split('/').collect();
     let token = segments.first().copied().unwrap_or_default().to_string();
-    let (transcode, id, video_id, square) = parse_target(&target);
+    let (transcode, id, video_id, square, stream, font) = parse_target(target);
     Ok(Some(Request {
         want_body: method != "HEAD",
         range,
@@ -370,6 +471,8 @@ where
         transcode,
         video_id,
         square,
+        stream,
+        font,
     }))
 }
 
@@ -407,7 +510,44 @@ async fn serve_connection(
         } else {
             raw
         };
-        return serve_file(stream, path, req.range, req.want_body).await;
+        return serve_file(stream, path, req.range, req.want_body, "").await;
+    }
+
+    // Font route: {app_data}/fonts/{name} — app-owned cache (e.g. the
+    // Jameel Noori Nastaleeq downloaded for the lyrics selector). The font
+    // response carries `Access-Control-Allow-Origin: *` because CSS/webview
+    // font fetches are CORS-mode (unlike <img> thumbnails).
+    if let Some(name) = req.font {
+        let dir = match app.path().app_data_dir() {
+            Ok(d) => d.join("fonts"),
+            Err(_) => return respond_text(&mut stream, 404, "not found").await,
+        };
+        let path = dir.join(&name);
+        if !path.is_file() {
+            return respond_text(&mut stream, 404, "not found").await;
+        }
+        return serve_file(
+            stream,
+            path,
+            req.range,
+            req.want_body,
+            "Access-Control-Allow-Origin: *\r\n",
+        )
+        .await;
+    }
+
+    // Remote stream preview: relay an upstream URL resolved by the
+    // `stream_media_url` command into `StreamSessions`.
+    if let Some((kind, video_id)) = req.stream {
+        return serve_remote_stream(
+            stream,
+            app,
+            video_id,
+            kind,
+            req.range,
+            req.want_body,
+        )
+        .await;
     }
 
     let Some(id) = req.id else {
@@ -443,7 +583,7 @@ async fn serve_connection(
         return serve_transcode(stream, app, id, resolved, req.range, req.want_body, transcoding)
             .await;
     }
-    serve_file(stream, resolved, req.range, req.want_body).await
+    serve_file(stream, resolved, req.range, req.want_body, "").await
 }
 
 /// Pure: ffmpeg args that center-crop the cached (16:9) thumbnail to a 1:1
@@ -542,11 +682,14 @@ async fn remove_thumb_lock(set: &Arc<tokio::sync::Mutex<HashSet<String>>>, id: &
 }
 
 /// Serve a file over HTTP with proper `Range` support (206 / 200).
+/// `extra_headers` is spliced verbatim into the response head (used for the
+/// CORS header on the fonts route).
 async fn serve_file<S>(
     mut stream: S,
     path: PathBuf,
     range: Option<String>,
     want_body: bool,
+    extra_headers: &str,
 ) -> Result<(), String>
 where
     S: tokio::io::AsyncWrite + Unpin,
@@ -563,7 +706,7 @@ where
             file.seek(SeekFrom::Start(start)).await.map_err(|e| e.to_string())?;
             let nbytes = end - start + 1;
             let head = format!(
-                "HTTP/1.1 206 Partial Content\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{len}\r\nContent-Length: {nbytes}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+                "HTTP/1.1 206 Partial Content\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{len}\r\nContent-Length: {nbytes}\r\nCache-Control: no-store\r\n{extra_headers}Connection: close\r\n\r\n"
             );
             stream.write_all(head.as_bytes()).await.ok();
             if want_body {
@@ -572,13 +715,149 @@ where
         }
         None => {
             let head = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nContent-Length: {len}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+                "HTTP/1.1 200 OK\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nContent-Length: {len}\r\nCache-Control: no-store\r\n{extra_headers}Connection: close\r\n\r\n"
             );
             stream.write_all(head.as_bytes()).await.ok();
             if want_body {
                 let mut file = file;
                 tokio::io::copy(&mut file, &mut stream).await.ok();
             }
+        }
+    }
+    stream.flush().await.ok();
+    Ok(())
+}
+
+/// Relay a remote stream preview to the webview. The upstream direct URL is
+/// fetched server-side with the headers captured at extraction time (signed
+/// googlevideo URLs are user-agent bound), and the response is piped through
+/// with `Range` passthrough so seeking works. An expired upstream (403/410)
+/// answers 502 and drops the session; MediaHost's error path then re-resolves
+/// the URL once.
+async fn serve_remote_stream<S>(
+    mut stream: S,
+    app: AppHandle,
+    video_id: String,
+    kind: StreamKind,
+    range: Option<String>,
+    want_body: bool,
+) -> Result<(), String>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+{
+    let Some(src) = app.state::<StreamSessions>().lookup(&video_id, kind) else {
+        return respond_text(&mut stream, 404, "not found").await;
+    };
+    let server = app.state::<MediaServer>();
+
+    // Follow the upstream redirect chain manually (the shared client runs with
+    // `Policy::none` for the rest of the server): googlevideo re-homes
+    // requests across its CDN edges (rrN---sn-*) with 302s — intermittently,
+    // per request — and an unfollowed redirect would reach the element as a
+    // 502, killing playback and every seek after it. UA/Referer/Range are
+    // re-applied on each hop; the final URL replaces the cached one so later
+    // range requests hit the edge directly.
+    let mut url = src.url.clone();
+    let mut resp = None;
+    for _ in 0..5 {
+        let mut upstream = server.http.get(&url).header(reqwest::header::ACCEPT, "*/*");
+        if let Some(ua) = src.user_agent.as_deref() {
+            upstream = upstream.header(reqwest::header::USER_AGENT, ua);
+        }
+        if let Some(referer) = src.referer.as_deref() {
+            upstream = upstream.header(reqwest::header::REFERER, referer);
+        }
+        if let Some(r) = range.as_deref() {
+            upstream = upstream.header(reqwest::header::RANGE, r);
+        }
+        match upstream.send().await {
+            Ok(r) if r.status().is_redirection() => {
+                let Some(loc) = r
+                    .headers()
+                    .get(reqwest::header::LOCATION)
+                    .and_then(|v| v.to_str().ok())
+                else {
+                    return respond_text(&mut stream, 502, "upstream redirect w/o location").await;
+                };
+                url = match loc.parse::<reqwest::Url>() {
+                    Ok(parsed) => parsed.to_string(),
+                    Err(_) => match reqwest::Url::parse(&url).and_then(|b| b.join(loc)) {
+                        Ok(joined) => joined.to_string(),
+                        Err(_) => {
+                            return respond_text(&mut stream, 502, "bad upstream redirect").await
+                        }
+                    },
+                };
+            }
+            Ok(r) => {
+                resp = Some(r);
+                break;
+            }
+            Err(_) => return respond_text(&mut stream, 502, "upstream unreachable").await,
+        }
+    }
+    let Some(resp) = resp else {
+        return respond_text(&mut stream, 502, "too many upstream redirects").await;
+    };
+    if url != src.url {
+        app.state::<StreamSessions>().update_url(&video_id, kind, url);
+    }
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::GONE {
+        // Signed URL expired — drop the session so the next command call
+        // re-extracts; the element's error handler retries once.
+        app.state::<StreamSessions>().invalidate(&video_id, kind);
+        return respond_text(&mut stream, 502, "stream expired").await;
+    }
+    if !status.is_success() {
+        return respond_text(&mut stream, 502, "upstream error").await;
+    }
+
+    let headers = resp.headers().clone();
+    let ct = headers
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| content_type_for_ext(&src.ext).to_string());
+
+    let mut head = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {ct}\r\nAccept-Ranges: bytes\r\nCache-Control: no-store\r\nConnection: close\r\n",
+        status.as_u16(),
+        status.canonical_reason().unwrap_or("OK")
+    );
+    if let Some(len) = headers
+        .get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+    {
+        head.push_str(&format!("Content-Length: {len}\r\n"));
+    }
+    if let Some(cr) = headers
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+    {
+        head.push_str(&format!("Content-Range: {cr}\r\n"));
+    }
+    head.push_str("\r\n");
+    stream
+        .write_all(head.as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
+    if !want_body {
+        stream.flush().await.ok();
+        return Ok(());
+    }
+
+    let mut resp = resp;
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                if stream.write_all(&chunk).await.is_err() {
+                    break; // client hung up mid-stream
+                }
+            }
+            Ok(None) => break,
+            Err(_) => break,
         }
     }
     stream.flush().await.ok();
@@ -622,7 +901,7 @@ where
     // Fast path: a completed transcode already exists — serve it statically
     // with full Range support (instant + seekable).
     if cache.exists() && done.exists() {
-        return serve_file(stream, cache, range, want_body).await;
+        return serve_file(stream, cache, range, want_body, "").await;
     }
 
     // HEAD: report availability without running a full transcode.
@@ -646,7 +925,7 @@ where
 
     if !owner {
         wait_for_done(&done, std::time::Duration::from_secs(600)).await;
-        return serve_file(stream, cache, range, want_body).await;
+        return serve_file(stream, cache, range, want_body, "").await;
     }
 
     // Owner: drop any stale cache, then transcode to the cache file only
@@ -887,20 +1166,94 @@ mod tests {
 
     #[test]
     fn parse_target_shapes() {
-        assert_eq!(parse_target("/tok/42"), (false, Some(42), None, false));
-        assert_eq!(parse_target("/tok/t/7"), (true, Some(7), None, false));
+        assert_eq!(parse_target("/tok/42"), (false, Some(42), None, false, None, None));
+        assert_eq!(parse_target("/tok/t/7"), (true, Some(7), None, false, None, None));
         assert_eq!(
             parse_target("/tok/thumbs/abc123def"),
-            (false, None, Some("abc123def".into()), false)
+            (false, None, Some("abc123def".into()), false, None, None)
         );
         assert_eq!(
             parse_target("/tok/thumbs/abc123def/sq"),
-            (false, None, Some("abc123def".into()), true)
+            (false, None, Some("abc123def".into()), true, None, None)
         );
-        assert_eq!(parse_target("/tok/thumbs/123/sq"), (false, None, Some("123".into()), true));
-        assert_eq!(parse_target("/tok"), (false, None, None, false));
-        assert_eq!(parse_target("/tok/bad"), (false, None, None, false));
-        assert_eq!(parse_target(""), (false, None, None, false));
+        assert_eq!(
+            parse_target("/tok/thumbs/123/sq"),
+            (false, None, Some("123".into()), true, None, None)
+        );
+        assert_eq!(parse_target("/tok"), (false, None, None, false, None, None));
+        assert_eq!(parse_target("/tok/bad"), (false, None, None, false, None, None));
+        assert_eq!(parse_target(""), (false, None, None, false, None, None));
+    }
+
+    #[test]
+    fn parse_target_stream_shapes() {
+        assert_eq!(
+            parse_target("/tok/stream/v/jNQXAC9IVRw"),
+            (
+                false,
+                None,
+                None,
+                false,
+                Some((StreamKind::Video, "jNQXAC9IVRw".into())),
+                None
+            )
+        );
+        assert_eq!(
+            parse_target("/tok/stream/a/dQw4w9WgXcQ"),
+            (
+                false,
+                None,
+                None,
+                false,
+                Some((StreamKind::Audio, "dQw4w9WgXcQ".into())),
+                None
+            )
+        );
+        // Unknown kind / malformed shapes fall through to non-stream routes.
+        assert_eq!(
+            parse_target("/tok/stream/x/abc"),
+            (false, None, None, false, None, None)
+        );
+        assert_eq!(parse_target("/tok/stream/v"), (false, None, None, false, None, None));
+    }
+
+    #[test]
+    fn parse_target_font_shapes() {
+        assert_eq!(
+            parse_target("/tok/fonts/JameelNooriNastaleeq.ttf"),
+            (
+                false,
+                None,
+                None,
+                false,
+                None,
+                Some("JameelNooriNastaleeq.ttf".into())
+            )
+        );
+        // Traversal and dotfile names never resolve.
+        assert_eq!(
+            parse_target("/tok/fonts/.."),
+            (false, None, None, false, None, None)
+        );
+        assert_eq!(
+            parse_target("/tok/fonts/.hidden"),
+            (false, None, None, false, None, None)
+        );
+        assert_eq!(
+            parse_target("/tok/fonts/a/b"),
+            (false, None, None, false, None, None)
+        );
+        assert_eq!(parse_target("/tok/fonts"), (false, None, None, false, None, None));
+    }
+
+    #[test]
+    fn font_name_validation() {
+        assert!(is_font_name("JameelNooriNastaleeq.ttf"));
+        assert!(is_font_name("my_font-2.otf"));
+        assert!(!is_font_name(".hidden"));
+        assert!(!is_font_name(".."));
+        assert!(!is_font_name("a/b"));
+        assert!(!is_font_name(""));
     }
 
     #[test]

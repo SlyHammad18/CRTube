@@ -1,5 +1,6 @@
 pub mod db;
 pub mod download;
+pub mod fonts;
 pub mod installer;
 pub mod lyrics;
 pub mod lyrics_overlay;
@@ -7,5 +8,6 @@ pub mod media;
 pub mod mpris;
 pub mod proc;
 pub mod session;
+pub mod stream;
 pub mod thumbs;
 pub mod ytdlp;

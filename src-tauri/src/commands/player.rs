@@ -9,6 +9,8 @@ use crate::services::installer;
 use crate::services::lyrics::{self, LyricsCandidate, LyricsPayload};
 use crate::services::media;
 use crate::services::session;
+use crate::services::stream;
+use crate::services::ytdlp::StreamKind;
 
 use serde_json::Value;
 
@@ -107,6 +109,36 @@ pub fn reorder_playlist_items(
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::reorder_playlist_items(&conn, playlist_id, &item_ids).map_err(|e| e.to_string())
+}
+
+/// Resolve (and cache) the direct upstream stream for a pre-download preview
+/// and return the loopback proxy URL for it. `Err` carries a friendly message
+/// (bot check, live stream, region block…); `force` drops a stale cached URL.
+#[tauri::command]
+pub async fn stream_media_url(
+    app: AppHandle,
+    server: State<'_, media::MediaServer>,
+    video_id: String,
+    kind: String,
+    force: Option<bool>,
+) -> Result<Option<String>, String> {
+    let kind = match kind.as_str() {
+        "video" => StreamKind::Video,
+        "audio" => StreamKind::Audio,
+        _ => return Err("unknown preview kind".into()),
+    };
+    let video_id = video_id.trim();
+    let settings = crate::commands::settings::load_settings(&app);
+    stream::ensure(
+        &app,
+        video_id,
+        kind,
+        force.unwrap_or(false),
+        &settings.youtube_cookies,
+        &settings.youtube_cookies_file,
+    )
+    .await?;
+    Ok(Some(server.stream_url_for(video_id, kind)))
 }
 
 /// Loopback stream URL for a download; `Ok(None)` when the row or file is gone.

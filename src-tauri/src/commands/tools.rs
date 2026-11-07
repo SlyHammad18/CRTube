@@ -61,6 +61,11 @@ async fn ensure_tools_flow(
     app: &AppHandle,
     svc: &ToolService,
 ) -> Result<EnsureOutcome, String> {
+    // Boot flow: "checking" while probing versions and comparing against the
+    // latest release, "updating" only while something is actually being
+    // downloaded, then "ready". A no-op boot (tools present, versions equal)
+    // therefore never shows "updating".
+    emit_status(app, "checking");
     let bin = installer::bin_dir(app).map_err(|e| e.to_string())?;
     tokio::fs::create_dir_all(&bin).await.map_err(|e| e.to_string())?;
 
@@ -82,6 +87,9 @@ async fn ensure_tools_flow(
                 Some(v) if v == latest.tag => (latest.tag.clone(), false),
                 _ => {
                     let updated = current_ytdlp.is_some();
+                    // An update is genuinely available — now it's honest to
+                    // say "updating".
+                    emit_status(app, "updating");
                     match install_latest_ytdlp(app, &bin, &latest).await {
                         Ok(version) => (version, updated),
                         Err(e) => match &current_ytdlp {
@@ -140,6 +148,7 @@ async fn update_ytdlp_flow(
     svc: &ToolService,
     force: bool,
 ) -> Result<UpdateOutcome, String> {
+    emit_status(app, "updating");
     let bin = installer::bin_dir(app).map_err(|e| e.to_string())?;
     tokio::fs::create_dir_all(&bin).await.map_err(|e| e.to_string())?;
 
@@ -174,8 +183,9 @@ async fn run_tracked<T>(
     gate: &Mutex<()>,
     flow: impl std::future::Future<Output = Result<T, String>>,
 ) -> Result<T, String> {
+    // Each flow announces its own start state ("checking"/"updating"); this
+    // wrapper only owns the gate and the terminal status.
     let _permit = gate.lock().await;
-    emit_status(app, "updating");
     match flow.await {
         Ok(v) => {
             emit_status(app, "ready");
