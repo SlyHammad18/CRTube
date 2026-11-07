@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { ArrowsOut, Minus, PencilSimple, PictureInPicture, Plus } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
 import { useLyricsOverlayStore } from "../../stores/lyricsOverlay";
@@ -65,8 +65,12 @@ export function CaptionDeck({
 
   let content: ReactNode;
   if (lyrics.status === "loading") {
+    // flex-1 like every other state: a bare label would collapse the deck on
+    // each track switch and bounce the seek bar/transport up and down.
     content = (
-      <div className="px-4 py-6 font-mono text-12 text-dim">{"> loading lyrics_"}</div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="px-4 py-6 font-mono text-12 text-dim">{"> loading lyrics_"}</div>
+      </div>
     );
   } else if (lyrics.status === "instrumental") {
     content = <CenteredTag>INSTRUMENTAL</CenteredTag>;
@@ -146,9 +150,21 @@ export function CaptionDeck({
     );
   }
 
+  // Crossfade the deck between states and track switches: each (track, state)
+  // mounts fresh and fades in — transform/opacity only, static under
+  // prefers-reduced-motion.
+  const deckKey = `${lyrics.trackKey ?? "none"}:${lyrics.status}`;
   return (
     <>
-      {content}
+      <motion.div
+        key={deckKey}
+        initial={reduce ? false : { opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: reduce ? 0 : 0.2, ease: [0.16, 1, 0.3, 1] }}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {content}
+      </motion.div>
       <LyricsSearchModal
         open={lyricsModal !== null}
         mode={lyricsModal ?? "find"}
