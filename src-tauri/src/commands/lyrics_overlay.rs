@@ -28,12 +28,34 @@ pub struct OverlayPosition {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(tag = "trackKind", rename_all = "camelCase")]
+pub enum OverlayEntry {
+    /// A downloaded library row — favourite/playlist controls available.
+    Library(LibraryEntry),
+    /// A live stream track (no DB row). Shaped like the frontend's
+    /// `StreamTrack` so the overlay can feed it straight into `useLyrics`.
+    /// Enum-level `rename_all` only covers variant names, so the fields need
+    /// their own attribute to reach the overlay as `videoId`/`durationS`.
+    #[serde(rename_all = "camelCase")]
+    Stream {
+        source: String,
+        video_id: String,
+        kind: String,
+        title: String,
+        channel: Option<String>,
+        duration_s: Option<u64>,
+        thumb_url: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LyricsOverlaySnapshot {
-    pub entry: LibraryEntry,
+    pub entry: OverlayEntry,
     pub sequence: u64,
     pub position_s: f64,
     pub playing: bool,
+    pub buffering: bool,
     pub speed: f64,
     pub volume: f64,
     pub muted: bool,
@@ -436,13 +458,44 @@ pub fn lyrics_overlay_snapshot(
     let Some(playback) = mpris.overlay_snapshot()? else {
         return Ok(None);
     };
+    // Live stream track: no DB row exists — describe it from the playback
+    // state the main window pushed (identity = video id).
+    if playback.track_id == 0 {
+        if let Some(video_id) = playback.track_video_id {
+            return Ok(Some(LyricsOverlaySnapshot {
+                entry: OverlayEntry::Stream {
+                    source: "stream".into(),
+                    video_id,
+                    kind: "audio".into(),
+                    title: playback.track_title,
+                    channel: playback.track_artist,
+                    duration_s: playback.track_duration_s,
+                    thumb_url: None,
+                },
+                sequence: playback.sequence,
+                position_s: playback.position_s,
+                playing: playback.playing,
+                buffering: playback.buffering,
+                speed: playback.speed,
+                volume: playback.volume,
+                muted: playback.muted,
+                can_next: playback.can_next,
+                can_previous: playback.can_previous,
+                shuffle: playback.shuffle,
+                repeat: playback.repeat,
+                lyrics_revision: lyrics::revision(),
+            }));
+        }
+        return Ok(None);
+    }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let entry = db::get_entry(&conn, playback.track_id).ok();
     Ok(entry.map(|entry| LyricsOverlaySnapshot {
-        entry,
+        entry: OverlayEntry::Library(entry),
         sequence: playback.sequence,
         position_s: playback.position_s,
         playing: playback.playing,
+        buffering: playback.buffering,
         speed: playback.speed,
         volume: playback.volume,
         muted: playback.muted,
@@ -457,6 +510,7 @@ pub fn lyrics_overlay_snapshot(
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::filter_window_protocols;
+    use super::OverlayEntry;
 
     #[test]
     fn removes_only_wm_take_focus_from_protocols() {
@@ -468,5 +522,25 @@ mod tests {
     fn leaves_protocols_unchanged_without_take_focus() {
         let protocols = [10, 20, 30];
         assert_eq!(filter_window_protocols(&protocols, 40), protocols);
+    }
+
+    /// The overlay's lyric lookup and seek clock read `videoId`/`durationS`;
+    /// snake_case fields here silently break live-stream tracks only.
+    #[test]
+    fn stream_entry_serializes_camel_case_fields() {
+        let entry = OverlayEntry::Stream {
+            source: "stream".into(),
+            video_id: "kgAVoL49H3M".into(),
+            kind: "audio".into(),
+            title: "GGEZ".into(),
+            channel: Some("sugar and Kaien Nuen".into()),
+            duration_s: Some(151),
+            thumb_url: None,
+        };
+        let json = serde_json::to_value(&entry).expect("serialize overlay entry");
+        assert_eq!(json["trackKind"], "stream");
+        assert_eq!(json["videoId"], "kgAVoL49H3M");
+        assert_eq!(json["durationS"], 151);
+        assert!(json.get("video_id").is_none());
     }
 }

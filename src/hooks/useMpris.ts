@@ -77,6 +77,7 @@ export function useMpris() {
         if (!alive) return undefined;
         return ipc.mprisSetTrack({
           id: isStreamTrack(entry) ? 0 : entry.id,
+          videoId: entry.videoId,
           title: entry.title,
           artist: entry.channel,
           durationS: entry.durationS,
@@ -100,6 +101,7 @@ export function useMpris() {
     let last = {
       trackId: -1,
       playing: false,
+      buffering: false,
       volume: -1,
       muted: false,
       speed: -1,
@@ -150,6 +152,7 @@ export function useMpris() {
       enqueue({
         trackId,
         playing: player.playing,
+        buffering: player.buffering,
         positionS: player.currentTimeS,
         volume: player.volume,
         muted: player.muted,
@@ -162,6 +165,7 @@ export function useMpris() {
       last = {
         trackId,
         playing: player.playing,
+        buffering: player.buffering,
         volume: player.volume,
         muted: player.muted,
         speed: player.speed,
@@ -178,6 +182,7 @@ export function useMpris() {
       if (
         trackId !== last.trackId ||
         player.playing !== last.playing ||
+        player.buffering !== last.buffering ||
         player.volume !== last.volume ||
         player.muted !== last.muted ||
         player.speed !== last.speed ||

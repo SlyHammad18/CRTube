@@ -454,6 +454,11 @@ get_lyrics_overlay_prefs(app) -> LyricsOverlayPrefs
 set_lyrics_overlay_enabled(app, enabled) -> LyricsOverlayPrefs
 snap_lyrics_overlay(app) -> OverlayPosition
 lyrics_overlay_snapshot(db, mpris) -> Option<LyricsOverlaySnapshot>
+                                                              -- entry is a tagged union:
+                                                              -- {trackKind:"library"} = DB row,
+                                                              -- {trackKind:"stream"} = live stream
+                                                              -- (identity = video id; favourite/
+                                                              -- playlist controls hidden)
 fetch_lyrics(app, video_id, title, channel, duration_s) -> Option<LyricsPayload>
 -- LyricsPayload { synced, plain, instrumental, track_name, artist_name, cached }
  media_url(db, server, id) -> Option<String>                  -- loopback stream URL for a download

@@ -49,6 +49,8 @@ export interface DownloadRequest {
 /** Track shown by the desktop media widget (MPRIS). */
 export interface MprisTrack {
   id: number;
+  /** Present for every track; `id === 0` + a videoId marks a live stream. */
+  videoId?: string | null;
   title: string;
   artist?: string;
   durationS?: number;
@@ -67,6 +69,8 @@ export interface MprisState {
   /** Frontend wall-clock sample time, used to correct IPC latency in Rust. */
   sampledAtMs?: number;
   playing: boolean;
+  /** Media stalled (stream resolving/rebuffering) — consumed by the lyrics overlay. */
+  buffering: boolean;
   positionS: number;
   volume: number;
   muted: boolean;

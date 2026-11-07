@@ -48,7 +48,10 @@ fn normalize_repeat(value: &str) -> String {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MprisTrack {
+    #[serde(default)]
     pub id: i64,
+    #[serde(default)]
+    pub video_id: Option<String>,
     pub title: String,
     pub artist: Option<String>,
     pub duration_s: Option<f64>,
@@ -75,6 +78,11 @@ pub struct MprisState {
     #[serde(default)]
     pub sampled_at_ms: Option<u64>,
     pub playing: bool,
+    /// Media stalled (stream resolving/rebuffering). Overlay-only: freezes the
+    /// interpolated clock and drives the buffering badge — the MPRIS spec has
+    /// no property for it, so nothing is signalled on the bus.
+    #[serde(default)]
+    pub buffering: bool,
     pub position_s: f64,
     pub volume: f64,
     pub muted: bool,
@@ -90,9 +98,16 @@ pub struct MprisState {
 #[derive(Debug, Clone)]
 pub struct OverlayPlaybackSnapshot {
     pub track_id: i64,
+    /// `Some` for live stream tracks (no DB row) — the overlay builds its
+    /// lyrics key and metadata from these fields instead of a library entry.
+    pub track_video_id: Option<String>,
+    pub track_title: String,
+    pub track_artist: Option<String>,
+    pub track_duration_s: Option<u64>,
     pub sequence: u64,
     pub position_s: f64,
     pub playing: bool,
+    pub buffering: bool,
     pub speed: f64,
     pub volume: f64,
     pub muted: bool,
@@ -113,6 +128,9 @@ pub struct MprisCommand {
 #[derive(Default)]
 struct Track {
     id: i64,
+    /// Present for every track (library rows carry their YouTube id too);
+    /// `id == 0` + a video id marks a live stream track, which has no DB row.
+    video_id: Option<String>,
     title: String,
     artist: Option<String>,
     duration_us: i64,
@@ -122,6 +140,7 @@ struct Track {
 struct Snapshot {
     track: Track,
     playing: bool,
+    buffering: bool,
     position_us: i64,
     position_updated_at: Instant,
     volume: f64,
@@ -141,6 +160,7 @@ impl Snapshot {
         Self {
             track: Track::default(),
             playing: false,
+            buffering: false,
             position_us: 0,
             position_updated_at: Instant::now(),
             volume: 1.0,
@@ -197,6 +217,7 @@ fn apply_state(snapshot: &mut Snapshot, state: &MprisState) -> Option<StateChang
     };
 
     snapshot.playing = state.playing;
+    snapshot.buffering = state.buffering;
     snapshot.position_us = sampled_position_us(state, unix_time_ms());
     snapshot.position_updated_at = Instant::now();
     snapshot.volume = state.volume.clamp(0.0, 1.0);
@@ -340,12 +361,14 @@ impl Mpris {
             if track.sequence > 0 && track.sequence <= snapshot.last_track_sequence {
                 return Ok(());
             }
-            let same_track = snapshot.track.id == track.id;
+            let same_track =
+                snapshot.track.id == track.id && snapshot.track.video_id == track.video_id;
             if track.sequence > 0 {
                 snapshot.last_track_sequence = track.sequence;
             }
             snapshot.track = Track {
                 id: track.id,
+                video_id: track.video_id.filter(|vid| !vid.trim().is_empty()),
                 title: track.title,
                 artist: track.artist.filter(|artist| !artist.trim().is_empty()),
                 duration_us: (track.duration_s.unwrap_or(0.0).max(0.0) * 1e6) as i64,
@@ -452,15 +475,26 @@ impl Mpris {
     /// works on systems without a session media bus.
     pub fn overlay_snapshot(&self) -> Result<Option<OverlayPlaybackSnapshot>, String> {
         let snapshot = self.lock()?;
-        if snapshot.track.id == 0 {
+        // Stream tracks carry no DB id — their video id is the identity.
+        if snapshot.track.id == 0 && snapshot.track.video_id.is_none() {
             return Ok(None);
         }
         let position_us = position_at(&snapshot, Instant::now());
+        let track_duration_s = if snapshot.track.duration_us > 0 {
+            Some((snapshot.track.duration_us / 1_000_000) as u64)
+        } else {
+            None
+        };
         Ok(Some(OverlayPlaybackSnapshot {
             track_id: snapshot.track.id,
+            track_video_id: snapshot.track.video_id.clone(),
+            track_title: snapshot.track.title.clone(),
+            track_artist: snapshot.track.artist.clone(),
+            track_duration_s,
             sequence: snapshot.last_state_sequence,
             position_s: position_us as f64 / 1_000_000.0,
             playing: snapshot.playing,
+            buffering: snapshot.buffering,
             speed: snapshot.rate,
             volume: snapshot.volume,
             muted: snapshot.muted,
@@ -886,6 +920,7 @@ mod tests {
     fn metadata_carries_the_track_identity_and_artwork() {
         let metadata = metadata_for(&Track {
             id: 83,
+            video_id: Some("s4-Osj48HsM".into()),
             title: "My Ideal".into(),
             artist: Some("Chet Baker".into()),
             duration_us: 260_832_000,
@@ -934,6 +969,7 @@ mod tests {
             sequence,
             sampled_at_ms: None,
             playing: true,
+            buffering: false,
             position_s,
             volume: 1.0,
             muted: false,
@@ -980,5 +1016,22 @@ mod tests {
         assert!(apply_state(&mut snapshot, &state(8, 5, 10.0)).is_none());
         assert_eq!(snapshot.position_us, 0);
         assert_eq!(snapshot.last_state_sequence, 0);
+    }
+
+    #[test]
+    fn buffering_flag_flows_through_to_the_overlay() {
+        let mut snapshot = Snapshot::new();
+        snapshot.track.id = 7;
+
+        let mut stalled = state(7, 4, 10.0);
+        stalled.buffering = true;
+        assert!(apply_state(&mut snapshot, &stalled).is_some());
+        assert!(snapshot.buffering);
+
+        // No MPRIS property covers buffering, so only the overlay state moves.
+        let mut resumed = state(7, 5, 11.0);
+        resumed.buffering = false;
+        assert!(apply_state(&mut snapshot, &resumed).is_some());
+        assert!(!snapshot.buffering);
     }
 }

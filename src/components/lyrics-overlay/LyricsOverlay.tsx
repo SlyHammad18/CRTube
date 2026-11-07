@@ -6,8 +6,10 @@ import { ipc } from "../../lib/ipc";
 import { activeIndex } from "../../lib/lrc";
 import { isUrduScript, stripMediaExt } from "../../lib/format";
 import { useLyrics } from "../../hooks/useLyrics";
+import { BufferBadge } from "../common/BufferBadge";
+import type { PlayableTrack } from "../../types/player";
 import { OverlayControls } from "./OverlayControls";
-import type { LyricsOverlaySnapshot } from "../../types/lyricsOverlay";
+import type { LyricsOverlayEntry, LyricsOverlaySnapshot } from "../../types/lyricsOverlay";
 
 const SNAP_DEBOUNCE_MS = 140;
 const SNAPSHOT_POLL_MS = 200;
@@ -79,18 +81,25 @@ function useOverlaySnapshot(): LyricsOverlaySnapshot | null {
 
 function useInterpolatedPosition(snapshot: LyricsOverlaySnapshot | null): number {
   const [positionS, setPositionS] = useState(0);
-  const clock = useRef({ base: 0, at: 0, playing: false, speed: 1 });
-  const lastTrackId = useRef<number | null>(null);
+  const clock = useRef({
+    base: 0,
+    at: 0,
+    playing: false,
+    buffering: false,
+    speed: 1,
+  });
+  const lastTrackKey = useRef<string | null>(null);
   const lastSequence = useRef(-1);
 
   useEffect(() => {
     if (!snapshot) {
-      lastTrackId.current = null;
+      lastTrackKey.current = null;
       lastSequence.current = -1;
       clock.current = {
         base: 0,
         at: performance.now(),
         playing: false,
+        buffering: false,
         speed: 1,
       };
       setPositionS(0);
@@ -98,15 +107,17 @@ function useInterpolatedPosition(snapshot: LyricsOverlaySnapshot | null): number
     }
 
     if (!Number.isFinite(snapshot.sequence)) return;
-    const sameTrack = lastTrackId.current === snapshot.entry.id;
+    const key = trackKeyOf(snapshot.entry);
+    const sameTrack = lastTrackKey.current === key;
     if (sameTrack && snapshot.sequence <= lastSequence.current) return;
-    lastTrackId.current = snapshot.entry.id;
+    lastTrackKey.current = key;
     lastSequence.current = snapshot.sequence;
 
     clock.current = {
       base: snapshot.positionS,
       at: performance.now(),
       playing: snapshot.playing,
+      buffering: snapshot.buffering,
       speed: snapshot.speed,
     };
     setPositionS(snapshot.positionS);
@@ -115,9 +126,12 @@ function useInterpolatedPosition(snapshot: LyricsOverlaySnapshot | null): number
   useEffect(() => {
     const timer = window.setInterval(() => {
       const current = clock.current;
-      const elapsed = current.playing
-        ? ((performance.now() - current.at) / 1000) * current.speed
-        : 0;
+      // A stalled media element stops its clock too — hold the playhead while
+      // buffering instead of interpolating past the audio.
+      const elapsed =
+        current.playing && !current.buffering
+          ? ((performance.now() - current.at) / 1000) * current.speed
+          : 0;
       setPositionS(current.base + elapsed);
     }, CLOCK_TICK_MS);
     return () => window.clearInterval(timer);
@@ -189,13 +203,28 @@ function LyricLine({
   );
 }
 
+/** The snapshot's tagged union maps straight onto the player's track union —
+ *  the extra `trackKind` tag is inert at runtime. */
+function toPlayable(entry: LyricsOverlayEntry): PlayableTrack {
+  return { ...entry } as PlayableTrack;
+}
+
+/** Mirrors useLyrics' key rule so the overlay can tell stale lyrics from
+ *  current ones: streams key by video id, library rows by `id:videoId`. */
+function trackKeyOf(entry: LyricsOverlayEntry): string {
+  return entry.trackKind === "stream"
+    ? entry.videoId
+    : `${entry.id}:${entry.videoId}`;
+}
+
 export function LyricsOverlay() {
   const reduce = useReducedMotion();
   const snapshot = useOverlaySnapshot();
   const positionS = useInterpolatedPosition(snapshot);
-  const entry = snapshot?.entry ?? null;
+  const overlayEntry = snapshot?.entry ?? null;
+  const entry: PlayableTrack | null = overlayEntry ? toPlayable(overlayEntry) : null;
   const lyrics = useLyrics(entry, snapshot?.lyricsRevision);
-  const trackKey = entry ? `${entry.id}:${entry.videoId}` : null;
+  const trackKey = overlayEntry ? trackKeyOf(overlayEntry) : null;
   const lyricsMatch = lyrics.trackKey === trackKey;
   useMagneticSnap();
 
@@ -339,7 +368,14 @@ export function LyricsOverlay() {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1">{content}</div>
+      <div className="relative min-h-0 flex-1">
+        {content}
+        {snapshot?.buffering && (
+          <div className="absolute right-2 top-2">
+            <BufferBadge variant="inline" />
+          </div>
+        )}
+      </div>
 
       <OverlayControls snapshot={snapshot} positionS={positionS} />
     </div>

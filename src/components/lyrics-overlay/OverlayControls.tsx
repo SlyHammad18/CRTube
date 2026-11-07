@@ -29,10 +29,16 @@ export function OverlayControls({
   snapshot: LyricsOverlaySnapshot | null;
   positionS: number;
 }) {
-  const entryId = snapshot?.entry.id ?? 0;
+  // Library-only features: favourites and playlists need a DB row, which a
+  // live stream track doesn't have — those controls hide for streams.
+  const entry = snapshot?.entry ?? null;
+  const isLibrary = entry?.trackKind === "library";
+  const entryId = entry && entry.trackKind === "library" ? entry.id : 0;
   const [pending, setPending] = useState<MprisCommand["action"] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [favourite, setFavourite] = useState(snapshot?.entry.favourite ?? false);
+  const [favourite, setFavourite] = useState(
+    entry && entry.trackKind === "library" ? entry.favourite : false,
+  );
   const [favouritePending, setFavouritePending] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -45,7 +51,7 @@ export function OverlayControls({
   const [seekOverride, setSeekOverride] = useState<number | null>(null);
 
   useEffect(() => {
-    setFavourite(snapshot?.entry.favourite ?? false);
+    setFavourite(entry && entry.trackKind === "library" ? entry.favourite : false);
     setPlaylistOpen(false);
     setPlaylistError(null);
     setError(null);
@@ -253,43 +259,47 @@ export function OverlayControls({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
-        <ControlButton
-          label={favourite ? "Remove from Favourites" : "Add to Favourites"}
-          active={favourite}
-          tone="signal"
-          disabled={controlsDisabled}
-          onClick={() => void toggleFavourite()}
-        >
-          <Heart size={14} weight={favourite ? "fill" : "light"} aria-hidden />
-        </ControlButton>
-        <div className="relative">
+        {isLibrary && (
           <ControlButton
-            label="Add to playlist"
-            active={playlistOpen}
+            label={favourite ? "Remove from Favourites" : "Add to Favourites"}
+            active={favourite}
+            tone="signal"
             disabled={controlsDisabled}
-            onClick={() => {
-              setPlaylistOpen((open) => !open);
-              if (!playlistOpen) void loadPlaylists();
-            }}
+            onClick={() => void toggleFavourite()}
           >
-            <ListPlus size={14} weight="light" aria-hidden />
+            <Heart size={14} weight={favourite ? "fill" : "light"} aria-hidden />
           </ControlButton>
-          {playlistOpen && (
-            <PlaylistMenu
-              playlists={playlists}
-              memberships={memberships}
-              loading={playlistLoading}
-              pending={playlistPending}
-              error={playlistError}
-              newPlaylistName={newPlaylistName}
-              creating={creatingPlaylist}
-              onNameChange={setNewPlaylistName}
-              onToggle={(playlist) => void togglePlaylist(playlist)}
-              onCreate={() => void createAndAddPlaylist()}
-              onClose={() => setPlaylistOpen(false)}
-            />
-          )}
-        </div>
+        )}
+        {isLibrary && (
+          <div className="relative">
+            <ControlButton
+              label="Add to playlist"
+              active={playlistOpen}
+              disabled={controlsDisabled}
+              onClick={() => {
+                setPlaylistOpen((open) => !open);
+                if (!playlistOpen) void loadPlaylists();
+              }}
+            >
+              <ListPlus size={14} weight="light" aria-hidden />
+            </ControlButton>
+            {playlistOpen && (
+              <PlaylistMenu
+                playlists={playlists}
+                memberships={memberships}
+                loading={playlistLoading}
+                pending={playlistPending}
+                error={playlistError}
+                newPlaylistName={newPlaylistName}
+                creating={creatingPlaylist}
+                onNameChange={setNewPlaylistName}
+                onToggle={(playlist) => void togglePlaylist(playlist)}
+                onCreate={() => void createAndAddPlaylist()}
+                onClose={() => setPlaylistOpen(false)}
+              />
+            )}
+          </div>
+        )}
         <ControlButton
           label={snapshot.muted || snapshot.volume <= 0 ? "Unmute" : "Mute"}
           active={snapshot.muted || snapshot.volume <= 0}
@@ -323,7 +333,11 @@ function OverlaySeekBar({
   onSeek: (seconds: number) => Promise<boolean>;
 }) {
   const durationS = snapshot?.entry.durationS ?? 0;
-  const trackId = snapshot?.entry.id ?? 0;
+  const trackKey = snapshot
+    ? snapshot.entry.trackKind === "stream"
+      ? `stream:${snapshot.entry.videoId}`
+      : `library:${snapshot.entry.id}`
+    : null;
   const barRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const dragValueRef = useRef<number | null>(null);
@@ -335,7 +349,7 @@ function OverlaySeekBar({
     dragValueRef.current = null;
     setDragValue(null);
     setGripping(false);
-  }, [trackId]);
+  }, [trackKey]);
 
   const value = clampSeekValue(dragValue ?? positionS, durationS);
   const progress = durationS > 0 ? value / durationS : 0;
