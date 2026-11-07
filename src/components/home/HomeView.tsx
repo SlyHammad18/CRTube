@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Play, Plus } from "@phosphor-icons/react";
 import { fmtDuration } from "../../lib/format";
 import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
@@ -6,9 +6,12 @@ import type { LibraryEntry } from "../../types/library";
 import { useLibraryStore } from "../../stores/library";
 import { usePlayerStore } from "../../stores/player";
 import { usePlaylistsStore } from "../../stores/playlists";
+import { useSearchStore } from "../../stores/search";
 import { useUIStore } from "../../stores/ui";
 import { PlaylistArt } from "../common/PlaylistArt";
 import { ArtistArt } from "../common/ArtistArt";
+import { RecentChips, SearchDock } from "../search/SearchDock";
+import { SearchResults } from "../search/SearchResults";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -85,6 +88,13 @@ export function HomeView() {
   const openArtist = usePlaylistsStore((s) => s.openArtist);
   const setView = useUIStore((s) => s.setView);
   const openPlaylistName = useUIStore((s) => s.openPlaylistName);
+  // Search state: the dock lives on home and results render inline.
+  const searchQuery = useSearchStore((s) => s.query);
+  const searchItems = useSearchStore((s) => s.items);
+  const searchStatus = useSearchStore((s) => s.status);
+  const searchError = useSearchStore((s) => s.error);
+  const clearSearch = useSearchStore((s) => s.clear);
+  const dockInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const lib = useLibraryStore.getState();
@@ -110,10 +120,12 @@ export function HomeView() {
   };
 
   const empty = loaded && entries.length === 0 && playlists.length === 0;
+  const searchActive =
+    !!searchQuery || searchItems.length > 0 || searchStatus !== "idle" || !!searchError;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-9 px-2 py-2">
-      <header className="flex flex-col gap-1">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[1100px] flex-col gap-8 px-2 py-2">
+      <header className="flex shrink-0 flex-col gap-1">
         <h1 className="font-display text-24 font-semibold tracking-tight">
           {greeting()}
         </h1>
@@ -121,16 +133,34 @@ export function HomeView() {
           {entries.length} {entries.length === 1 ? "track" : "tracks"} in your
           library
         </p>
+        <div className="mt-4 flex items-center gap-2">
+          {/* One ✕ total, inside the dock: clearing the text also clears the
+              results and restores the dashboard. */}
+          <div className="min-w-0 flex-1">
+            <SearchDock
+              inputRef={dockInputRef}
+              onInputChange={(v) => {
+                if (v === "") clearSearch();
+              }}
+            />
+          </div>
+        </div>
+        {!searchActive && <RecentChips center={false} />}
+        {/* yt-dlp engine status lives in the titlebar (top-right). */}
       </header>
 
-      {empty ? (
-        <div className="flex flex-col items-center justify-center gap-4 pb-[18vh] pt-[8vh]">
+      {searchActive ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <SearchResults variant="grid" />
+        </div>
+      ) : empty ? (
+        <div className="flex flex-col items-center justify-center gap-4 pb-[10vh] pt-[6vh]">
           <p className="font-mono text-15 text-mute">{"> library is empty_"}</p>
           <button
-            onClick={() => setView("search")}
+            onClick={() => dockInputRef.current?.focus()}
             className="rounded-card bg-ice px-4 py-2 text-13 font-semibold text-void hover:bg-ink active:scale-[0.98]"
           >
-            Find something to download
+            Find something to play
           </button>
         </div>
       ) : (

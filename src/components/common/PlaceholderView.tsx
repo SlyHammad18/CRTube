@@ -4,7 +4,6 @@ import { ConsolePrompt } from "./ConsolePrompt";
 const PROMPTS: Record<View, string[]> = {
   home: ["> CRTUBE://HOME"],
   player: ["> CRTUBE://PLAYER"],
-  search: ["> awaiting input"],
   downloads: ["> no active transfers"],
   library: ["> nothing archived yet"],
   settings: ["> awaiting calibration"],

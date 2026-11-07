@@ -3,6 +3,7 @@ import {
   ArrowClockwise,
   DotsThreeVertical,
   ImageSquare,
+  MagnifyingGlass,
   PencilSimple,
   Play,
   Shuffle,
@@ -343,6 +344,14 @@ export function ContextHeader() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        <button
+          aria-label="Search library and YouTube"
+          title="Search library and YouTube"
+          onClick={() => useUIStore.getState().setPlayerSearch("")}
+          className="grid h-9 w-9 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
+        >
+          <MagnifyingGlass size={16} weight="light" aria-hidden />
+        </button>
         <button
           aria-label="Play all"
           disabled={source.length === 0}

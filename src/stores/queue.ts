@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { MotionValue } from "motion/react";
 import { ipc, type DownloadRequest } from "../lib/ipc";
 import { useLibraryStore } from "./library";
+import { usePlaylistsStore } from "./playlists";
 import { useSettingsStore } from "./settings";
 import { pushToast } from "./toast";
 
@@ -11,6 +12,10 @@ export interface QueueItem {
   localId: number;
   backendId: number | null;
   request: DownloadRequest;
+  /** When set, the finished download is added to this playlist automatically
+   *  (add-to-playlist on a not-yet-downloaded search result). Frontend-only —
+   *  never sent to Rust. */
+  addToPlaylist?: number;
   status: QueueStatus;
   pct: number;
   speedBps: number | null;
@@ -28,7 +33,7 @@ export const progressMvs = new Map<number, MotionValue<number>>();
 interface QueueStore {
   items: QueueItem[];
   activeCount: number;
-  enqueue: (request: DownloadRequest) => void;
+  enqueue: (request: DownloadRequest, opts?: { addToPlaylist?: number }) => void;
   cancel: (localId: number) => void;
   dismiss: (localId: number) => void;
   pump: () => void;
@@ -126,11 +131,12 @@ export const useQueueStore = create<QueueStore>((set, get) => {
     items: [],
     activeCount: 0,
 
-    enqueue: (request) => {
+    enqueue: (request, opts) => {
       const item: QueueItem = {
         localId: nextLocalId++,
         backendId: null,
         request,
+        addToPlaylist: opts?.addToPlaylist,
         status: "queued",
         pct: 0,
         speedBps: null,
@@ -197,6 +203,33 @@ export const useQueueStore = create<QueueStore>((set, get) => {
         patchItem(item.localId, { status: "done", pct: 100 });
         pushToast(`Finished — ${item.request.title}`);
         void useLibraryStore.getState().refresh();
+        // Add-to-playlist on a fresh download: the backend registers the file
+        // into the library just before this event, so one immediate library
+        // fetch is enough to resolve the new row by videoId.
+        if (item.addToPlaylist != null) {
+          const playlistId = item.addToPlaylist;
+          void (async () => {
+            try {
+              await useLibraryStore.getState().refreshNow();
+              const entry = useLibraryStore
+                .getState()
+                .entries.find((e) => e.videoId === item.request.videoId);
+              const name = usePlaylistsStore
+                .getState()
+                .playlists.find((p) => p.id === playlistId)?.name;
+              if (!entry) {
+                pushToast(`Couldn't add to playlist — ${item.request.title}`);
+                return;
+              }
+              await usePlaylistsStore.getState().addTo(playlistId, entry.id);
+              pushToast(
+                `Added to ${name ? `“${name}”` : "playlist"} — ${entry.title}`,
+              );
+            } catch (e) {
+              pushToast(`Couldn't add to playlist — ${String(e)}`);
+            }
+          })();
+        }
         window.setTimeout(() => {
           removeItem(item.localId);
           get().pump();
@@ -210,6 +243,11 @@ export const useQueueStore = create<QueueStore>((set, get) => {
         if (!item) return;
         patchItem(item.localId, { status: "error", error: e.message });
         pushToast(`Failed — ${e.message}`);
+        if (item.addToPlaylist != null) {
+          pushToast(
+            `Couldn't add to playlist — the download of “${item.request.title}” failed`,
+          );
+        }
         get().pump();
       });
 

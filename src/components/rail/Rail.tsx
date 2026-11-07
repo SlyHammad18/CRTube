@@ -15,7 +15,6 @@ import { useQueueStore } from "../../stores/queue";
 const MAIN_ITEMS: { id: View; label: string; icon: typeof MagnifyingGlass }[] = [
   { id: "home", label: "Home", icon: House },
   { id: "player", label: "Player", icon: MusicNote },
-  { id: "search", label: "Search", icon: MagnifyingGlass },
   { id: "downloads", label: "Downloads", icon: DownloadSimple },
   { id: "library", label: "Library", icon: SquaresFour },
 ];

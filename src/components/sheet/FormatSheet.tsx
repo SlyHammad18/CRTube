@@ -6,6 +6,7 @@ import {
   FileAudio,
   FileVideo,
   FolderOpen,
+  Play,
   X,
 } from "@phosphor-icons/react";
 import { useSheetStore } from "../../stores/sheet";
@@ -14,16 +15,14 @@ import { useQueueStore } from "../../stores/queue";
 import { useLibraryStore } from "../../stores/library";
 import { pushToast } from "../../stores/toast";
 import { ipc, type AudioQualityPref, type DownloadKind } from "../../lib/ipc";
+import { buildDownloadRequest } from "../../lib/download";
+import { playResult } from "../../lib/playResult";
 import { fmtBytes, fmtDuration } from "../../lib/format";
 import { Toggle } from "../common/Toggle";
 import { Thumb } from "../common/Thumb";
 import type { FormatInfo } from "../../types/search";
 
 const CONTAINER_ORDER = ["mp4", "webm", "mkv"] as const;
-
-function watchUrl(videoId: string) {
-  return `https://www.youtube.com/watch?v=${videoId}`;
-}
 
 function TabPill({
   active,
@@ -301,52 +300,29 @@ export function FormatSheet() {
       pushToast("Already in your library");
       return;
     }
-    const audioRows = info?.formats.filter((f) => f.height == null) ?? [];
-    const bestAudioSize = Math.max(0, ...audioRows.map((f) => f.filesize ?? 0));
-    // Estimate the full download size so the queue can show a live percentage
-    // even when yt-dlp itself reports an unknown total (the norm on YouTube).
-    // Prefer formats at the selected height, then any format at or below it,
-    // preferring the chosen container where available — mirrors the pinned
-    // `bv*[ext=…][height<=…]+ba[ext=m4a]` selector as closely as possible.
-    const vidSizePool =
-      videoFormats.filter((f) => f.height === height).length > 0
-        ? videoFormats.filter((f) => f.height === height)
-        : videoFormats.filter((f) => f.height != null && f.height <= (height ?? 0));
-    const preferredVideoSize = Math.max(
-      0,
-      ...vidSizePool
-        .filter((f) => f.ext === container)
-        .map((f) => f.filesize ?? 0),
-    );
-    const videoSize =
-      preferredVideoSize ||
-      Math.max(0, ...vidSizePool.map((f) => f.filesize ?? 0));
-    const expectedSize =
-      tab === "video"
-        ? videoSize + bestAudioSize > 0
-          ? videoSize + bestAudioSize
-          : undefined
-        : bestAudioSize > 0
-          ? bestAudioSize
-          : undefined;
     setSubmitting(true);
     try {
-      useQueueStore.getState().enqueue({
-        url: watchUrl(videoId),
-        kind: tab,
-        videoId,
-        title,
-        channel,
-        durationS: info?.durationS ?? prefill?.durationS,
-        container: tab === "video" ? container : undefined,
-        height: tab === "video" ? (height ?? undefined) : undefined,
-        quality: tab === "audio" ? quality : undefined,
-        thumbUrl: info?.thumbUrl ?? prefill?.thumbUrl,
-        downloadDir: settings?.download_dir,
-        embedThumbnail: tab === "audio" ? embedThumb : true,
-        embedMetadata: tab === "audio" ? embedMeta : true,
-        expectedSize,
-      });
+      useQueueStore
+        .getState()
+        .enqueue(
+          buildDownloadRequest({
+            videoId,
+            title,
+            channel,
+            durationS: info?.durationS ?? prefill?.durationS,
+            thumbUrl: info?.thumbUrl ?? prefill?.thumbUrl,
+            info,
+            downloadDir: settings?.download_dir,
+            choice: {
+              kind: tab,
+              container,
+              height,
+              quality,
+              embedThumbnail: tab === "audio" ? embedThumb : true,
+              embedMetadata: tab === "audio" ? embedMeta : true,
+            },
+          }),
+        );
       close();
     } finally {
       setSubmitting(false);
@@ -357,6 +333,39 @@ export function FormatSheet() {
     const dir = await ipc.pickFolder();
     if (dir) await setDownloadDir(dir);
   };
+
+  // Play now in the main player: the local library copy when one exists,
+  // otherwise a live stream (Video tab → muxed video, Audio tab → audio-only).
+  // The probed info feeds the queue metadata. Live streams are HLS-only and
+  // can't be streamed.
+  const previewVideoId = prefill?.videoId ?? info?.videoId;
+  const isLive = info?.isLive === true;
+  const onPlay = () => {
+    if (!previewVideoId) return;
+    playResult(
+      {
+        videoId: previewVideoId,
+        title,
+        channel,
+        durationS: info?.durationS ?? prefill?.durationS,
+        thumbUrl: info?.thumbUrl ?? prefill?.thumbUrl,
+      },
+      tab === "audio" ? "audio" : "video",
+    );
+    close();
+  };
+
+  // Speculative prefetch (web.dev fast-playback): while the sheet is open on a
+  // tab, pre-resolve that tab's stream URL backend-side so PLAY starts
+  // playing almost instantly. Cached backend-side; cheap on repeat plays.
+  useEffect(() => {
+    if (!open || !previewVideoId || isLive) return;
+    const kind = tab === "audio" ? "audio" : "video";
+    const t = window.setTimeout(() => {
+      void ipc.streamMediaUrl(previewVideoId, kind).catch(() => {});
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [open, tab, previewVideoId, isLive]);
 
   return (
     <AnimatePresence>
@@ -473,14 +482,30 @@ export function FormatSheet() {
                 {settings?.download_dir ?? "…"}
               </span>
             </button>
-            <button
-              onClick={() => void onDownload()}
-              disabled={loading || !info || submitting}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-card bg-ice text-14 font-semibold text-void transition-colors duration-150 hover:bg-ink active:scale-[0.98] disabled:pointer-events-none disabled:border disabled:border-line disabled:bg-transparent disabled:text-dim"
-            >
-              <DownloadSimple size={17} weight="bold" aria-hidden />
-              {submitting ? "Queuing…" : "DOWNLOAD"}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={onPlay}
+                disabled={!previewVideoId || isLive}
+                title={isLive ? "Live streams can't be played" : undefined}
+                className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-card border border-line px-4 text-14 font-semibold text-ink transition-colors duration-150 hover:bg-raise active:scale-[0.98] disabled:pointer-events-none disabled:text-dim"
+              >
+                <Play size={15} weight="fill" aria-hidden />
+                PLAY
+              </button>
+              <button
+                onClick={() => void onDownload()}
+                disabled={loading || !info || submitting}
+                className="flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-card bg-ice text-14 font-semibold text-void transition-colors duration-150 hover:bg-ink active:scale-[0.98] disabled:pointer-events-none disabled:border disabled:border-line disabled:bg-transparent disabled:text-dim"
+              >
+                <DownloadSimple size={17} weight="bold" aria-hidden />
+                {submitting ? "Queuing…" : "DOWNLOAD"}
+              </button>
+            </div>
+            {isLive && (
+              <p className="mt-2 text-center font-mono text-11 text-mute">
+                {"> live stream — play unavailable"}
+              </p>
+            )}
           </div>
         </motion.aside>
       )}
