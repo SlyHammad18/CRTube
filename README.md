@@ -45,7 +45,12 @@ server or telemetry.
   the Wayland black-video bug the workaround guarded, and the app prefers
   XWayland anyway; if video ever renders black on some system, launch with
   `WEBKIT_DMABUF_RENDERER_DEVICE=/dev/dri/renderD128` (or, last resort,
-  `WEBKIT_DISABLE_DMABUF_RENDERER=1`).
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1`). The page renderer stays on the GPU path,
+  but the video pipeline opts out of zero-copy DMABuf sampling
+  (`WEBKIT_GST_DMABUF_SINK_DISABLED=1`, set in `main.rs`): WebKit's GL video
+  sink lets the VA-API decoder recycle a DMABuf that is still being sampled
+  (WebKit bug 253807), which makes old and new frames flicker together after
+  seeks on Intel iGPUs.
 - Tab switches unmount the previous view immediately instead of cross-fading two
   full view trees.
 - Perpetual animations (CRT wordmark burn, caret, sheen, EQ bars) pause while the

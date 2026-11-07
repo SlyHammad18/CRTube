@@ -78,6 +78,7 @@ Rules:
  - Type scale: `11 / 12 / 13 / 15 / 18 / 24 / 32`. The **11px micro tier** is reserved for status tags, badges, section labels, and the mono sort/speed pills — never body copy.
 - Display headings: tight tracking (`tracking-tight`), no all-caps eyebrows except the titlebar telemetry readout.
 - Italic/bold emphasis within a headline uses the same family — never inject a second display face.
+- **Urdu/Arabic-script lyrics** render in **Noto Naskh Arabic** by default (`--font-urdu`) with **≈2.3× leading** (`.font-urdu` overrides the Latin text-token leading; the 220px floating overlay caps at 1.9×), an 18px body, and a **24px active line** (karaoke hierarchy; Latin lines stay equal-size) — sizes are user-configurable (Settings → Lyrics, `lyrics_size_latin` / `lyrics_size_urdu`, applied inline per line). Lines flow RTL (`dir="rtl"` — the ice caret bar moves to the right edge and grows with the active line). The face is selectable in Settings → Lyrics (`urdu_font`): bundled **Naskh** (default) or **Custom…** — any font file the user picked themselves (ttf/otf/woff/woff2), copied into `{app_data}/fonts/`, served via the loopback server, and loaded as a runtime FontFace with a `400–900` weight range (prevents faux-bold smearing). No Nastaliq face is bundled and nothing is auto-downloaded — Urdu users bring their own Nastaliq (e.g. Jameel Noori Nastaleeq).
 
 ### 2.3 Shape & elevation
 
@@ -103,7 +104,7 @@ Every interactive element ships all states:
 The broadcast motif echoes quietly across the app without a boot sequence:
 
 - Fixed scanline overlay at 3% opacity, `pointer-events-none`, z-index layer documented in code.
-- Titlebar telemetry readout in JetBrains Mono: `● ytdlp 2026.08.20 · ready`. Status dot: `ice` = ready, `amber` = updating tools, `signal` = error.
+- Titlebar telemetry readout in JetBrains Mono, top-right before the window controls: boot shows `checking for updates` (pulsing `ice` dot) → `updating yt-dlp` (amber dot) **only while a download is actually running** (check-then-update — a no-op check never says "updating") → the busy label lingers ~2s after completion, then the chip **hides entirely** (no permanent version readout). `update failed` (signal dot) persists until handled. Click opens Settings.
 - Empty states written as console prompts: `> awaiting input_`, `> nothing archived yet_`.
 - The Player surface echoes the broadcast motif with the **Caption Deck** (§4.8) — synced lyrics set like closed-captioning.
 
@@ -117,10 +118,10 @@ The broadcast motif echoes quietly across the app without a boot sequence:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│ ◉ CRTUBE   ● ytdlp 2026.08.20·ready          ─  □  ✕    │ ← 40px custom titlebar
+│ ◉ CRTUBE                                     ─  □  ✕    │ ← 40px custom titlebar
 ├────┬─────────────────────────────────────────────────────┤
-│ ♪  │                                                     │
-│ ⌕  │                MAIN VIEW                            │
+│ ⌂  │                                                     │
+│ ♪  │                MAIN VIEW                            │
 │ ⇩³ │              (animated swap)                        │
 │ ▦  │                                                     │
 │    ├─────────────────────────────────────────────────────┤
@@ -128,34 +129,60 @@ The broadcast motif echoes quietly across the app without a boot sequence:
 └────┴─────────────────────────────────────────────────────┘
 ```
 
-- **Default view on launch: `player`.**
+- **Default view on launch: `home`.**
 - **Titlebar (40px):** full-width drag region (`data-tauri-drag-region`). Left: logo mark + telemetry readout. Right: minimize, maximize, close — close hover fills `signal`. Double-click toggles maximize.
-- **Icon rail (64px):** **Player** (`MusicNote`, first), Search/home, Downloads (badge = active count), Library; Settings pinned bottom. Active view gets an `ice` left notch + subtle icon tint. While audio plays, a 4px `ice` dot under the Player icon pulses (opacity keyframes; static dot under reduced motion).
-- View transitions: fade + 8px rise in (240ms, `cubic-bezier(0.16,1,0.3,1)`), fade out (120ms), orchestrated with `AnimatePresence`.
+- **Icon rail (64px):** Home (`House`), **Player** (`MusicNote`), Downloads (badge = active count), Library; Settings pinned bottom. There is **no dedicated Search tab** — search lives inside Home and the Player tab (§4.2). Active view gets an `ice` left notch + subtle icon tint. While audio plays, a 4px `ice` dot under the Player icon pulses (opacity keyframes; static dot under reduced motion).
+- View transitions: fade + 8px rise in (240ms, `cubic-bezier(0.16,1,0.3,1)`), fade out (120ms), orchestrated with `AnimatePresence` (exit collapses to ~instant under WebKitGTK for perf).
 
-### 4.2 Home / Search
+### 4.2 Home + Player search (unified results)
+
+Search is a first-class flow in **two entry points** — the Home dashboard and the Player
+tab — sharing one data layer and one results model:
 
 ```
 │            ┌───────────────────────────────┐             │
-│            │ ⌕ Paste a link or search…  ↵ │ ← hero dock │
+│            │ ⌕ Paste a link or search…  ↵ │ ← dock      │
 │            └───────────────────────────────┘             │
 │              recent: lofi mix · synthwave …              │
 │                                                          │
+│  LIBRARY · 3 matches                                     │
+│  ┌────────┐ ┌────────┐ ┌────────┐                        │
+│  │ thumb  │ │ thumb  │ │ thumb  │ ← local copies         │
+│  └────────┘ └────────┘ └────────┘                        │
+│  YOUTUBE · 20                                            │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐             │
-│  │ thumb  │ │ thumb  │ │ thumb  │ │ thumb  │             │
-│  │ 12:04▓ │ │        │ │✓in lib │ │        │             │
+│  │ thumb  │ │ thumb  │ │✓in lib │ │        │             │
+│  │ 12:04▓ │ │        │ │        │ │        │             │
 │  │ Title… │ │ Title… │ │ Title… │ │        │             │
 │  │ Ch ·1M │ │        │ │        │ │        │             │
 │  └────────┘ └────────┘ └────────┘ └────────┘             │
 ```
 
-- Hero dock: single large input. URL regex detection auto-switches to link mode — skips search entirely, opens the format sheet directly.
-- Recent-search chips below dock (pill radius).
-- Results grid: responsive cards, stagger-in on mount (40ms delay per card). Card = 16:9 thumbnail, duration badge (mono), title (2-line clamp), channel · views.
-- Hover: card lifts `y:-3` spring; Download affordance appears.
-- Already-downloaded videos (matched by `video_id` against DB) show a persistent ✓ "in library" badge.
-- Infinite scroll, 20 results per page.
-- While searching: skeleton shimmer cards matching exact final layout.
+- **Home:** the dock sits under the greeting; when a query is active the results grid
+  replaces the dashboard sections (✕ clears and restores the dashboard). Empty-library
+  CTA focuses the dock.
+- **Player tab:** the ContextHeader carries a ⌕ button; while searching, the middle pane
+  swaps to a search pane (auto-focused compact dock + results as compact rows). Library
+  matches filter live as you type; `Enter` commits the YouTube search. `Escape` returns to
+  the previous context (playlist/artist/favourites) fully intact. The dock owns the only
+  ✕ in the bar — it clears the text when there is text and closes the pane when empty
+  (no second ✕ beside the dock). Pasted URLs route to the format sheet instead of
+  searching.
+- **Unified results:** matching library tracks (title/channel contains) under a mono
+  `LIBRARY` header first — click plays the local file with its library matches as the
+  play context — then `YOUTUBE` results (20/page, infinite scroll, skeleton shimmer,
+  console-prompt error/empty states).
+- **Click = play (audio)** in the main player (PlayerBar + Now Playing pane). A YouTube
+  result plays as a **live stream** through the loopback relay (§5.6) — no download
+  required; an already-downloaded videoId plays the local copy (full quality). A
+  monitor-play button plays it as **video** instead (also live).
+- Hover pre-resolves the stream backend-side (400ms, latest-result-only) so click-to-play
+  starts near-instantly; `preload="auto"`; streams capped at 360p muxed H.264 (fastest
+  start), audio kind prefers AAC.
+- **Download stays independent:** the Download pill/row action opens the Format Sheet
+  (§4.3) — download audio or video whether or not it is playing.
+- Already-downloaded results show a persistent ✓ "in library" badge. The `＋` action
+  adds to a playlist — for not-yet-downloaded results this **auto-downloads** (§4.8).
 
 ### 4.3 Format Sheet (right slide-over, 420px)
 
@@ -179,7 +206,7 @@ The broadcast motif echoes quietly across the app without a boot sequence:
 - Opens with spring slide `x:100% → 0` (stiffness 380, damping 34).
 - MP4 tab: every quality the source actually offers (from format probe), each row shows height badge, FPS badge when >30, HDR tag when present, filesize estimate when available. Container choice where multiple exist.
 - MP3 tab: quality select (**Best** ≈ V0/320, 192, 128); toggles: **Embed cover art** (default ON — core requirement), Embed metadata (default ON).
-- Footer: destination path chip (click → inline folder picker) + primary DOWNLOAD button.
+- Footer: destination path chip (click → inline folder picker) + **PLAY** (secondary — plays this tab's flavor now in the main player: local copy if in library, else live stream; live streams disabled) + primary DOWNLOAD button.
 - On queue: sheet closes, toast confirms `Added to queue`.
 
 ### 4.4 Downloads
@@ -196,7 +223,7 @@ The broadcast motif echoes quietly across the app without a boot sequence:
 - Grid cards: thumbnail with corner type icon (music note / film), duration, size, date added.
 - Row/card hover actions: ▶ Open (default player), ⌗ Reveal (file manager), 🗑 Delete with confirm popover (removes file + DB row).
 - Files that vanished from disk flip to "missing" status styling instead of silently breaking.
-- Empty state: `> nothing archived yet_` + CTA back to search.
+- Empty state: `> nothing archived yet_` + CTA to Home (search dock).
 
 ### 4.6 Settings
 
@@ -205,6 +232,7 @@ Grouped sections, bound live (no restart required):
 - **Storage:** download path picker + "open folder".
 - **Engine:** yt-dlp version + *Check for update* button; ffmpeg version; auto-update-on-launch toggle (default ON).
 - **Downloads:** concurrency stepper (1–5), applies immediately to the running queue.
+- **Lyrics:** Urdu font selector — bundled Naskh (default) or Custom… (any user-picked font file, copied into the app-owned cache); lyric size steppers for English (12–32 px, default 15) and Urdu (14–40 px, default 18 — active line ×4⁄3).
 - **About:** app version, yt-dlp attribution + unaffiliation disclaimer, licenses note.
 
 Changing the download directory re-applies the runtime asset-protocol allow rule (§5.6) immediately.
@@ -248,13 +276,17 @@ Three panes inside the main view area:
 - **Active row:** `ice`-tinted title + 3-bar EQ glyph (2px bars, staggered scaleY loop; frozen bars under reduced motion).
 - Missing files render an amber `MISSING` pill tag (pill radius reserved for status tags), row disabled, skipped on queue advance.
 - Interactions: double-click or hover ▶ starts playback and sets the play context (current view/filter or playlist); `＋` opens a popover listing playlists with checkmarks + `New playlist…`.
-- Empty states (console-prompt style): `> awaiting media_ download something in SEARCH` / `> this playlist is empty_ add tracks with +`.
+- Empty states (console-prompt style): `> awaiting media_ search something to play` / `> this playlist is empty_ add tracks with +`.
+- **Search mode:** the header's ⌕ swaps this pane for the unified search pane (§4.2, rows variant).
 
 **Playlists view** (a sidebar playlist selected): same list plus total-runtime header chip (mono) + primary **PLAY ALL** button. Rows gain a grip handle and support **drag-to-reorder** via Motion `Reorder.Group/Item` (spring physics, `layout` animation, reduced-motion collapse); order persists through `reorder_playlist_items`. Duplicate adds are silent no-ops (`UNIQUE(playlist_id, download_id)`).
 
+**Add-to-playlist auto-download:** the `＋` popover accepts two target kinds. A library track behaves as before (checkmark toggles membership). A **YouTube search result** (or a currently-streaming track) opens an inline quality chooser — **MP3 audio: Best (≈320) / 192 / 128** and **Video MP4: 1080p / 720p / 480p** — then queues the download at the chosen quality with the playlist attached; the queue store adds the finished download to the playlist automatically (`Downloading — will be added to "X"` toast). If the videoId is already in the library at the requested kind, it attaches instantly without downloading.
+
 **Now Playing pane (320px, collapsible via `PanelRight` toggle, state in ui store)**
 
-- Artwork frame: radius 10 + scanline overlay; shows cached thumbnail. For `kind === 'video'` tracks, the live `<video>` element overlays this frame (positioned by MediaHost over `#nowplaying-media-slot`, §4.9 — never reparented). A pencil edit control appears only while the artwork frame is hovered (and on keyboard focus); it opens a native image picker and replaces the displayed artwork without modifying the downloaded media file.
+- Artwork frame: radius 10 + scanline overlay; shows cached thumbnail. For video tracks (downloaded or streamed), the live `<video>` element overlays this frame (positioned by MediaHost over `#nowplaying-media-slot`, §4.9 — never reparented). A pencil edit control appears only while the artwork frame is hovered (and on keyboard focus) for library tracks; it opens a native image picker and replaces the displayed artwork without modifying the downloaded media file.
+- **Stream tracks** (played from a search result without downloading): the title row carries an always-visible **stream-kind toggle** (`audio ⇄ video` — re-resolves the other stream, position preserved), a **Download** button (opens the Format Sheet — download while playing, independent of playback) and `＋` (auto-downloading add, below). The fullscreen button appears on the artwork frame (hover) while the stream kind is video. Favourite/rename are library-only and hidden. Stream picture is **not** governed by `videoDisabled`/the "disable video playback" setting — the kind toggle is the picture control.
 - Title (Chakra Petch 24, 2-line clamp) + channel (Manrope, `mute`).
 - Seek bar: 2px `line` track, `ice` fill, grows to 4px on hover; flanking times in mono (`0:00` elapsed / `-3:41` remaining toggleable by click).
 - Transport row: shuffle · previous · **play/pause (44px `ice` circle, `void` icon — the only filled accent circle in the app)** · next · repeat (cycles off → all → one; `one` shows mono superscript `1` badge).
@@ -283,7 +315,7 @@ Three panes inside the main view area:
 - Top edge carries a full-width 2px `ice` hairline progress fill that **also acts as a click-to-seek strip** (grows to 3px on hover) — reads like a channel signal meter you can scrub.
 - **Three-zone layout** via `grid-cols-[1fr_auto_1fr]`: **left** = 48px thumb (or title/channel, `flex-1 min-w-0`) · **center (truly centered)** = compact transport only (prev · play/pause 36px `ice` circle · next) · **right** = mono time `1:24 / 3:41`, a vertical `line` divider, volume (custom-styled `.range-ice` slider with inline ice-fill gradient — no native widget), and the `⌃` caret navigating to the Player tab.
 - Shuffle/repeat/speed deliberately live in the **Now Playing transport** (§4.8), not the bar — the global bar stays a minimal now-playing indicator.
-- **Media host contract:** exactly one `<video>` DOM node lives in a persistent `MediaHost` mounted at shell level. The node is **never reparented** — under WebKitGTK's GStreamer video sink, moving a `<video>` to a new DOM parent tears down the native compositing surface and blacks out / kills controls on Linux. Instead the single node stays mounted at app root and is *positioned over the active stage via CSS* (`top/left/width/height` from the target slot's measured rect, `object-fit` cover/contain). Slots `#nowplaying-media-slot` (Player tab artwork frame), `#playerbar-media-slot` (bar thumb), and the fullscreen stage are pure measurement placeholders; a rAF loop + ResizeObserver keeps the node tracking the stage through view transitions and the PlayerBar spring. Playback (audio included) is continuous across every view and fullscreen — the video keeps playing (picture shrinks into the bar) exactly like audio does.
+- **Media host contract:** exactly one `<video>` DOM node lives in a persistent `MediaHost` mounted at shell level. The node is **never reparented** — under WebKitGTK's GStreamer video sink, moving a `<video>` to a new DOM parent tears down the native compositing surface and blacks out / kills controls on Linux. Instead the single node stays mounted at app root and is *positioned over the active stage via CSS* (`top/left/width/height` from the target slot's measured rect, `object-fit` cover/contain). Slots `#nowplaying-media-slot` (Player tab artwork frame), `#playerbar-media-slot` (bar thumb), and the fullscreen stage are pure measurement placeholders; a rAF loop + ResizeObserver keeps the node tracking the stage through view transitions and the PlayerBar spring. Playback (audio included) is continuous across every view and fullscreen — the video keeps playing (picture shrinks into the bar) exactly like audio does. The same element also serves **live stream tracks** (§4.2): the source URL is the loopback relay's `/stream/{v|a}/{videoId}` route, and an expired signed upstream re-resolves once silently with position preserved.
 - Audio-only tracks never show video — the node hides (`visibility:hidden`, never `display:none`) while still decoding audio.
 
 ### 4.10 Floating Lyrics Window
@@ -322,6 +354,48 @@ Three panes inside the main view area:
   advanced authoritatively in Rust between samples so late IPC responses cannot
   rewind the overlay clock or build an unbounded command backlog.
 
+### 4.11 Search playback & the stream relay
+
+The former floating preview popup is **removed** — its "play before download" role is
+now the main player itself (§4.2): clicking a search result plays it in the PlayerBar /
+Now Playing pane via the single media element. The supporting machinery is unchanged:
+
+- **Fast startup (web.dev fast-playback guidance):** the stream URL is *prefetched* —
+  hovering a result (400ms, latest-result-only) or lingering on a sheet tab pre-resolves
+  it backend-side into the `StreamSessions` cache, so the 2–5s yt-dlp extraction happens
+  before the click. Stream video is capped at **360p** (H.264/AAC muxed — the
+  fastest-starting stream YouTube serves), audio kind prefers AAC; `preload="auto"`.
+- **Single decode policy:** the main player's one `<video>` element plays streams and
+  downloaded files alike (§4.9) — there is no second media element anywhere. When a new
+  track or stream kind is requested, the previous source is **stopped immediately**
+  (pause + src reset) and a `buffering` state shows a **`BufferBadge`** — a full-cover
+  veil over the Now Playing artwork (rotating arc ring + mono `BUFFERING`, transform-only
+  motion, reduced-motion collapse) and an inline badge in the PlayerBar. Truth model: the
+  flag rises on source-resolve start and on `waiting` (only while playing); it falls on
+  `loadeddata` (first decoded frame), `canplay`, `playing`, **`seeked`**, resolve failure,
+  when the store's `playing` goes false, and via a `timeupdate` backstop (frames advancing
+  + readyState ≥ 2 ⇒ clear — WebKitGTK resumes stalled seeks by firing ONLY `seeked` with
+  readyState parked at HAVE_CURRENT_DATA, so `canplay`/`playing` never refire). The
+  element's own `pause` event is deliberately unused — those queue as tasks and would
+  race the resolve flag.
+- **Stream failure semantics:** expired signed URLs re-resolve once silently (below).
+  If a **video** stream has no muxed (directly playable) format — increasingly common on
+  YouTube — the kind silently reverts to the audio stream with a
+  `Video stream unavailable…` toast instead of skipping the track (audio failures still
+  advance). This also removes the staged-black-rectangle state a failed kind toggle
+  used to leave behind.
+- **Stream lifecycle:** results resolve through `stream_media_url` → `StreamSessions`
+  (30-min TTL, single-flight, live broadcasts rejected) → the loopback relay's
+  `/stream/{v|a}/{videoId}` route (UA/Referer-injected upstream, Range passthrough).
+  The relay **follows the upstream's redirect chain** (up to 5 hops, headers re-applied,
+  final URL written back into the session): googlevideo intermittently 302s requests to
+  a different CDN edge (`rrN---sn-*`), and an unfollowed redirect reaches the element as
+  a 502 — killing playback and every seek after it.
+  Expired signed URLs (relay 502 → element error) re-resolve **once silently with the
+  playhead preserved**; a second failure toasts `Stream failed` and advances.
+- **Downloads stay independent of playback** at every point: result rows/cards, the Now
+  Playing pane, and the Format Sheet all reach the same queue (§4.3).
+
 ---
 
 ## 5. Backend Architecture
@@ -334,7 +408,7 @@ src-tauri/src/
 │  ├─ search.rs      # search_youtube(query, page), fetch_info(url)
 │  ├─ download.rs    # start_download(opts) -> job_id, cancel_download(id)
 │  ├─ library.rs     # list_library, add_entry, delete_entry, reveal_path
-│  ├─ settings.rs    # get_settings / set_settings (JSON)
+│  ├─ settings.rs    # get_settings / set_settings (JSON), pick_urdu_font, urdu_custom_font_url
 │  ├─ lyrics_overlay.rs # floating window lifecycle, prefs, magnetic snap, snapshot
 │  └─ player.rs      # playlists CRUD, fetch_lyrics, media_url
 ├─ services/
@@ -343,6 +417,7 @@ src-tauri/src/
 │  ├─ lyrics.rs      # LRCLIB client + cache (pure helpers, unit-tested)
 │  ├─ lyrics_overlay.rs # atomic prefs + pure magnetic-snap helpers
 │  ├─ media.rs       # loopback Range-capable media streamer (pure helpers, unit-tested)
+│  ├─ fonts.rs       # user-picked font cache helpers (dir + font magic checks, unit-tested)
 │  └─ db.rs          # rusqlite migrations (v1 downloads, v2 playlists)
 └─ jobs.rs           # Mutex<HashMap<job_id, Child>> process registry
 ```
@@ -381,7 +456,14 @@ snap_lyrics_overlay(app) -> OverlayPosition
 lyrics_overlay_snapshot(db, mpris) -> Option<LyricsOverlaySnapshot>
 fetch_lyrics(app, video_id, title, channel, duration_s) -> Option<LyricsPayload>
 -- LyricsPayload { synced, plain, instrumental, track_name, artist_name, cached }
-media_url(db, server, id) -> Option<String>                  -- loopback stream URL for a download
+ media_url(db, server, id) -> Option<String>                  -- loopback stream URL for a download
+ stream_media_url(server, video_id, kind, force) -> String    -- pre-download preview: resolve a direct
+                                                              -- upstream stream into StreamSessions and
+                                                              -- return its loopback proxy URL
+ pick_urdu_font(app) -> {file, label}                        -- native dialog → copy the picked font
+                                                              -- into {app_data}/fonts/ (magic-checked)
+ urdu_custom_font_url(server) -> String                      -- loopback URL for the persisted custom
+                                                              -- Urdu font (runtime FontFace)
 ```
 
 ### 5.3 Tool installation
@@ -488,6 +570,8 @@ Minimal Tauri capability set: dialog, opener, core window permissions. The main 
 - The token is a per-session SHA256 nonce — first path segment, constant-time-compared.
 - Files are addressed strictly by `downloads.id`; paths resolve server-side from the DB and are re-validated against canonicalised allowed roots (the effective download dir, updated on `set_settings`). No client-supplied paths, no traversal surface.
 - Full HTTP Range support (`206 Partial Content`, `Accept-Ranges: bytes`) so seeking works; `HEAD` honored.
+- **Pre-download stream previews** (`/{token}/stream/{v|a}/{video_id}`): `stream_media_url` resolves a *muxed* progressive format (H.264/AAC preferred, height ≤ 360 for fast startup — audio previews use bestaudio/m4a) via the pinned probe invocation, caching the URL + its `User-Agent`/`Referer` in a `StreamSessions` map (30 min TTL; hover/sheet prefetch populates it before the click). The proxy relays `Range` requests upstream with those headers and pipes the response through; upstream 403/410 (signed-URL expiry) answers 502 and the preview popup silently re-resolves once (position preserved). Playback lives in the popup's own element (§4.11) — the main player's queue, session, and lyrics state are never touched, and nothing is written to disk.
+- **Fonts route** (`/{token}/fonts/{name}`): serves the app-owned `{app_data}/fonts/` cache (the on-demand Jameel Noori Nastaleeq for Settings → Lyrics). Name is validated (`[A-Za-z0-9._-]`, no leading dot / `..`), the response carries `Access-Control-Allow-Origin: *` (webview font fetches are CORS-mode, unlike `<img>`), and file paths resolve server-side only.
 
 The static asset-protocol scope stays minimal (`$APPDATA/thumbs/**`, `$APPDATA/bin/**`) for cover art; a runtime `allow_directory` for the download root is still applied (harmless, useful for any `<img>` use), but playback never depends on it.
 
@@ -497,7 +581,8 @@ Endpoints (no key, no rate limit):
 
 ```
 GET https://lrclib.net/api/get?artist_name={a}&track_name={t}&duration={s}
-GET https://lrclib.net/api/search?q={query}          # fallback when /get misses
+GET https://lrclib.net/api/search?track_name={t}&artist_name={a}   # structured search
+GET https://lrclib.net/api/search?q={query}                        # free-text search
 → 200 { id, trackName, artistName, duration, instrumental,
         plainLyrics, syncedLyrics }                  # syncedLyrics = LRC text
 ```
@@ -505,9 +590,14 @@ GET https://lrclib.net/api/search?q={query}          # fallback when /get misses
 Flow inside `fetch_lyrics(app, video_id, title, channel, duration_s)`:
 
 1. Cache-first: return `{app_data}/lyrics/{video_id}.lrc` (synced) or `.txt` (plain) if present, `cached: true`.
-2. Derive search terms with pure fn `parse_title_artist(title, channel)` — splits `"Artist - Title"` patterns, strips parenthetical noise (`(Official Video)`, `[HD]`…); falls back to artist = channel.
-3. Try `/api/get` with duration tolerance; miss → `/api/search?q="{artist} {track}"` and pick via pure fn `pick_best(results, duration_s)` (min duration delta ≤ 3s, prefer entries with `syncedLyrics`).
+2. Derive search terms with pure fn `parse_title_artist(title, channel)` — splits `"Artist - Title"` patterns, strips parenthetical noise (`(Official Video)`, `[HD]`…); falls back to artist = cleaned channel (`- Topic`/`VEVO` suffixes stripped, junk rejected → empty).
+3. Staged chain, each stage gated by pure fn `pick_best(results, duration_s)` (min duration delta ≤ 3s, prefer entries with `syncedLyrics`); a stage that errors is remembered but never aborts the chain:
+   1. `/api/get` with the exact (track, artist) and duration
+   2. `/api/search?track_name&artist_name` — structured search (best signal)
+   3. `/api/search?q="{track} {artist}"` — song name + artist free text (song name only when no artist)
 4. Persist atomically (temp-write → rename) into the lyrics cache; return payload.
+
+The manual lyrics search modal (`search_lyrics`) reads the query structurally, merging results best-first: free-text `q=` → dash-split (`Artist - Song`, both readings) as structured `track_name`/`artist_name` searches → bare multi-word queries tried at every 2-way word split as (track, artist) then (artist, track) → contiguous sub-phrases as free-text queries, longest first (rescues tracks recorded under different metadata, e.g. "Tera Woh Pyar (Nawazishein Karam)"). Near-duplicates collapse; the merged list caps at 60.
 
 Frontend owns LRC rendering: pure TS `lib/lrc.ts` — `parseLrc(text) -> [{tMs, s}]` sorted (multiple timestamps per line supported) and `activeIndex(lines, tMs)` pointer-walk against `<video>.currentTime`. Both pure and unit-testable.
 
@@ -521,15 +611,16 @@ src/
 ├─ theme.css                 # Tailwind v4 tokens (@theme), fonts, scanlines, caption-deck utils
 ├─ components/
 │  ├─ titlebar/              # drag region, telemetry, window buttons
-│  ├─ rail/                  # nav rail + active notch + playing pulse dot
-│  ├─ search/                # hero dock, result cards, skeletons
+│  ├─ rail/                  # nav rail (home/player/downloads/library + settings) + active notch
+│  ├─ search/                # SearchDock (home hero + player pane), SearchResults (grid+rows),
+│  │                         # ResultCard, skeletons — unified library+YouTube results
 │  ├─ sheet/                 # format slide-over
 │  ├─ downloads/             # queue rows, progress bars
 │  ├─ library/               # grid/list, filters, action rows
-│  ├─ player/                # PlayerTab, PlaylistsPane, TrackList/Row, NowPlaying,
-│  │                         # CaptionDeck, Transport, SeekBar, SpeedMenu,
-│  │                         # VolumeSlider, AddToPlaylistMenu
-│  ├─ player-bar/            # global PlayerBar + MediaHost (portal slots)
+│  ├─ player/                # PlayerTab, SearchPane, PlaylistsPane, TrackList/Row, NowPlaying,
+│  │                         # CaptionDeck, Transport, SeekBar, SpeedMenu, VolumeSlider,
+│  │                         # AddToPlaylistMenu (library + auto-download stream targets)
+│  ├─ player-bar/            # global PlayerBar + MediaHost (slot positioning, stream sources)
 │  ├─ lyrics-overlay/         # always-on-top lightweight lyric webview
 │  ├─ settings/              # sections
 │  └─ common/                # toast stack, pills, empty states, confirm popover
@@ -538,6 +629,8 @@ src/
 ├─ lib/
 │  ├─ ipc.ts                 # typed command wrappers + event listeners
 │  ├─ lrc.ts                 # pure LRC parser + active-line finder
+│  ├─ playResult.ts          # click-to-play: local copy else live stream
+│  ├─ download.ts            # DownloadRequest builder (sheet + playlist auto-download)
 │  └─ format.ts              # bytes/duration/ETA formatters (mono output)
 └─ types/                    # shared DTOs mirroring Rust serde structs
 ```
@@ -545,17 +638,18 @@ src/
 Player store (`stores/player.ts`) shape:
 
 ```
-queue: LibraryEntry[]        // logical queue (play context snapshot)
+queue: PlayableTrack[]       // LibraryEntry (downloaded) | StreamTrack (live stream)
 order: number[]              // permutation — shuffled or linear
 pos: number                  // index into order
 playing, currentTimeS, durationS, muted
 repeat: 'off'|'all'|'one'    shuffle: boolean
 context: {type:'library'|'playlist', id?} | null
-actions: playAll(entries,start) enqueue toggle next prev cycleRepeat
-         toggleShuffle(current stays first) setSpeed setVolume seek onEnded onError
+actions: playAll(entries,start) playStream(item,kind) setStreamKind(kind) enqueue
+         toggle next prev cycleRepeat toggleShuffle(current stays first)
+         setSpeed setVolume seek onEnded onError
 ```
 
-Advance rules: `onEnded` honors repeat-one (seek 0) → repeat-all (wrap) → off (stop at queue end); `next()` manual always advances; both skip `status === 'missing'` entries; media `error` event → toast + skip (never a dead queue).
+Advance rules: `onEnded` honors repeat-one (seek 0) → repeat-all (wrap) → off (stop at queue end); `next()` manual always advances; both skip `status === 'missing'` entries (streams are never "missing"); media `error` event → toast + skip (never a dead queue). Stream tracks are **not persisted in the resume session** — the saved queue/order are remapped onto the surviving library entries when a stream is present.
 
 Motion rules (project-wide):
 

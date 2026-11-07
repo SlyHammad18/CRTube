@@ -39,6 +39,27 @@
   --ease-console: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Urdu lyric lines (§4.8) — Noto Nastaliq Urdu. Nastaliq hangs glyphs deep
+   below the baseline and sweeps far above it: the font's natural line box is
+   ~2.4em, so the Latin text-token leading (1.35–1.5) — and even a flat 2× —
+   makes adjacent lines collide. ~2.3× is the sweet spot for lyric blocks.
+   Unlayered so it overrides `leading-*` utilities and text-token leading.
+   `text-rendering` matters just as much: body sets `optimizeSpeed` (a global
+   WebKitGTK perf tweak), which skips kerning/ligature shaping — on Nastaliq
+   that breaks contextual letter joining and detaches the nuqtas (dots) from
+   their letters. Lyric lines are short; correctness wins over speed here. */
+.font-urdu {
+  line-height: 2.3;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+}
+
+/* The floating lyrics window is only ~220px tall — cap Nastaliq leading there
+   so prev/current/next still fit without clipping. */
+[data-surface="lyrics-overlay"] .font-urdu {
+  line-height: 1.9;
+}
+
 @keyframes caret {
   0%,
   49% {
