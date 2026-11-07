@@ -36,4 +36,6 @@ export interface LyricsOverlaySnapshot {
   shuffle: boolean;
   repeat: LyricsRepeatMode;
   lyricsRevision: number;
+  /** Bumped on every persisted settings change — re-hydrates the Urdu font. */
+  settingsRevision: number;
 }

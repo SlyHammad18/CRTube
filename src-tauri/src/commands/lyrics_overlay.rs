@@ -19,6 +19,7 @@ use crate::services::lyrics_overlay::{
     self, LyricsOverlayPrefs, WINDOW_LABEL,
 };
 use crate::services::mpris::Mpris;
+use crate::commands::settings;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +65,9 @@ pub struct LyricsOverlaySnapshot {
     pub shuffle: bool,
     pub repeat: String,
     pub lyrics_revision: u64,
+    /// Bumped on every persisted settings change so the overlay re-hydrates
+    /// (Urdu font selection) without a dedicated event channel.
+    pub settings_revision: u64,
 }
 
 fn overlay_url(app: &AppHandle) -> WebviewUrl {
@@ -484,6 +488,7 @@ pub fn lyrics_overlay_snapshot(
                 shuffle: playback.shuffle,
                 repeat: playback.repeat,
                 lyrics_revision: lyrics::revision(),
+                settings_revision: settings::revision(),
             }));
         }
         return Ok(None);
@@ -504,6 +509,7 @@ pub fn lyrics_overlay_snapshot(
         shuffle: playback.shuffle,
         repeat: playback.repeat,
         lyrics_revision: lyrics::revision(),
+        settings_revision: settings::revision(),
     }))
 }
 

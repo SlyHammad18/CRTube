@@ -6,7 +6,9 @@ import { ipc } from "../../lib/ipc";
 import { activeIndex } from "../../lib/lrc";
 import { isUrduScript, stripMediaExt } from "../../lib/format";
 import { useLyrics } from "../../hooks/useLyrics";
+import { useUrduFont } from "../../hooks/useUrduFont";
 import { BufferBadge } from "../common/BufferBadge";
+import { useSettingsStore } from "../../stores/settings";
 import type { PlayableTrack } from "../../types/player";
 import { OverlayControls } from "./OverlayControls";
 import type { LyricsOverlayEntry, LyricsOverlaySnapshot } from "../../types/lyricsOverlay";
@@ -177,6 +179,11 @@ function LyricLine({
   reduced: boolean;
 }) {
   const urdu = isUrduScript(text);
+  // Settings → Lyrics sizes, mirroring the Caption Deck: Urdu active line
+  // steps up ×4⁄3 (18→24 at defaults), Latin lines stay equal-size.
+  const latinSize = useSettingsStore((s) => s.settings?.lyrics_size_latin ?? 15);
+  const urduSize = useSettingsStore((s) => s.settings?.lyrics_size_urdu ?? 18);
+  const activeUrduSize = Math.round((urduSize * 4) / 3);
   return (
     <motion.p
       initial={reduced ? false : { opacity: 0, y: 6 }}
@@ -185,17 +192,22 @@ function LyricLine({
       dir="auto"
       style={
         urdu
-          ? { lineHeight: 1.9, textRendering: "optimizeLegibility" }
-          : undefined
+          ? {
+              // The overlay's tighter Nastaliq leading (theme.css) plus
+              // legibility shaping — body's optimizeSpeed detaches the
+              // letter joins and nuqtas.
+              lineHeight: 1.9,
+              textRendering: "optimizeLegibility",
+              fontSize: `${active ? activeUrduSize : urduSize}px`,
+            }
+          : { fontSize: `${latinSize}px` }
       }
       className={`text-center ${
         urdu ? "font-urdu text-right" : ""
       } ${
         active
-          ? // Nastaliq needs ~2× leading (set on .font-urdu) — drop a size step
-            // so two lines still fit the compact overlay window.
-            `line-clamp-2 ${urdu ? "font-urdu text-15" : "font-display text-18"} font-semibold leading-snug text-ink`
-          : "line-clamp-1 text-12 leading-snug text-mute"
+          ? `line-clamp-2 ${urdu ? "font-urdu" : "font-display"} font-semibold leading-snug text-ink`
+          : "line-clamp-1 leading-snug text-mute"
       }`}
     >
       {text}
@@ -221,6 +233,13 @@ export function LyricsOverlay() {
   const reduce = useReducedMotion();
   const snapshot = useOverlaySnapshot();
   const positionS = useInterpolatedPosition(snapshot);
+  // This webview skips App's boot sequence, so hydrate settings for the Urdu
+  // font selection here — re-hydrating when Rust bumps the settings revision.
+  const settingsRevision = snapshot?.settingsRevision;
+  useEffect(() => {
+    void useSettingsStore.getState().load();
+  }, [settingsRevision]);
+  useUrduFont();
   const overlayEntry = snapshot?.entry ?? null;
   const entry: PlayableTrack | null = overlayEntry ? toPlayable(overlayEntry) : null;
   const lyrics = useLyrics(entry, snapshot?.lyricsRevision);
@@ -298,7 +317,7 @@ export function LyricsOverlay() {
     );
   } else if (active) {
     content = (
-      <div className="flex h-full flex-col justify-center gap-1.5 px-5 text-center">
+      <div className="flex min-h-full flex-col justify-center gap-1.5 px-5 text-center">
         {active.previous && (
           <LyricLine
             key={active.previous.key}
@@ -368,7 +387,9 @@ export function LyricsOverlay() {
         </button>
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      {/* min-h-full (not h-full) lets the block grow past the viewport so the
+          scroll container stays reachable when settings-sized lines overflow. */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         {content}
         {snapshot?.buffering && (
           <div className="absolute right-2 top-2">

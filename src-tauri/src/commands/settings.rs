@@ -3,6 +3,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const DEFAULT_CONCURRENT: u32 = 3;
 /// §4.8 — playback speed menu spans 0.5×–2×; clamp wider inputs into a safe range.
@@ -13,6 +14,16 @@ pub const SPEED_MAX: f32 = 4.0;
 /// a font file the user picked themselves (see `urdu_custom_file` /
 /// `pick_urdu_font`).
 pub const URDU_FONTS: [&str; 2] = ["naskh", "custom"];
+
+/// Process-local settings revision so secondary webviews (the floating lyrics
+/// overlay) can notice persisted changes through the snapshot they already
+/// poll, without a dedicated event channel.
+static SETTINGS_REVISION: AtomicU64 = AtomicU64::new(1);
+
+/// Monotonic settings revision; bumped on every persisted change.
+pub fn revision() -> u64 {
+    SETTINGS_REVISION.load(Ordering::Relaxed)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -166,6 +177,7 @@ pub fn set_settings(app: AppHandle, settings: AppSettings) -> Result<AppSettings
         s.download_dir = default_download_dir()?.to_string_lossy().to_string();
     }
     save_to(&settings_path(&app)?, &s)?;
+    SETTINGS_REVISION.fetch_add(1, Ordering::Relaxed);
     allow_media_scope(&app, &s);
     // Keep the media streamer's allowed roots in sync with the new dir.
     if let Some(server) = app.try_state::<crate::services::media::MediaServer>() {
