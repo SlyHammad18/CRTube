@@ -169,11 +169,18 @@ function LyricLine({
       animate={{ opacity: active ? 1 : 0.62, y: 0 }}
       transition={{ duration: reduced ? 0 : 0.18 }}
       dir="auto"
+      style={
+        urdu
+          ? { lineHeight: 1.9, textRendering: "optimizeLegibility" }
+          : undefined
+      }
       className={`text-center ${
         urdu ? "font-urdu text-right" : ""
       } ${
         active
-          ? `line-clamp-2 ${urdu ? "font-urdu" : "font-display"} text-18 font-semibold leading-snug text-ink`
+          ? // Nastaliq needs ~2× leading (set on .font-urdu) — drop a size step
+            // so two lines still fit the compact overlay window.
+            `line-clamp-2 ${urdu ? "font-urdu text-15" : "font-display text-18"} font-semibold leading-snug text-ink`
           : "line-clamp-1 text-12 leading-snug text-mute"
       }`}
     >

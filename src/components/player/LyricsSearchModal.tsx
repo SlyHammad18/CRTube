@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { MagnifyingGlass, X } from "@phosphor-icons/react";
-import { fmtDuration } from "../../lib/format";
+import { fmtDuration, parseTrackArtist } from "../../lib/format";
 import type { LyricsState } from "../../hooks/useLyrics";
 import type { LyricsCandidate } from "../../types/lyrics";
-import type { LibraryEntry } from "../../types/library";
+import type { PlayableTrack } from "../../types/player";
 
 function Pill({ ice = false, children }: { ice?: boolean; children: React.ReactNode }) {
   return (
@@ -36,7 +36,7 @@ export function LyricsSearchModal({
   open,
   onClose,
 }: {
-  entry: LibraryEntry | null;
+  entry: PlayableTrack | null;
   lyrics: LyricsState;
   mode: "edit" | "find";
   open: boolean;
@@ -66,10 +66,16 @@ export function LyricsSearchModal({
       .finally(() => setLoading(false));
   };
 
-  // Reset + auto-search whenever the dialog opens.
+  // Reset + auto-search whenever the dialog opens. The field pre-fills in
+  // "track name artist" order (the backend's search chain re-reads it every
+  // way, but this is the form the user expects to see and edit).
   useEffect(() => {
     if (!open) return;
-    const q = `${entry?.channel ?? ""} ${entry?.title ?? ""}`.trim();
+    let q = "";
+    if (entry) {
+      const { track, artist } = parseTrackArtist(entry.title, entry.channel);
+      q = artist ? `${track} ${artist}` : track;
+    }
     setQuery(q);
     setResults([]);
     setSearched(false);

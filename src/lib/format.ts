@@ -86,3 +86,49 @@ export function isUrduScript(text: string): boolean {
   }
   return false;
 }
+
+// --- track/artist derivation (mirrors services/lyrics.rs parse_title_artist) ---
+
+const NOISE_WORDS = [
+  "official", "video", "audio", "lyric", "lyrics", "visualizer", "m/v", "mv",
+  "hd", "hq", "4k", "8k", "remastered", "remaster", "explicit", "topic",
+];
+
+function stripTitleNoise(title: string): string {
+  return title
+    .replace(/([([])([^)\]]*)[)\]]/g, (_m, _open: string, inner: string) =>
+      NOISE_WORDS.some((w) => inner.toLowerCase().includes(w)) ? " " : `(${inner})`)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanArtistChannel(channel?: string | null): string {
+  if (!channel) return "";
+  let s = channel.trim();
+  for (const suffix of [" - Topic", " – Topic", "- Topic", "VEVO", "vevo"]) {
+    if (s.endsWith(suffix)) s = s.slice(0, -suffix.length).trimEnd();
+  }
+  if (s.length < 2 || /^[0-9]+$/.test(s)) return "";
+  return s.trim();
+}
+
+/**
+ * Derive `(track, artist)` from a YouTube-style title + channel: splits
+ * `"Artist - Title"` patterns (dash/pipe), drops decoration like
+ * `"(Official Video)"`, falls back to a cleaned channel as the artist.
+ */
+export function parseTrackArtist(
+  title: string,
+  channel?: string | null,
+): { track: string; artist: string } {
+  const cleaned = stripTitleNoise(title.trim());
+  for (const sep of [" - ", " – ", " — ", " | "]) {
+    const idx = cleaned.indexOf(sep);
+    if (idx > 0 && idx + sep.length < cleaned.length) {
+      const artist = cleaned.slice(0, idx).trim();
+      const track = cleaned.slice(idx + sep.length).trim();
+      if (artist && track) return { track, artist };
+    }
+  }
+  return { track: cleaned, artist: cleanArtistChannel(channel) };
+}

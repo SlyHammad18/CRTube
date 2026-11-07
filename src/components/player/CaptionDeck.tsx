@@ -3,11 +3,12 @@ import { useReducedMotion } from "motion/react";
 import { ArrowsOut, Minus, PencilSimple, PictureInPicture, Plus } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../stores/player";
 import { useLyricsOverlayStore } from "../../stores/lyricsOverlay";
+import { useSettingsStore } from "../../stores/settings";
 import { useUIStore } from "../../stores/ui";
 import { activeIndex } from "../../lib/lrc";
 import { isUrduScript } from "../../lib/format";
 import type { LyricsState } from "../../hooks/useLyrics";
-import type { LibraryEntry } from "../../types/library";
+import type { PlayableTrack } from "../../types/player";
 import { LyricsSearchModal } from "./LyricsSearchModal";
 
 /// Per-press nudge for the lyrics sync offset (ms).
@@ -48,7 +49,7 @@ export function CaptionDeck({
   entry,
   lyrics,
 }: {
-  entry: LibraryEntry | null;
+  entry: PlayableTrack | null;
   lyrics: LyricsState;
 }) {
   const reduce = useReducedMotion();
@@ -264,33 +265,63 @@ const Line = memo(function Line({
   onSeek: (ms: number) => void;
   registerRef: (el: HTMLButtonElement | null) => void;
 }) {
+  // Configurable lyric sizes (Settings → Lyrics). Selected per line so a size
+  // change re-renders only the lines whose numbers actually changed.
+  const latinSize = useSettingsStore((s) => s.settings?.lyrics_size_latin ?? 15);
+  const urduSize = useSettingsStore((s) => s.settings?.lyrics_size_urdu ?? 18);
+
   if (!synced) {
     return (
       <p
-        className={`px-3 py-0.5 text-mute${urdu ? " font-urdu text-right" : ""}`}
+        className={`px-3 py-1 text-mute${urdu ? " font-urdu text-right" : ""}`}
         dir={urdu ? "auto" : undefined}
+        // Nastaliq metrics are set inline (not via CSS classes) so no cascade
+        // order can ever drop them — see .font-urdu in theme.css. The body's
+        // `text-rendering: optimizeSpeed` breaks Nastaliq shaping (detached
+        // letter joins + floating dots), so Urdu lines re-enable it.
+        style={
+          urdu
+            ? {
+                lineHeight: 2.5,
+                textRendering: "optimizeLegibility",
+                fontSize: `${urduSize}px`,
+              }
+            : { fontSize: `${latinSize}px` }
+        }
       >
         {line.text}
       </p>
     );
   }
+  // Urdu active line steps up ×4⁄3 (the Nastaliq karaoke hierarchy — 18→24 at
+  // defaults); Latin lines stay equal-size.
+  const activeUrduSize = Math.round((urduSize * 4) / 3);
   return (
     <button
       ref={registerRef}
       onClick={() => onSeek(line.tMs)}
       dir={urdu ? "rtl" : undefined}
-      className={`flex items-start gap-2 rounded-card py-0.5 ${
+      style={
+        urdu
+          ? {
+              lineHeight: 2.5,
+              textRendering: "optimizeLegibility",
+              fontSize: `${active ? activeUrduSize : urduSize}px`,
+            }
+          : { fontSize: `${latinSize}px` }
+      }
+      className={`flex items-start gap-2 rounded-card py-1 ${
         urdu ? "font-urdu" : "text-left"
       } transition-colors duration-200 ${
         active
-          ? `${urdu ? "font-urdu" : "font-display"} text-15 font-semibold text-ink`
+          ? `${urdu ? "font-urdu" : "font-display"} font-semibold text-ink`
           : past
             ? "text-dim"
             : "text-mute"
       }`}
     >
       <span
-        className="mt-1 h-4 w-1 shrink-0 rounded-full bg-ice"
+        className={`${urdu && active ? "mt-2 h-6" : "mt-1 h-4"} w-1 shrink-0 rounded-full bg-ice`}
         style={{ visibility: active ? "visible" : "hidden" }}
         aria-hidden
       />

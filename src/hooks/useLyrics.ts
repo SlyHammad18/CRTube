@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ipc } from "../lib/ipc";
 import type { LyricsPayload, LyricsCandidate } from "../types/lyrics";
 import { parseLrc, type LrcLine } from "../lib/lrc";
-import type { LibraryEntry } from "../types/library";
+import { isStreamTrack, type PlayableTrack } from "../types/player";
 
 export type LyricsStatus =
   | "idle"
@@ -132,7 +132,7 @@ function resolve(p: LyricsPayload): Resolved {
  * a sticky per-song override (the fallback ladder for missing/wrong lyrics).
  */
 export function useLyrics(
-  entry: LibraryEntry | null,
+  entry: PlayableTrack | null,
   refreshKey?: number,
 ): LyricsState {
   const [state, setState] = useState<LyricsState>(IDLE);
@@ -140,9 +140,18 @@ export function useLyrics(
   /** Last committed offset (ms) — synchronous twin of `state.offsetMs`. */
   const offsetRef = useRef(0);
 
-  const load = useCallback((e: LibraryEntry, override?: { title: string; artist: string }) => {
+  // Identity of the currently-loaded track's lyrics: library entries key on
+  // their row id, stream tracks on the videoId (plus stream kind so switching
+  // audio⇄video re-fetches rather than trusting a stale request).
+  const lyricsKey = entry
+    ? isStreamTrack(entry)
+      ? `s:${entry.videoId}:${entry.kind}`
+      : `${entry.id}:${entry.videoId}`
+    : null;
+
+  const load = useCallback((e: PlayableTrack, override?: { title: string; artist: string }) => {
     const id = ++reqId.current;
-    const trackKey = `${e.id}:${e.videoId}`;
+    const trackKey = isStreamTrack(e) ? e.videoId : `${e.id}:${e.videoId}`;
     setState((s) => ({ ...s, trackKey, status: "loading", override: !!override }));
     const title = override?.title ?? e.title;
     const artist = override?.artist ?? e.channel ?? "";
@@ -179,7 +188,10 @@ export function useLyrics(
     }
     const e = entry;
     load(e);
-  }, [entry?.id, entry?.videoId, refreshKey, load]);
+    // The reload key captures everything that identifies the track's lyrics
+    // (library id / stream videoId) without re-firing on unrelated patches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lyricsKey, refreshKey, load]);
 
   const search = useCallback(
     (query: string) => ipc.searchLyrics(query.trim()),
