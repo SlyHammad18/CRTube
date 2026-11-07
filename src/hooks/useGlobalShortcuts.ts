@@ -4,6 +4,7 @@ import { useLibraryStore } from "../stores/library";
 import { usePlaylistsStore } from "../stores/playlists";
 import { useUIStore } from "../stores/ui";
 import { useRenameStore } from "../stores/rename";
+import { isStreamTrack } from "../types/player";
 import { parseArtists } from "../lib/format";
 
 /**
@@ -64,7 +65,7 @@ export function useGlobalShortcuts() {
             });
           } else {
             const current = selectCurrentEntry(usePlayerStore.getState());
-            if (current) {
+            if (current && !isStreamTrack(current)) {
               useRenameStore.getState().open({
                 id: current.id,
                 title: current.title,
@@ -123,7 +124,7 @@ export function useGlobalShortcuts() {
             case "f": {
               e.preventDefault();
               const cur = selectCurrentEntry(player);
-              if (cur) {
+              if (cur && !isStreamTrack(cur)) {
                 const lib = useLibraryStore.getState();
                 const entry = lib.entryById.get(cur.id);
                 if (entry) lib.setFavourite(cur.id, !entry.favourite);
@@ -131,18 +132,16 @@ export function useGlobalShortcuts() {
               handled = true;
               break;
             }
-            case "[": {
+            case "[":
               e.preventDefault();
               player.setSpeed(stepSpeed(player.speed, -1));
               handled = true;
               break;
-            }
-            case "]": {
+            case "]":
               e.preventDefault();
               player.setSpeed(stepSpeed(player.speed, 1));
               handled = true;
               break;
-            }
             case "l":
               e.preventDefault();
               if (selectCurrentEntry(player)) ui.setLyricsDockOpen(!ui.lyricsDockOpen);

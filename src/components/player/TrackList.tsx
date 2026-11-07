@@ -6,6 +6,7 @@ import type { LibraryEntry } from "../../types/library";
 import type { PlaylistTrack } from "../../types/player";
 import { useLibraryStore } from "../../stores/library";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
+import { isStreamTrack } from "../../types/player";
 import { usePlaylistsStore } from "../../stores/playlists";
 import { useUIStore } from "../../stores/ui";
 import { ConsolePrompt } from "../common/ConsolePrompt";
@@ -21,7 +22,6 @@ export function TrackList() {
   const reorder = usePlaylistsStore((s) => s.reorder);
   const removeFrom = usePlaylistsStore((s) => s.removeFrom);
   const libEntries = useLibraryStore((s) => s.entries);
-  const setView = useUIStore((s) => s.setView);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -125,7 +125,8 @@ export function TrackList() {
     if (selection.type !== "playlist" && selection.type !== "artist") return;
     const st = usePlayerStore.getState();
     const cur = selectCurrentEntry(st);
-    const targetId = st.playing && cur ? cur.id : null;
+    const targetId =
+      st.playing && cur && !isStreamTrack(cur) ? cur.id : null;
     let raf = 0;
     let tries = 0;
     const tick = () => {
@@ -208,10 +209,10 @@ export function TrackList() {
           <div className="flex flex-col items-center justify-center gap-4 pt-[18vh]">
             <p className="font-mono text-15 text-mute">{"> awaiting media_"}</p>
             <button
-              onClick={() => setView("search")}
+              onClick={() => useUIStore.getState().setPlayerSearch("")}
               className="rounded-card bg-ice px-4 py-2 text-13 font-semibold text-void hover:bg-ink active:scale-[0.98]"
             >
-              Download something first
+              Search something to play
             </button>
           </div>
         ) : selection.type === "playlist" &&

@@ -128,7 +128,12 @@ export const ipc = {
   getSettings: () => invoke<AppSettings>("get_settings"),
   setSettings: (settings: AppSettings) =>
     invoke<AppSettings>("set_settings", { settings }),
+  pickUrduFont: () =>
+    invoke<{ file: string; label: string }>("pick_urdu_font"),
+  urduCustomFontUrl: () => invoke<string>("urdu_custom_font_url"),
   mediaUrl: (id: number) => invoke<string | null>("media_url", { id }),
+  streamMediaUrl: (videoId: string, kind: "video" | "audio", force = false) =>
+    invoke<string | null>("stream_media_url", { videoId, kind, force }),
   thumbMediaUrl: (videoId: string) =>
     invoke<string | null>("thumb_media_url", { videoId }),
 

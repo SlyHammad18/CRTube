@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ipc, type MprisRepeatMode, type MprisState } from "../lib/ipc";
 import { selectCurrentEntry, usePlayerStore } from "../stores/player";
-import type { LibraryEntry } from "../types/library";
+import { isStreamTrack, type PlayableTrack } from "../types/player";
 import { useLyricsOverlayStore } from "../stores/lyricsOverlay";
 
 /**
@@ -76,7 +76,7 @@ export function useMpris() {
       .then((artUrl) => {
         if (!alive) return undefined;
         return ipc.mprisSetTrack({
-          id: entry.id,
+          id: isStreamTrack(entry) ? 0 : entry.id,
           title: entry.title,
           artist: entry.channel,
           durationS: entry.durationS,
@@ -142,7 +142,8 @@ export function useMpris() {
     const push = () => {
       timer = undefined;
       const player = usePlayerStore.getState();
-      const trackId = player.queue[player.order[player.pos]]?.id ?? 0;
+      const cur = player.queue[player.order[player.pos]];
+      const trackId = cur != null && !isStreamTrack(cur) ? cur.id : 0;
       // Every push reports the queue's navigation ability: the widget greys out
       // next/previous when the queue has nowhere to go.
       const canNavigate = player.order.length > 1;
@@ -172,7 +173,8 @@ export function useMpris() {
     push();
     const unsubscribe = usePlayerStore.subscribe(() => {
       const player = usePlayerStore.getState();
-      const trackId = player.queue[player.order[player.pos]]?.id ?? 0;
+      const cur = player.queue[player.order[player.pos]];
+      const trackId = cur != null && !isStreamTrack(cur) ? cur.id : 0;
       if (
         trackId !== last.trackId ||
         player.playing !== last.playing ||
@@ -269,7 +271,7 @@ export function useMpris() {
  * cached thumb from the loopback streamer — `file://` is not readable by the
  * shell, and the streamer is what already serves the player.
  */
-async function artUrlFor(entry: LibraryEntry): Promise<string | undefined> {
+async function artUrlFor(entry: PlayableTrack): Promise<string | undefined> {
   const thumb = entry.thumbUrl ?? "";
   if (thumb.startsWith("http://") || thumb.startsWith("https://")) return thumb;
   try {

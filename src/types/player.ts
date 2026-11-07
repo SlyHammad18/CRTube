@@ -32,3 +32,25 @@ export interface Artist {
 }
 
 export const COVER_URL_MAX = 4;
+
+/**
+ * A queue item that streams live from YouTube instead of playing a downloaded
+ * file (search-result click-to-play). `kind` selects which yt-dlp stream the
+ * loopback relay serves — switching it re-resolves the media URL.
+ */
+export interface StreamTrack {
+  source: "stream";
+  videoId: string;
+  title: string;
+  channel?: string;
+  durationS?: number;
+  thumbUrl?: string;
+  kind: "audio" | "video";
+}
+
+/** Anything the main player can play: a downloaded library entry or a live stream. */
+export type PlayableTrack = LibraryEntry | StreamTrack;
+
+export function isStreamTrack(t: PlayableTrack): t is StreamTrack {
+  return (t as StreamTrack).source === "stream";
+}

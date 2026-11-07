@@ -238,6 +238,110 @@ function PlaybackSection() {
   );
 }
 
+function LyricsSection() {
+  const settings = useSettingsStore((s) => s.settings);
+  const update = useSettingsStore((s) => s.update);
+  const urduFont = settings?.urdu_font ?? "naskh";
+  const latinSize = settings?.lyrics_size_latin ?? 15;
+  const urduSize = settings?.lyrics_size_urdu ?? 18;
+  const [picking, setPicking] = useState(false);
+
+  const pickCustom = async () => {
+    if (picking) return;
+    setPicking(true);
+    try {
+      const res = await ipc.pickUrduFont();
+      await update({ urdu_font: "custom", urdu_custom_file: res.file });
+      pushToast(`Custom font added — ${res.label}`);
+    } catch (e) {
+      const msg = String(e);
+      if (msg !== "no font selected") pushToast(`Couldn't add font — ${msg}`);
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  const stepSize = (key: "lyrics_size_latin" | "lyrics_size_urdu", delta: number, min: number, max: number) => {
+    const cur = key === "lyrics_size_latin" ? latinSize : urduSize;
+    const next = Math.min(max, Math.max(min, cur + delta));
+    if (next !== cur) void update({ [key]: next });
+  };
+
+  const sizeStepper = (
+    key: "lyrics_size_latin" | "lyrics_size_urdu",
+    value: number,
+    min: number,
+    max: number,
+    ariaLabel: string,
+  ) => (
+    <div className="flex shrink-0 items-center gap-2">
+      <button
+        aria-label={`Decrease ${ariaLabel}`}
+        onClick={() => stepSize(key, -1, min, max)}
+        disabled={value <= min}
+        className="grid h-7 w-7 place-items-center rounded-card border border-line text-mute transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+      >
+        <Minus size={13} weight="bold" aria-hidden />
+      </button>
+      <span className="w-12 text-center font-mono text-13 text-ink">
+        {value} px
+      </span>
+      <button
+        aria-label={`Increase ${ariaLabel}`}
+        onClick={() => stepSize(key, 1, min, max)}
+        disabled={value >= max}
+        className="grid h-7 w-7 place-items-center rounded-card border border-line text-mute transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+      >
+        <Plus size={13} weight="bold" aria-hidden />
+      </button>
+    </div>
+  );
+
+  return (
+    <Section title="Lyrics">
+      <Row
+        label="Urdu font"
+        hint="Face for Urdu/Arabic lyrics. Custom lets you pick any font file you've downloaded (ttf / otf / woff / woff2)."
+      >
+        <div className="flex shrink-0 rounded-full border border-line bg-void p-0.5">
+          <button
+            onClick={() => void update({ urdu_font: "naskh" })}
+            aria-pressed={urduFont === "naskh"}
+            className={`rounded-full px-2.5 py-1 text-12 font-semibold transition-colors duration-150 active:scale-[0.98] ${
+              urduFont === "naskh"
+                ? "bg-ice text-void"
+                : "text-mute hover:text-ink"
+            }`}
+          >
+            Naskh
+          </button>
+          <button
+            onClick={() => void pickCustom()}
+            disabled={picking}
+            aria-pressed={urduFont === "custom"}
+            className={`rounded-full px-2.5 py-1 text-12 font-semibold transition-colors duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 ${
+              urduFont === "custom"
+                ? "bg-ice text-void"
+                : "text-mute hover:text-ink"
+            }`}
+          >
+            {picking ? "…" : "Custom…"}
+          </button>
+        </div>
+      </Row>
+      <Row label="English lyrics size" hint="Caption Deck + video caption">
+        {sizeStepper("lyrics_size_latin", latinSize, 12, 32, "English lyrics size")}
+      </Row>
+      <Row
+        label="Urdu lyrics size"
+        hint="Active line renders ×4⁄3 — 18 px gives a 24 px highlight"
+      >
+        {sizeStepper("lyrics_size_urdu", urduSize, 14, 40, "Urdu lyrics size")}
+      </Row>
+    </Section>
+  );
+}
+
 function AboutSection() {
   const [version, setVersion] = useState<string>("—");
   useEffect(() => {
@@ -272,6 +376,7 @@ export function SettingsView() {
       <StorageSection />
       <EngineSection />
       <PlaybackSection />
+      <LyricsSection />
       <DownloadsSection />
       <AboutSection />
     </div>

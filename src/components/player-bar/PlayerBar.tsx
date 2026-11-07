@@ -1,9 +1,11 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { CaretUp, Pause, PictureInPicture, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, TextAlignLeft } from "@phosphor-icons/react";
-import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
+import { BufferBadge } from "../common/BufferBadge";
+import { imgSrcOf, trackArtworkUrl } from "../../lib/asset";
 import { fmtDuration } from "../../lib/format";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
+import { isStreamTrack } from "../../types/player";
 import { useLyricsOverlayStore } from "../../stores/lyricsOverlay";
 import { useUIStore } from "../../stores/ui";
 import { setSecondarySlot } from "./mediaSlots";
@@ -55,6 +57,7 @@ export function PlayerBar() {
   const overlayBusy = useLyricsOverlayStore((s) => s.busy);
   const toggleOverlay = useLyricsOverlayStore((s) => s.toggle);
   const videoDisabled = useUIStore((s) => s.videoDisabled);
+  const buffering = usePlayerStore((s) => s.buffering);
   const store = usePlayerStore;
 
   const handleSeek = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -144,7 +147,9 @@ export function PlayerBar() {
                   id="playerbar-media-slot"
                   className="absolute inset-0"
                 />
-                {(entry?.kind !== "video" || videoDisabled) && thumbSrc(entry)}
+                {(entry?.kind !== "video" ||
+                  (!isStreamTrack(entry) && videoDisabled)) &&
+                  thumbSrc(entry)}
                 {entry == null && (
                   <span className="grid h-full w-full place-items-center font-mono text-11 text-dim">
                     ——
@@ -153,8 +158,9 @@ export function PlayerBar() {
               </button>
 
               <button onClick={() => setView("player")} className="min-w-0 flex-1 text-left">
-                <p className="truncate text-13 font-semibold text-ink">
-                  {entry?.title ?? "Nothing playing"}
+                <p className="flex items-center gap-2 truncate text-13 font-semibold text-ink">
+                  <span className="truncate">{entry?.title ?? "Nothing playing"}</span>
+                  {buffering && <BufferBadge variant="inline" />}
                 </p>
                 <p className="truncate text-12 text-mute">
                   {entry?.channel ?? "queue a track from Library"}
@@ -226,7 +232,7 @@ export function PlayerBar() {
               >
                 <PictureInPicture size={16} weight="light" aria-hidden />
               </IconBtn>
-              {entry && <FavouriteButton entryId={entry.id} size={16} />}
+              {entry && !isStreamTrack(entry) && <FavouriteButton entryId={entry.id} size={16} />}
               <VolumeSlider />
               <SpeedMenu />
               <IconBtn label="Expand player" onClick={() => setView("player")}>
@@ -241,7 +247,7 @@ export function PlayerBar() {
 }
 
 function thumbSrc(entry: ReturnType<typeof selectCurrentEntry>) {
-  const src = entry ? imgSrcOf(entryArtworkUrl(entry)) : undefined;
+  const src = entry ? imgSrcOf(trackArtworkUrl(entry)) : undefined;
   if (!src) return null;
   return (
     <img

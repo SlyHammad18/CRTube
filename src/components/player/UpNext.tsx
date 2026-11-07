@@ -1,12 +1,13 @@
 import { memo, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { LibraryEntry } from "../../types/library";
-import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
+import type { PlayableTrack } from "../../types/player";
+import { isStreamTrack } from "../../types/player";
+import { imgSrcOf, trackArtworkUrl } from "../../lib/asset";
 import { usePlayerStore } from "../../stores/player";
 import { stripMediaExt } from "../../lib/format";
 
-function thumbSrc(e: LibraryEntry): string | undefined {
-  return imgSrcOf(entryArtworkUrl(e));
+function thumbSrc(e: PlayableTrack): string | undefined {
+  return imgSrcOf(trackArtworkUrl(e));
 }
 
 const UpNextRow = memo(function UpNextRow({
@@ -14,7 +15,7 @@ const UpNextRow = memo(function UpNextRow({
   index,
   onPlay,
 }: {
-  entry: LibraryEntry;
+  entry: PlayableTrack;
   index: number;
   onPlay: (i: number) => void;
 }) {
@@ -60,8 +61,8 @@ export function UpNext() {
   const repeat = usePlayerStore((s) => s.repeat);
   const jumpTo = usePlayerStore((s) => s.jumpTo);
 
-  const upcoming = useMemo<{ i: number; e: LibraryEntry }[]>(() => {
-    const list: { i: number; e: LibraryEntry }[] = [];
+  const upcoming = useMemo<{ i: number; e: PlayableTrack }[]>(() => {
+    const list: { i: number; e: PlayableTrack }[] = [];
     if (pos >= 0 && pos < order.length) {
       if (repeat === "one") {
         const e = queue[order[pos]];
@@ -104,7 +105,7 @@ export function UpNext() {
               const { i, e } = upcoming[vi.index];
               return (
                 <li
-                  key={`${e.id}-${i}`}
+                  key={`${isStreamTrack(e) ? e.videoId : e.id}-${i}`}
                   data-index={vi.index}
                   ref={rowVirtualizer.measureElement}
                   className="list-none"

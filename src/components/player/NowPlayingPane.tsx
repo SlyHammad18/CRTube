@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowsOut,
+  DownloadSimple,
   MusicNotes,
   Pause,
   PencilSimple,
@@ -13,12 +14,16 @@ import {
   VideoCamera,
   VideoCameraSlash,
 } from "@phosphor-icons/react";
-import { entryArtworkUrl, imgSrcOf } from "../../lib/asset";
+import { imgSrcOf, trackArtworkUrl } from "../../lib/asset";
+import { BufferBadge } from "../common/BufferBadge";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
+import { isStreamTrack } from "../../types/player";
 import { useLibraryStore } from "../../stores/library";
+import { useSheetStore } from "../../stores/sheet";
 import { useUIStore } from "../../stores/ui";
 import { pushToast } from "../../stores/toast";
 import { setPrimarySlot } from "./../player-bar/mediaSlots";
+import { AddToPlaylistMenu } from "./AddToPlaylistMenu";
 import { useLyrics } from "../../hooks/useLyrics";
 import { SeekBar } from "./SeekBar";
 import { VolumeSlider } from "./VolumeSlider";
@@ -35,6 +40,7 @@ import { stripMediaExt } from "../../lib/format";
 export function NowPlayingPane() {
   const entry = usePlayerStore(selectCurrentEntry);
   const pickThumbnail = useLibraryStore((s) => s.pickThumbnail);
+  const buffering = usePlayerStore((s) => s.buffering);
   const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
   const lyrics = useLyrics(entry);
   const lyricsFullscreen = useUIStore((s) => s.lyricsFullscreen);
@@ -44,9 +50,14 @@ export function NowPlayingPane() {
     return () => setPrimarySlot(null);
   }, [slotEl]);
 
-  const thumb = entry ? imgSrcOf(entryArtworkUrl(entry)) : undefined;
+  const thumb = entry ? imgSrcOf(trackArtworkUrl(entry)) : undefined;
 
-  const isVideo = entry?.kind === "video" && entry.path !== "";
+  const stream = entry != null && isStreamTrack(entry) ? entry : null;
+  const isVideo =
+    entry != null &&
+    (isStreamTrack(entry)
+      ? entry.kind === "video"
+      : entry.kind === "video" && entry.path !== "");
   const videoDisabled = useUIStore((s) => s.videoDisabled);
   const setVideoDisabled = useUIStore((s) => s.setVideoDisabled);
 
@@ -67,8 +78,20 @@ export function NowPlayingPane() {
   }
 
   const editThumbnail = () => {
+    if (isStreamTrack(entry)) return;
     void pickThumbnail(entry.id).catch((error) => {
       pushToast(`Thumbnail update failed — ${String(error)}`);
+    });
+  };
+
+  const downloadStream = () => {
+    if (!stream) return;
+    useSheetStore.getState().openForCard({
+      videoId: stream.videoId,
+      title: stream.title,
+      channel: stream.channel,
+      durationS: stream.durationS,
+      thumbUrl: stream.thumbUrl,
     });
   };
 
@@ -91,42 +114,58 @@ export function NowPlayingPane() {
           </span>
         )}
         <div ref={setSlotEl} id="nowplaying-media-slot" className="absolute inset-0" />
-        <button
-          type="button"
-          aria-label="Change thumbnail"
-          title="Change thumbnail"
-          onClick={editThumbnail}
-          className="absolute bottom-2 left-2 z-30 grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink opacity-0 backdrop-blur-sm transition-[opacity,transform] duration-150 hover:bg-void hover:text-ice active:scale-[0.98] group-hover/artwork:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice"
-        >
-          <PencilSimple size={15} weight="light" aria-hidden />
-        </button>
-        {isVideo && (
-          <div className="absolute right-2 top-2 z-20 flex items-center gap-1.5">
+        {buffering && <BufferBadge />}
+        {!stream && (
+          <button
+            type="button"
+            aria-label="Change thumbnail"
+            title="Change thumbnail"
+            onClick={editThumbnail}
+            className="absolute bottom-2 left-2 z-30 grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink opacity-0 backdrop-blur-sm transition-[opacity,transform] duration-150 hover:bg-void hover:text-ice active:scale-[0.98] group-hover/artwork:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice"
+          >
+            <PencilSimple size={15} weight="light" aria-hidden />
+          </button>
+        )}
+        {stream ? (
+          stream.kind === "video" && (
             <button
-              aria-label={videoDisabled ? "Show video" : "Disable video (play audio only)"}
-              title={videoDisabled ? "Show video" : "Disable video (play audio only)"}
-              onClick={() => setVideoDisabled(!videoDisabled)}
-              className={`grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98] ${
-                videoDisabled ? "text-ice" : ""
-              }`}
+              aria-label="Fullscreen"
+              title="Fullscreen"
+              onClick={() => useUIStore.getState().setVideoFullscreen(true)}
+              className="absolute bottom-2 right-2 z-30 grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink opacity-0 backdrop-blur-sm transition-[opacity,transform] duration-150 hover:bg-void hover:text-ice active:scale-[0.98] group-hover/artwork:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice"
             >
-              {videoDisabled ? (
-                <VideoCameraSlash size={16} weight="light" aria-hidden />
-              ) : (
-                <VideoCamera size={16} weight="light" aria-hidden />
-              )}
+              <ArrowsOut size={15} weight="light" aria-hidden />
             </button>
-            {!videoDisabled && (
+          )
+        ) : (
+          isVideo && (
+            <div className="absolute right-2 top-2 z-20 flex items-center gap-1.5">
               <button
-                aria-label="Fullscreen"
-                title="Fullscreen"
-                onClick={() => useUIStore.getState().setVideoFullscreen(true)}
-                className="grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98]"
+                aria-label={videoDisabled ? "Show video" : "Disable video (play audio only)"}
+                title={videoDisabled ? "Show video" : "Disable video (play audio only)"}
+                onClick={() => setVideoDisabled(!videoDisabled)}
+                className={`grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98] ${
+                  videoDisabled ? "text-ice" : ""
+                }`}
               >
-                <ArrowsOut size={16} weight="light" aria-hidden />
+                {videoDisabled ? (
+                  <VideoCameraSlash size={16} weight="light" aria-hidden />
+                ) : (
+                  <VideoCamera size={16} weight="light" aria-hidden />
+                )}
               </button>
-            )}
-          </div>
+              {!videoDisabled && (
+                <button
+                  aria-label="Fullscreen"
+                  title="Fullscreen"
+                  onClick={() => useUIStore.getState().setVideoFullscreen(true)}
+                  className="grid h-8 w-8 place-items-center rounded-card bg-void/80 text-ink transition-colors duration-150 hover:bg-void hover:text-ice active:scale-[0.98]"
+                >
+                  <ArrowsOut size={16} weight="light" aria-hidden />
+                </button>
+              )}
+            </div>
+          )
         )}
       </div>
 
@@ -139,7 +178,59 @@ export function NowPlayingPane() {
             {entry.channel ? stripMediaExt(entry.channel) : "—"}
           </p>
         </div>
-        <FavouriteButton entryId={entry.id} size={18} className="mt-1" />
+        {!isStreamTrack(entry) && (
+          <FavouriteButton entryId={entry.id} size={18} className="mt-1" />
+        )}
+        {stream && (
+          <div className="mt-1 flex shrink-0 items-center gap-1">
+            <button
+              aria-label={
+                stream.kind === "video"
+                  ? "Switch to audio stream"
+                  : "Switch to video stream"
+              }
+              title={
+                stream.kind === "video"
+                  ? "Switch to audio stream"
+                  : "Switch to video stream"
+              }
+              onClick={() =>
+                usePlayerStore
+                  .getState()
+                  .setStreamKind(stream.kind === "video" ? "audio" : "video")
+              }
+              className={`grid h-7 w-7 place-items-center rounded-card transition-colors duration-150 active:scale-[0.98] ${
+                stream.kind === "video"
+                  ? "bg-raise text-ice"
+                  : "text-mute hover:bg-raise hover:text-ink"
+              }`}
+            >
+              {stream.kind === "video" ? (
+                <VideoCamera size={15} weight="light" aria-hidden />
+              ) : (
+                <VideoCameraSlash size={15} weight="light" aria-hidden />
+              )}
+            </button>
+            <button
+              aria-label="Download this track"
+              title="Download…"
+              onClick={downloadStream}
+              className="grid h-7 w-7 place-items-center rounded-card text-mute transition-colors duration-150 hover:bg-raise hover:text-ink active:scale-[0.98]"
+            >
+              <DownloadSimple size={15} weight="light" aria-hidden />
+            </button>
+            <AddToPlaylistMenu
+              target={{
+                type: "stream",
+                videoId: stream.videoId,
+                title: stream.title,
+                channel: stream.channel,
+                durationS: stream.durationS,
+                thumbUrl: stream.thumbUrl,
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {lyricsFullscreen ? (

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type View = "home" | "player" | "search" | "downloads" | "library" | "settings";
+export type View = "home" | "player" | "downloads" | "library" | "settings";
 
 export interface PlaylistNameDraft {
   mode: "create" | "rename";
@@ -23,7 +23,11 @@ interface UIState {
   lyricsDockOpen: boolean;
   /** Drives the global new/rename playlist dialog (Ctrl+N / F2). */
   playlistName: PlaylistNameDraft | null;
+  /** Unified search inside the Player tab: null = normal context view;
+   *  a string = the search pane is open (value = the committed/typed query). */
+  playerSearch: string | null;
   setView: (view: View) => void;
+  setPlayerSearch: (query: string | null) => void;
   setNowPlayingOpen: (open: boolean) => void;
   setVideoFullscreen: (open: boolean) => void;
   setVideoDisabled: (disabled: boolean) => void;
@@ -42,7 +46,9 @@ export const useUIStore = create<UIState>((set) => ({
   lyricsFullscreen: false,
   lyricsDockOpen: false,
   playlistName: null,
+  playerSearch: null,
   setView: (view) => set({ view }),
+  setPlayerSearch: (playerSearch) => set({ playerSearch }),
   setNowPlayingOpen: (nowPlayingOpen) => set({ nowPlayingOpen }),
   setVideoFullscreen: (open) => set({ videoFullscreen: open }),
   setVideoDisabled: (disabled) => set({ videoDisabled: disabled }),

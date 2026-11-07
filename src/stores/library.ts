@@ -26,6 +26,7 @@ interface LibraryStore {
   setSearchQuery: (query: string) => void;
   setDensity: (density: LibraryDensity) => void;
   refresh: () => Promise<void>;
+  refreshNow: () => Promise<void>;
   removeLocal: (id: number) => void;
   setFavourite: (id: number, favourite: boolean) => void;
   renameEntry: (id: number, title: string, artists: string[]) => void;
@@ -56,6 +57,28 @@ export const useLibraryStore = create<LibraryStore>((set) => ({
     // Debounce: if a refresh is already scheduled, skip this one.
     if (refreshTimer) return;
     refreshTimer = setTimeout(() => { refreshTimer = null; }, REFRESH_DEBOUNCE_MS);
+    try {
+      const entries = await ipc.listLibrary();
+      set({
+        entries,
+        ids: new Set(entries.map((e) => e.videoId)),
+        entryById: entriesToById(entries),
+        loaded: true,
+      });
+    } catch (error) {
+      console.error("listLibrary failed", error);
+      pushToast("Library failed to load — check the app log");
+      set({ loaded: true });
+    }
+  },
+
+  /** Immediate, undebounced fetch — used right after dl://done so an
+   *  auto-add-to-playlist can resolve the freshly registered row. */
+  refreshNow: async () => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+    }
     try {
       const entries = await ipc.listLibrary();
       set({

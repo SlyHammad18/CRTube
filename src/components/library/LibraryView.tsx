@@ -493,10 +493,10 @@ export function LibraryView() {
         <div className="flex flex-1 flex-col items-center justify-center gap-4 pb-[16vh]">
           <p className="font-mono text-15 text-mute">{"> nothing archived yet_"}</p>
           <button
-            onClick={() => setView("search")}
+            onClick={() => setView("home")}
             className="rounded-card bg-ice px-4 py-2 text-13 font-semibold text-void hover:bg-ink active:scale-[0.98]"
           >
-            Find something to download
+            Search YouTube to build your library
           </button>
         </div>
       ) : (

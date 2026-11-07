@@ -4,6 +4,7 @@ import { useLibraryStore } from "../stores/library";
 import { usePlayerStore } from "../stores/player";
 import { usePlaylistsStore } from "../stores/playlists";
 import { useSettingsStore } from "../stores/settings";
+import { isStreamTrack } from "../types/player";
 import type { LibraryEntry } from "../types/library";
 import type { PlayerSession } from "../types/session";
 
@@ -13,6 +14,11 @@ import type { PlayerSession } from "../types/session";
  * launch picks up where playback left off. Restored playback always starts
  * *paused*, per decision. Writes are debounced/throttled and flushed on hide so
  * they never spam the disk during a `timeupdate` storm.
+ *
+ * Stream tracks (search click-to-play) are NOT persisted — the Rust session
+ * schema only knows library entries, and a signed stream URL is dead by the
+ * next launch anyway. The saved order/pos are remapped onto the surviving
+ * library subset so restore stays consistent.
  */
 export function useSession() {
   useEffect(() => {
@@ -23,12 +29,32 @@ export function useSession() {
 
     const snapshot = (): PlayerSession => {
       const p = usePlayerStore.getState();
+      const current = p.pos >= 0 ? p.queue[p.order[p.pos]] : undefined;
+      const currentIsStream = current != null && isStreamTrack(current);
+      // Keep only downloaded entries; remap the saved permutation onto the
+      // surviving indices.
+      const queue: LibraryEntry[] = p.queue.filter(
+        (t): t is LibraryEntry => !isStreamTrack(t),
+      );
+      const oldToNew = new Map<number, number>();
+      let next = 0;
+      for (let i = 0; i < p.queue.length; i++) {
+        if (!isStreamTrack(p.queue[i])) oldToNew.set(i, next++);
+      }
+      const order = p.order
+        .map((i) => oldToNew.get(i))
+        .filter((i): i is number => i != null);
+      const mappedPos = p.pos >= 0 ? oldToNew.get(p.pos) : undefined;
+      const pos =
+        currentIsStream || mappedPos == null ? -1 : order.indexOf(mappedPos);
       return {
         version: 1,
-        queue: p.queue,
-        order: p.order,
-        pos: p.pos,
-        currentTimeS: p.currentTimeS,
+        queue,
+        order,
+        pos,
+        // A stream's timestamp means nothing on disk — start the restored
+        // track from the top.
+        currentTimeS: currentIsStream ? 0 : p.currentTimeS,
         muted: p.muted,
         repeat: p.repeat,
         shuffle: p.shuffle,
@@ -42,7 +68,9 @@ export function useSession() {
     const fingerprint = (): string => {
       const p = usePlayerStore.getState();
       return [
-        p.queue.map((e) => e.id).join(","),
+        p.queue
+          .map((t) => (isStreamTrack(t) ? `s:${t.videoId}` : String(t.id)))
+          .join(","),
         p.order.join(","),
         p.pos,
         p.playing ? 1 : 0,

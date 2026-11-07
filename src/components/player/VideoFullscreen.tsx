@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { Pause, Play, RepeatOnce, X } from "@phosphor-icons/react";
 import { selectCurrentEntry, usePlayerStore } from "../../stores/player";
+import { useSettingsStore } from "../../stores/settings";
 import { useUIStore } from "../../stores/ui";
+import { isStreamTrack } from "../../types/player";
 import { isUrduScript } from "../../lib/format";
 import { setFullscreenSlot } from "../player-bar/mediaSlots";
 import { SeekBar } from "./SeekBar";
@@ -29,8 +31,15 @@ export function VideoFullscreen() {
   const repeat = usePlayerStore((s) => s.repeat);
   const setRepeat = usePlayerStore((s) => s.setRepeat);
 
-  const isVideo = entry?.kind === "video" && entry.path !== "";
+  const isVideo =
+    entry != null &&
+    (isStreamTrack(entry)
+      ? entry.kind === "video"
+      : entry.kind === "video" && entry.path !== "");
   const videoDisabled = useUIStore((s) => s.videoDisabled);
+  // videoDisabled only governs downloaded files — stream tracks use their own
+  // kind toggle as the picture control, so it must not close the overlay.
+  const pictureHidden = entry != null && !isStreamTrack(entry) && videoDisabled;
 
   const lyrics = useLyrics(entry);
   const currentTimeS = usePlayerStore((s) => s.currentTimeS);
@@ -44,7 +53,7 @@ export function VideoFullscreen() {
 
   // Escape closes fullscreen; auto-close if there's no video to show.
   useEffect(() => {
-    if (!open || !isVideo || videoDisabled) {
+    if (!open || !isVideo || pictureHidden) {
       if (open) setOpen(false);
       return;
     }
@@ -56,7 +65,7 @@ export function VideoFullscreen() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, isVideo, videoDisabled, setOpen]);
+  }, [open, isVideo, pictureHidden, setOpen]);
 
   const registerSlot = (el: HTMLDivElement | null) => {
     setFullscreenSlot(el);
@@ -96,24 +105,7 @@ export function VideoFullscreen() {
       <div className="relative min-h-0 flex-1">
         <div ref={registerSlot} className="absolute inset-0" />
         {activeLine && (
-          <button
-            key={activeIdx}
-            aria-label="Seek to this lyric"
-            onClick={(e) => {
-              e.stopPropagation();
-              seek(activeLine.tMs / 1000);
-            }}
-            className="absolute inset-x-0 bottom-6 flex justify-center px-4"
-          >
-            <span
-              className={`max-w-[80%] rounded-card bg-void/70 px-3 py-1.5 text-center text-15 font-semibold text-ink shadow-[0_2px_12px_rgba(0,0,0,0.5)] ${
-                isUrduScript(activeLine.text) ? "font-urdu" : ""
-              }`}
-              dir={isUrduScript(activeLine.text) ? "auto" : undefined}
-            >
-              {activeLine.text}
-            </span>
-          </button>
+          <VideoCaption line={activeLine.text} tMs={activeLine.tMs} onSeek={seek} />
         )}
       </div>
 
@@ -134,7 +126,7 @@ export function VideoFullscreen() {
           </button>
           <VolumeSlider />
           <div className="flex items-center gap-2.5">
-            {entry && <FavouriteButton entryId={entry.id} size={18} />}
+            {entry && !isStreamTrack(entry) && <FavouriteButton entryId={entry.id} size={18} />}
             <SpeedMenu zClass="z-[100]" />
             <button
               aria-label="Loop one"
@@ -153,5 +145,51 @@ export function VideoFullscreen() {
       </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Active-line caption pill over the video stage. Font size follows
+ * Settings → Lyrics (Urdu lines step up ×4⁄3, matching the Caption Deck).
+ */
+function VideoCaption({
+  line,
+  tMs,
+  onSeek,
+}: {
+  line: string;
+  tMs: number;
+  onSeek: (ms: number) => void;
+}) {
+  const urdu = isUrduScript(line);
+  const latinSize = useSettingsStore((s) => s.settings?.lyrics_size_latin ?? 15);
+  const urduSize = useSettingsStore((s) => s.settings?.lyrics_size_urdu ?? 18);
+  return (
+    <button
+      aria-label="Seek to this lyric"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSeek(tMs);
+      }}
+      className="absolute inset-x-0 bottom-6 flex justify-center px-4"
+    >
+      <span
+        style={
+          urdu
+            ? {
+                lineHeight: 2.1,
+                textRendering: "optimizeLegibility",
+                fontSize: `${Math.round((urduSize * 4) / 3)}px`,
+              }
+            : { fontSize: `${latinSize}px` }
+        }
+        className={`max-w-[80%] rounded-card bg-void/70 px-3 py-1.5 text-center font-semibold text-ink shadow-[0_2px_12px_rgba(0,0,0,0.5)] ${
+          urdu ? "font-urdu" : ""
+        }`}
+        dir={urdu ? "auto" : undefined}
+      >
+        {line}
+      </span>
+    </button>
   );
 }

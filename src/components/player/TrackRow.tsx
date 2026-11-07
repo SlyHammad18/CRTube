@@ -17,6 +17,7 @@ import { pushToast } from "../../stores/toast";
 import { ipc } from "../../lib/ipc";
 import { useLibraryStore } from "../../stores/library";
 import { usePlayerStore, selectCurrentEntry } from "../../stores/player";
+import { isStreamTrack } from "../../types/player";
 import { confirm } from "../../stores/confirm";
 import { AddToPlaylistMenu } from "./AddToPlaylistMenu";
 import { FavouriteButton } from "./FavouriteButton";
@@ -61,9 +62,10 @@ export const TrackRow = memo(function TrackRow({
   onRemoveFrom?: () => void;
 }) {
   const missing = entry.status === "missing";
-  const isActive = usePlayerStore(
-    (s) => selectCurrentEntry(s)?.id === entry.id,
-  );
+  const isActive = usePlayerStore((s) => {
+    const cur = selectCurrentEntry(s);
+    return cur != null && !isStreamTrack(cur) && cur.id === entry.id;
+  });
   const playing = usePlayerStore((s) => s.playing);
   const thumb = useMemo(() => thumbSrcOf(entry), [entry]);
 
@@ -190,7 +192,11 @@ export const TrackRow = memo(function TrackRow({
         >
           <PencilSimple size={14} weight="light" aria-hidden />
         </button>
-        {!missing && <AddToPlaylistMenu downloadId={entry.id} />}
+        {!missing && (
+          <AddToPlaylistMenu
+            target={{ type: "library", downloadId: entry.id, title: entry.title }}
+          />
+        )}
         <button
           aria-label="Reveal in file manager"
           title="Reveal"

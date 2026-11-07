@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import type { LibraryEntry } from "../types/library";
 import type { PlayerSession } from "../types/session";
+import {
+  isStreamTrack,
+  type PlayableTrack,
+  type StreamTrack,
+} from "../types/player";
 import { useSettingsStore } from "./settings";
 import { pushToast } from "./toast";
 
@@ -65,7 +70,7 @@ export function fmtSpeed(v: number): string {
 }
 
 interface PlayerState {
-  queue: LibraryEntry[];
+  queue: PlayableTrack[];
   /** Permutation of queue indices — linear, or shuffled with current first. */
   order: number[];
   /** Index into `order`; -1 when idle. */
@@ -82,8 +87,18 @@ interface PlayerState {
   /** Monotonic counter so MediaHost applies seek requests exactly once. */
   seekNonce: number;
   seekTargetS: number;
+  /** True while the current source is resolving/rebuffering (stream start,
+   *  kind switch, seek into dead air) — drives the buffering chips. */
+  buffering: boolean;
 
-  playAll: (entries: LibraryEntry[], startIdx: number, context: PlayContext | null) => void;
+  playAll: (entries: PlayableTrack[], startIdx: number, context: PlayContext | null) => void;
+  /** Play a YouTube result as a live stream (replaces the queue). */
+  playStream: (
+    item: Omit<StreamTrack, "source" | "kind">,
+    kind: StreamTrack["kind"],
+  ) => void;
+  /** Switch the current stream track between its audio and video stream. */
+  setStreamKind: (kind: StreamTrack["kind"]) => void;
   enqueue: (entry: LibraryEntry) => void;
   toggle: () => void;
   next: () => void;
@@ -96,6 +111,8 @@ interface PlayerState {
   setVolume: (v: number) => void;
   setMuted: (m: boolean) => void;
   seek: (t: number) => void;
+  /** Fed by MediaHost's waiting/canplay listeners. */
+  setBuffering: (b: boolean) => void;
   /** Fed by MediaHost's timeupdate listener. */
   syncTime: (t: number, d: number) => void;
   onEnded: () => void;
@@ -113,10 +130,14 @@ interface PlayerState {
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => {
-  const entryAtOrder = (i: number): LibraryEntry | null => {
+  const entryAtOrder = (i: number): PlayableTrack | null => {
     const { queue, order } = get();
     return order[i] != null ? (queue[order[i]] ?? null) : null;
   };
+
+  /** Downloaded file gone from disk — streams can never be "missing". */
+  const isMissing = (t: PlayableTrack): boolean =>
+    !isStreamTrack(t) && t.status === "missing";
 
   const applyPos = (i: number) => {
     const entry = get().queue[get().order[i]];
@@ -139,7 +160,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (i === -1) break;
       const entry = s.queue[s.order[i]];
       if (!entry) continue;
-      if (entry.status === "missing") {
+      if (isMissing(entry)) {
         pushToast(`Skipped missing — ${entry.title}`);
         continue;
       }
@@ -163,20 +184,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     context: null,
     seekNonce: 0,
     seekTargetS: 0,
+    buffering: false,
 
     playAll: (entries, startIdx, context) => {
-      const playable = entries.filter((e) => e.status !== "missing");
+      const playable = entries.filter((e) => !isMissing(e));
       if (playable.length === 0) {
         pushToast("No playable tracks");
         return;
       }
       // Start at the requested track, or the next playable one after it.
-      let startEntry =
-        entries[Math.min(Math.max(startIdx, 0), entries.length - 1)];
-      if (!startEntry || startEntry.status === "missing") {
+      let startEntry = entries[Math.min(Math.max(startIdx, 0), entries.length - 1)];
+      if (!startEntry || isMissing(startEntry)) {
         for (let n = 1; n <= entries.length; n++) {
           const probe = entries[(startIdx + n) % entries.length];
-          if (probe.status !== "missing") {
+          if (!isMissing(probe)) {
             startEntry = probe;
             break;
           }
@@ -199,13 +220,41 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       });
     },
 
+    playStream: (item, kind) => {
+      const track: StreamTrack = { source: "stream", ...item, kind };
+      set({
+        queue: [track],
+        order: [0],
+        pos: 0,
+        context: null,
+        playing: true,
+        currentTimeS: 0,
+        durationS: item.durationS ?? 0,
+      });
+    },
+
+    setStreamKind: (kind) => {
+      const s = get();
+      if (s.pos < 0) return;
+      const idx = s.order[s.pos];
+      const cur = s.queue[idx];
+      if (!cur || !isStreamTrack(cur) || cur.kind === kind) return;
+      set({
+        queue: s.queue.map((t, i) => (i === idx ? { ...cur, kind } : t)),
+        // Preserve the playhead across the source swap: MediaHost re-resolves
+        // the URL and re-applies this seek once the new metadata is ready.
+        seekTargetS: s.currentTimeS,
+        seekNonce: s.seekNonce + 1,
+      });
+    },
+
     enqueue: (entry) => {
       if (entry.status === "missing") {
         pushToast(`Skipped missing — ${entry.title}`);
         return;
       }
       const s = get();
-      if (s.queue.some((e) => e.id === entry.id)) {
+      if (s.queue.some((e) => !isStreamTrack(e) && e.id === entry.id)) {
         pushToast("Already in queue");
         return;
       }
@@ -292,6 +341,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         currentTimeS: t,
       })),
 
+    setBuffering: (buffering) => set({ buffering }),
+
     syncTime: (t, d) => {
       const s = get();
       if (d && d !== s.durationS) set({ durationS: d });
@@ -312,9 +363,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     onMediaError: () => {
       const entry = entryAtOrder(get().pos);
-      pushToast(
-        `Can't play ${entry?.container ?? "this format"} in-app — try opening it externally`,
-      );
+      if (entry && isStreamTrack(entry)) {
+        pushToast("Stream failed — check your connection");
+      } else {
+        const container = entry && !isStreamTrack(entry) ? entry.container : undefined;
+        pushToast(
+          `Can't play ${container ?? "this format"} in-app — try opening it externally`,
+        );
+      }
       if (!advance(1, true)) set({ playing: false });
     },
 
@@ -391,13 +447,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     patchEntry: (id, patch) =>
       set((s) => ({
-        queue: s.queue.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+        queue: s.queue.map((e) =>
+          !isStreamTrack(e) && e.id === id ? { ...e, ...patch } : e,
+        ),
       })),
   };
 });
 
 /** Stable selector for the track under the playhead. */
-export function selectCurrentEntry(s: PlayerState): LibraryEntry | null {
+export function selectCurrentEntry(s: PlayerState): PlayableTrack | null {
   if (s.pos < 0) return null;
   return s.queue[s.order[s.pos]] ?? null;
 }

@@ -6,6 +6,8 @@ import {
   SPEED_MIN,
 } from "../../stores/player";
 import { ipc } from "../../lib/ipc";
+import { isStreamTrack } from "../../types/player";
+import { pushToast } from "../../stores/toast";
 import { useSlotEls } from "./mediaSlots";
 import { useUIStore } from "../../stores/ui";
 import { useSettingsStore } from "../../stores/settings";
@@ -33,29 +35,42 @@ export function MediaHost() {
     (s) => s.settings?.disable_video_playback ?? false,
   );
 
-  const isVideo = entry != null && entry.kind === "video" && entry.path !== "";
+  const isVideo =
+    entry != null &&
+    (isStreamTrack(entry)
+      ? entry.kind === "video"
+      : entry.kind === "video" && entry.path !== "");
 
-  // When video playback is disabled, the picture is hidden (thumbnail shows
-  // behind the slot) but the element keeps decoding/playing audio. We force the
-  // "none" stage so the overlay is never positioned — applyLayout hides it via
-  // visibility without pausing the media.
-  const showVideo = isVideo && !videoDisabled;
+  // Stream picture control is the entry's audio⇄video kind toggle; the global
+  // `videoDisabled` flag (and the "disable video playback" setting) only
+  // govern DOWNLOADED files.
+  const isStream = entry != null && isStreamTrack(entry);
+  const showVideo = isStream ? isVideo : isVideo && !videoDisabled;
 
   // Auto-disable per track: when the "Disable video playback" setting is on,
-  // reset `videoDisabled` to true for each new video track (and immediately when
-  // the setting is toggled on). The in-player button stays enabled and toggles
-  // `videoDisabled` freely within a track, so clicking it plays video that one
-  // time; the next track re-applies the setting.
-  const lastVideoId = useRef<number | null>(null);
+  // reset `videoDisabled` to true for each new DOWNLOADED video track (and
+  // immediately when the setting is toggled on). Stream tracks are excluded —
+  // their kind toggle governs the picture.
+  const lastTrackKey = useRef<string | null>(null);
   const prevAuto = useRef(autoDisableVideo);
   useEffect(() => {
-    const id = entry?.id ?? null;
-    const trackChanged = id !== lastVideoId.current;
+    const key = entry
+      ? isStreamTrack(entry)
+        ? entry.videoId
+        : String(entry.id)
+      : null;
+    const trackChanged = key !== lastTrackKey.current;
     const settingJustOn = autoDisableVideo && !prevAuto.current;
-    lastVideoId.current = id;
+    lastTrackKey.current = key;
     prevAuto.current = autoDisableVideo;
-    if (autoDisableVideo && (trackChanged || settingJustOn)) {
-      if (isVideo) useUIStore.getState().setVideoDisabled(true);
+    if (
+      autoDisableVideo &&
+      (trackChanged || settingJustOn) &&
+      isVideo &&
+      entry != null &&
+      !isStreamTrack(entry)
+    ) {
+      useUIStore.getState().setVideoDisabled(true);
     }
   }, [entry, isVideo, autoDisableVideo]);
 
@@ -74,28 +89,63 @@ export function MediaHost() {
 
   // --- imperative sync: store -> element ----------------------------------
 
-  const entryId = entry?.id;
-  const entryPath = entry?.path;
+  // Stable identity of the current media source. Changing it (re)resolves the
+  // loopback URL: library entries serve the downloaded file, stream tracks
+  // relay a yt-dlp-resolved URL whose signed upstream expires (→ one silent
+  // retry in onError).
+  const stream =
+    entry && isStreamTrack(entry)
+      ? { videoId: entry.videoId, kind: entry.kind }
+      : null;
+  const libraryId = entry && !isStreamTrack(entry) ? entry.id : undefined;
+  const libraryPath = entry && !isStreamTrack(entry) ? entry.path : undefined;
+  const srcKey = stream
+    ? `stream:${stream.videoId}:${stream.kind}`
+    : libraryId != null && libraryPath
+      ? `lib:${libraryId}:${libraryPath}`
+      : null;
+  // Latest stream identity for the error handler (no stale closures).
+  const streamRef = useRef<
+    { videoId: string; kind: "audio" | "video"; srcKey: string } | null
+  >(null);
+  streamRef.current = stream ? { ...stream, srcKey: srcKey! } : null;
+  // One forced re-resolve per source key; reset on every successful load.
+  const retriedKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (!entry || !entryPath) {
+    if (!entry || !srcKey) {
       el.pause();
       el.removeAttribute("src");
+      el.dataset.srcKey = "";
       el.load();
+      usePlayerStore.getState().setBuffering(false);
       return;
     }
-    if (el.dataset.path !== entryPath) {
+    if (el.dataset.srcKey !== srcKey) {
+      // Stop the previous source RIGHT NOW: resolving the new one can take
+      // seconds (stream extraction), and the old audio must not keep playing
+      // underneath. The store's buffering flag covers the gap until canplay.
+      el.pause();
+      el.removeAttribute("src");
+      el.dataset.srcKey = "";
+      el.load();
+      usePlayerStore.getState().setBuffering(true);
       let alive = true;
-      void ipc
-        .mediaUrl(entry.id)
+      const resolve = stream
+        ? ipc.streamMediaUrl(stream.videoId, stream.kind)
+        : ipc.mediaUrl(libraryId!);
+      void resolve
         .then((url) => {
           if (!alive) return;
           if (!url) {
-            usePlayerStore.getState().onMediaError();
+            delete el.dataset.srcKey;
+            onResolveFailed();
             return;
           }
-          el.dataset.path = entryPath;
+          el.dataset.srcKey = srcKey;
+          retriedKeyRef.current = null;
           el.src = url;
           el.load();
           if (usePlayerStore.getState().playing) {
@@ -113,12 +163,16 @@ export function MediaHost() {
             });
           }
         })
-        .catch(() => usePlayerStore.getState().onMediaError());
+        .catch(() => {
+          if (!alive) return;
+          delete el.dataset.srcKey;
+          onResolveFailed();
+        });
       return () => {
         alive = false;
       };
     }
-  }, [entry, entryId, entryPath]);
+  }, [entry, srcKey, stream]);
 
   const playing = usePlayerStore((s) => s.playing);
   useEffect(() => {
@@ -138,6 +192,8 @@ export function MediaHost() {
       });
     } else {
       el.pause();
+      // Nothing is attempting to play — the buffering label must not linger.
+      usePlayerStore.getState().setBuffering(false);
     }
   }, [playing]);
 
@@ -188,7 +244,7 @@ export function MediaHost() {
     el.addEventListener("loadedmetadata", apply);
     apply();
     return () => el.removeEventListener("loadedmetadata", apply);
-  }, [entryPath]);
+  }, [srcKey]);
 
   // --- layout: keep the single node positioned over the active stage ------
   // The node is `position: fixed`, so it does NOT move with page scroll and
@@ -321,9 +377,46 @@ export function MediaHost() {
 
   // --- element -> store (synthetic events follow the stable node) ---------
 
+  // Buffering truth model: the flag goes up when a new source starts
+  // resolving (the resolve effect) or the element stalls mid-playback
+  // (`waiting` — only while playing; a paused element isn't waiting on
+  // anything), and comes down on the first decoded frame (loadeddata),
+  // readiness (canplay), playback (playing), or seek completion (seeked).
+  // The `seeked` + timeupdate signals matter because WebKitGTK/GStreamer
+  // resumes playback after a stalled seek by firing ONLY `seeked` with
+  // readyState parked at HAVE_CURRENT_DATA — `canplay`/`playing` never
+  // refire, and without `seeked` the veil would stay up while frames flow.
+  // The element's own `pause` event is deliberately unused (queued task,
+  // races the resolve flag); a user pause clears via the store's `playing`
+  // effect below.
+  const onWaiting = () => {
+    const el = videoRef.current;
+    if (el && !el.paused) usePlayerStore.getState().setBuffering(true);
+  };
+  const onBufferedReady = () => usePlayerStore.getState().setBuffering(false);
+
+  /** Resolve/extraction failed for the current source. Stream video is the
+   *  special case: many videos expose no muxed (directly playable) format, so
+   *  instead of killing the whole track we fall back to its audio stream. */
+  const onResolveFailed = () => {
+    usePlayerStore.getState().setBuffering(false);
+    const cur = streamRef.current;
+    if (cur && cur.kind === "video") {
+      usePlayerStore.getState().setStreamKind("audio");
+      pushToast("Video stream unavailable for this track — playing audio");
+      return;
+    }
+    usePlayerStore.getState().onMediaError();
+  };
+
   const onTimeUpdate = () => {
     const el = videoRef.current;
     if (!el) return;
+    // Backstop for the buffering flag: frames are advancing and data is
+    // current — nothing is being waited on, whatever event was missed.
+    if (!el.paused && !el.ended && el.readyState >= 2) {
+      usePlayerStore.getState().setBuffering(false);
+    }
     const dur = Number.isFinite(el.duration) ? el.duration : 0;
     usePlayerStore.getState().syncTime(el.currentTime, dur);
   };
@@ -350,7 +443,37 @@ export function MediaHost() {
   const onError = () => {
     const el = videoRef.current;
     // Ignore the reset we trigger ourselves via removeAttribute("src").
-    if (!el || (!el.error && !el.dataset.path)) return;
+    if (!el || !el.error) return;
+    usePlayerStore.getState().setBuffering(false);
+    // A stream's signed upstream URL can expire mid-playback (the relay answers
+    // 502 → element error). Re-resolve once, silently, preserving the playhead.
+    const cur = streamRef.current;
+    if (cur && retriedKeyRef.current !== cur.srcKey) {
+      retriedKeyRef.current = cur.srcKey;
+      const at = el.currentTime;
+      usePlayerStore.getState().setBuffering(true);
+      void ipc
+        .streamMediaUrl(cur.videoId, cur.kind, true)
+        .then((url) => {
+          const still = streamRef.current;
+          if (!still || still.srcKey !== cur.srcKey) return; // track moved on
+          if (!url) {
+            onResolveFailed();
+            return;
+          }
+          pendingSeekRef.current = at;
+          el.dataset.srcKey = cur.srcKey;
+          el.src = url;
+          el.load();
+          if (usePlayerStore.getState().playing) void el.play().catch(() => {});
+        })
+        .catch(() => {
+          if (streamRef.current && streamRef.current.srcKey === cur.srcKey) {
+            onResolveFailed();
+          }
+        });
+      return;
+    }
     usePlayerStore.getState().onMediaError();
   };
 
@@ -365,6 +488,11 @@ export function MediaHost() {
       onDurationChange={onDurationChange}
       onEnded={onEnded}
       onError={onError}
+      onWaiting={onWaiting}
+      onLoadedData={onBufferedReady}
+      onCanPlay={onBufferedReady}
+      onPlaying={onBufferedReady}
+      onSeeked={onBufferedReady}
     />
   );
 }

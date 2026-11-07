@@ -16,6 +16,7 @@ import { PlayerBar } from "./components/player-bar/PlayerBar";
 import { PlaylistNameDialog } from "./components/player/PlaylistNameDialog";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { usePauseBackgroundAnimations } from "./hooks/usePauseBackgroundAnimations";
+import { useUrduFont } from "./hooks/useUrduFont";
 import { useSession } from "./hooks/useSession";
 import { useMpris } from "./hooks/useMpris";
 import { useLyricsOverlayController } from "./stores/lyricsOverlay";
@@ -24,9 +25,6 @@ import { VideoFullscreen } from "./components/player/VideoFullscreen";
 import { PlaceholderView } from "./components/common/PlaceholderView";
 
 // Lazy-load tab views so the initial bundle only carries the player shell.
-const HomeSearch = lazy(() =>
-  import("./components/search/HomeSearch").then((m) => ({ default: m.HomeSearch })),
-);
 const DownloadsView = lazy(() =>
   import("./components/downloads/DownloadsView").then((m) => ({
     default: m.DownloadsView,
@@ -55,6 +53,9 @@ export default function App() {
 
   useGlobalShortcuts();
   usePauseBackgroundAnimations();
+  // Urdu lyrics font: applies the selected face (downloads Jameel Noori on
+  // first use) by overriding the --font-urdu variable.
+  useUrduFont();
   // Resume-session: hydrates settings, loads library/playlists, restores the
   // saved queue/song/timestamp/repeat/shuffle and persists it onward.
   useSession();
@@ -101,8 +102,6 @@ export default function App() {
                     <PlayerTab />
                   ) : view === "home" ? (
                     <HomeView />
-                  ) : view === "search" ? (
-                    <HomeSearch />
                   ) : view === "downloads" ? (
                     <DownloadsView />
                   ) : view === "library" ? (

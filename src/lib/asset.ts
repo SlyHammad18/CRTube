@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { LibraryEntry } from "../types/library";
+import { isStreamTrack, type PlayableTrack } from "../types/player";
 
 /**
  * Resolve an artwork source (thumbnail, cover, artist photo) for an `<img>`.
@@ -29,4 +30,10 @@ export function entryArtworkPath(
 ): string | null | undefined {
   const custom = entry.customThumbPath?.trim();
   return custom || entry.thumbUrl?.trim() || undefined;
+}
+
+/** Artwork for anything in the play queue — library entry or stream track. */
+export function trackArtworkUrl(track: PlayableTrack): string | undefined {
+  if (isStreamTrack(track)) return track.thumbUrl?.trim() || undefined;
+  return entryArtworkUrl(track);
 }
