@@ -5,4 +5,4 @@
 - Change Theme / Customize
 - Add a Search Mode
 - up button doesn't work in player tab
-- Add Stats to CRTube
+- ~~Add Stats to CRTube~~ (done — Stats tab with listening time, per year/month/week charts, top songs with play counts, top artists)

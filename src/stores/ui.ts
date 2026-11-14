@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type View = "home" | "player" | "downloads" | "library" | "settings";
+export type View = "home" | "player" | "downloads" | "library" | "stats" | "settings";
 
 export interface PlaylistNameDraft {
   mode: "create" | "rename";

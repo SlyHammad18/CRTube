@@ -471,6 +471,31 @@ fetch_lyrics(app, video_id, title, channel, duration_s) -> Option<LyricsPayload>
                                                               -- Urdu font (runtime FontFace)
 ```
 
+Added (v0.6, stats tab):
+
+```
+stats_record_listen(db, ev) -> ()                       -- played-seconds flush every ~15s and at
+                                                        -- listening-session ends; ev {videoId,
+                                                        -- seconds, completed, title?, channel?/thumbUrl?}
+stats_overview(db, range) -> Overview{total_seconds, plays, tracks}
+stats_top_tracks(db, range, limit) -> Vec<TopTrack>     -- library rows resolve via downloads + artists
+                                                        -- JOIN; stream ghosts carry their own metadata
+stats_top_artists(db, range, limit) -> Vec<TopArtist>   -- artist tables for library tracks, recorded
+                                                        -- channel strings for stream-only events
+stats_timeline(db, range) -> Vec<Bucket{label,seconds}> -- zero-filled calendar buckets: 7 days /
+                                                        -- current month / 12 months / all years
+```
+
+`range` ∈ `day | week | month | year | all` (calendar windows; "this week" is the
+rolling last-7-days window). Chart granularity zooms out with the window:
+day = hourly bars, week = daily, month = daily (whole calendar month),
+year = monthly, all = yearly. Frontend capture lives in `useStatsRecorder`:
+pure content-seconds deltas from player time updates (seek-safe,
+playback-speed-scaled), ~15s incremental flushes, and a closing row marked
+`completed` when a listening session reaches 30s — so `SUM(completed)` is the
+play count. Pure helpers (range windows, bucket labels, weekday math) are
+unit-tested in `services/stats.rs`.
+
 ### 5.3 Tool installation
 
 Binaries live in `{app_data}/bin/`; that dir is injected into child-process env, and `--ffmpeg-location` is always passed explicitly.
@@ -562,6 +587,20 @@ CREATE TABLE playlist_items (
 Later additive migration v6 stores per-track app artwork as
 `downloads.custom_thumb_path TEXT`; `thumb_url` remains the original YouTube/cache
 source so a custom cover never destroys the downloaded thumbnail.
+
+Migration v7 (stats tab) adds:
+
+```sql
+CREATE TABLE play_events (
+  id INTEGER PRIMARY KEY,
+  video_id TEXT NOT NULL,          -- matches downloads.video_id (or a stream ghost)
+  played_s REAL NOT NULL DEFAULT 0,   -- content seconds of this recorded segment
+  completed INTEGER NOT NULL DEFAULT 0, -- closing row of a ≥30s session → counts as a play
+  title TEXT, channel TEXT, thumb_url TEXT, -- stream-only rows carry their own metadata
+  started_at INTEGER NOT NULL      -- unix time of the flush
+);
+CREATE INDEX idx_play_events_track ON play_events(video_id, started_at);
+```
 
 Settings persisted as JSON at `{app_config}/settings.json`: `{ download_dir, concurrent, autoupdate_ytdlp, filename_template, player_volume, player_speed }` — the two new fields carry serde defaults (`1.0`), so pre-v0.2 files load unchanged.
 

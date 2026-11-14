@@ -7,4 +7,5 @@ pub mod mpris;
 pub mod player;
 pub mod search;
 pub mod settings;
+pub mod stats;
 pub mod tools;

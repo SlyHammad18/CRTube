@@ -24,6 +24,14 @@ import type {
   DlErrorPayload,
   DlProgressPayload,
 } from "../types/dl";
+import type {
+  ListenEvent,
+  StatsBucket,
+  StatsOverview,
+  StatsRange,
+  StatsTopArtist,
+  StatsTopTrack,
+} from "../types/stats";
 
 export type DownloadKind = "video" | "audio";
 export type AudioQualityPref = "best" | "192" | "128";
@@ -210,6 +218,17 @@ export const ipc = {
     invoke<Artist>("clear_artist_cover", { artistId }),
   searchArtistImage: (name: string) =>
     invoke<string | null>("search_artist_image", { name }),
+
+  statsRecordListen: (ev: ListenEvent) =>
+    invoke<void>("stats_record_listen", { ev }),
+  statsOverview: (range: StatsRange) =>
+    invoke<StatsOverview>("stats_overview", { range }),
+  statsTopTracks: (range: StatsRange) =>
+    invoke<StatsTopTrack[]>("stats_top_tracks", { range }),
+  statsTopArtists: (range: StatsRange) =>
+    invoke<StatsTopArtist[]>("stats_top_artists", { range }),
+  statsTimeline: (range: StatsRange) =>
+    invoke<StatsBucket[]>("stats_timeline", { range }),
 
   onDlProgress: async (
     cb: (payload: DlProgressPayload) => void,

@@ -22,6 +22,7 @@ import { useMpris } from "./hooks/useMpris";
 import { useLyricsOverlayController } from "./stores/lyricsOverlay";
 import { MediaHost } from "./components/player-bar/MediaHost";
 import { VideoFullscreen } from "./components/player/VideoFullscreen";
+import { useStatsRecorder } from "./hooks/useStatsRecorder";
 import { PlaceholderView } from "./components/common/PlaceholderView";
 
 // Lazy-load tab views so the initial bundle only carries the player shell.
@@ -46,6 +47,9 @@ const PlayerTab = lazy(() =>
 const HomeView = lazy(() =>
   import("./components/home/HomeView").then((m) => ({ default: m.HomeView })),
 );
+const StatsView = lazy(() =>
+  import("./components/stats/StatsView").then((m) => ({ default: m.StatsView })),
+);
 
 export default function App() {
   const view = useUIStore((s) => s.view);
@@ -61,6 +65,9 @@ export default function App() {
   useSession();
   // Desktop media widget: publishes the player and applies its commands.
   useMpris();
+  // Listening-time recorder feeding the Stats tab (content-seconds deltas +
+  // ≥30s play verdicts, written straight to SQLite).
+  useStatsRecorder();
   useLyricsOverlayController();
 
   useEffect(() => {
@@ -106,6 +113,8 @@ export default function App() {
                     <DownloadsView />
                   ) : view === "library" ? (
                     <LibraryView />
+                  ) : view === "stats" ? (
+                    <StatsView />
                   ) : view === "settings" ? (
                     <SettingsView />
                   ) : (

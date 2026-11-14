@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 import {
+  ChartBar,
   DownloadSimple,
   GearSix,
   House,
@@ -17,6 +18,7 @@ const MAIN_ITEMS: { id: View; label: string; icon: typeof MagnifyingGlass }[] = 
   { id: "player", label: "Player", icon: MusicNote },
   { id: "downloads", label: "Downloads", icon: DownloadSimple },
   { id: "library", label: "Library", icon: SquaresFour },
+  { id: "stats", label: "Stats", icon: ChartBar },
 ];
 
 export function Rail() {

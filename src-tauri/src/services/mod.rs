@@ -8,6 +8,7 @@ pub mod media;
 pub mod mpris;
 pub mod proc;
 pub mod session;
+pub mod stats;
 pub mod stream;
 pub mod thumbs;
 pub mod ytdlp;

@@ -18,6 +18,28 @@ export function fmtCount(n?: number | null): string | null {
   return String(n);
 }
 
+/**
+ * Human "Wrapped-style" listening-time label: content seconds →
+ * "142 hr 38 min", "58 min 12 s", "40 s".
+ */
+export function fmtListenTime(seconds?: number | null): string | null {
+  if (seconds === undefined || seconds === null || Number.isNaN(seconds)) {
+    return null;
+  }
+  const total = Math.max(0, Math.round(seconds));
+  if (total >= 3600) {
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    return m > 0 ? `${h} hr ${m} min` : `${h} hr`;
+  }
+  if (total >= 60) {
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return s > 0 ? `${m} min ${s} s` : `${m} min`;
+  }
+  return `${total} s`;
+}
+
 export function fmtEta(seconds?: number | null): string | null {
   if (seconds === undefined || seconds === null || Number.isNaN(seconds)) {
     return null;

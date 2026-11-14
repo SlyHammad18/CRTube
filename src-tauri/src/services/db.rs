@@ -68,6 +68,23 @@ const MIGRATIONS: &[&str] = &[
     "UPDATE playlists SET cover_seed = id WHERE cover_seed = 0;",
     // v6 — per-track custom artwork; the original YouTube/cache thumb remains intact.
     "ALTER TABLE downloads ADD COLUMN custom_thumb_path TEXT;",
+    // v7 — listening stats (Stats tab): one row per recorded playback segment.
+    // `completed` marks the single closing row of a listening session that
+    // reached the 30s stream threshold, so SUM(completed) = play count.
+    // title/channel/thumb are kept for stream events whose video was never
+    // downloaded (library rows resolve through the downloads JOIN instead).
+    "CREATE TABLE IF NOT EXISTS play_events (
+        id INTEGER PRIMARY KEY,
+        video_id TEXT NOT NULL,
+        played_s REAL NOT NULL DEFAULT 0,
+        completed INTEGER NOT NULL DEFAULT 0,
+        title TEXT,
+        channel TEXT,
+        thumb_url TEXT,
+        started_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_play_events_track
+        ON play_events(video_id, started_at);",
 ];
 
 pub fn open(path: &Path) -> Result<Connection, rusqlite::Error> {
@@ -82,6 +99,7 @@ pub fn open(path: &Path) -> Result<Connection, rusqlite::Error> {
     // idempotent "add column if missing" checks rather than ordered ALTERs.
     ensure_artist_cover_schema(&conn)?;
     ensure_custom_thumbnail_schema(&conn)?;
+    ensure_play_events_schema(&conn)?;
     Ok(conn)
 }
 
@@ -113,6 +131,28 @@ pub(crate) fn ensure_custom_thumbnail_schema(
         "downloads",
         "custom_thumb_path",
         "ALTER TABLE downloads ADD COLUMN custom_thumb_path TEXT;",
+    )?;
+    Ok(())
+}
+
+/// Create the stats tables unconditionally (idempotent CREATE IF NOT EXISTS):
+/// installs whose `user_version` drifted past v7 never run the ordered
+/// migration, so `play_events` must be ensured exactly like the cover columns
+/// above.
+pub(crate) fn ensure_play_events_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS play_events (
+            id INTEGER PRIMARY KEY,
+            video_id TEXT NOT NULL,
+            played_s REAL NOT NULL DEFAULT 0,
+            completed INTEGER NOT NULL DEFAULT 0,
+            title TEXT,
+            channel TEXT,
+            thumb_url TEXT,
+            started_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_play_events_track
+            ON play_events(video_id, started_at);",
     )?;
     Ok(())
 }
@@ -853,6 +893,7 @@ mod tests {
         migrate(&conn).unwrap();
         ensure_artist_cover_schema(&conn).unwrap();
         ensure_custom_thumbnail_schema(&conn).unwrap();
+        ensure_play_events_schema(&conn).unwrap();
         conn
     }
 
@@ -903,8 +944,7 @@ mod tests {
     }
 
     #[test]
-    fn newer_schema_version_still_repairs_custom_thumbnail_column() {
-        let conn = Connection::open_in_memory().unwrap();
+    fn newer_schema_version_still_repairs_custom_thumbnail_column() {        let conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "foreign_keys", "ON").unwrap();
         for sql in MIGRATIONS.iter().take(5) {
             conn.execute_batch(sql).unwrap();
@@ -936,6 +976,43 @@ mod tests {
 
         let entries = list_and_sync_statuses(&conn).unwrap();
         assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn drifted_database_still_gains_play_events_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        for sql in MIGRATIONS.iter().take(6) {
+            conn.execute_batch(sql).unwrap();
+        }
+        // Mirrors real installs whose migration counter advanced past the
+        // ordered list: the v7 stats migration must never depend on it.
+        conn.pragma_update(None, "user_version", 13i64).unwrap();
+
+        ensure_play_events_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO play_events (video_id, played_s, completed, started_at)
+             VALUES ('drift0000001', 21.5, 1, 0)",
+            [],
+        )
+        .unwrap();
+        let total: f64 = conn
+            .query_row("SELECT SUM(played_s) FROM play_events", [], |r| r.get(0))
+            .unwrap();
+        assert!((total - 21.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn migrated_database_has_play_events_table() {
+        let conn = mem();
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='play_events')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(exists);
     }
 
     #[test]

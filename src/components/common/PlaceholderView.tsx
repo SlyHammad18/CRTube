@@ -6,6 +6,7 @@ const PROMPTS: Record<View, string[]> = {
   player: ["> CRTUBE://PLAYER"],
   downloads: ["> no active transfers"],
   library: ["> nothing archived yet"],
+  stats: ["> no listening data yet"],
   settings: ["> awaiting calibration"],
 };
 
