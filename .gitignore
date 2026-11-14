@@ -10,4 +10,5 @@ src-tauri/gen/
 skills-lock.json
 .opencode
 .playwright-mcp
-.commandcode/*
+.commandcode/
+Shots/

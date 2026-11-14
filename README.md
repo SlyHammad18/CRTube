@@ -1,7 +1,7 @@
 # CRTube
 
 <p align="center">
-  <img src="./docs/home.png" alt="CRTube library" width="900" />
+  <img src="./docs/screenshot.png" alt="CRTube" width="900" />
 </p>
 
 <p align="center">
@@ -10,113 +10,45 @@
   <img alt="Platforms" src="https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows-4DD8FF" />
 </p>
 
-CRTube is a local-first desktop YouTube downloader and media player built with
-[Tauri v2](https://v2.tauri.app/), React, and Rust. Search for a video, choose a
-format, download it, and keep playback, lyrics, playlists, and favourites in one
-place. Processing stays on your machine through
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) and ffmpeg; CRTube does not require a
-server or telemetry.
+CRTube is a desktop YouTube downloader and music player. Search, pick a format,
+queue the download, and play it back with lyrics, playlists, and stats.
+Everything runs on your machine with yt-dlp and ffmpeg. No accounts, no
+telemetry.
 
-## Highlights
+## Features
 
-- **Download and play** — search YouTube or paste a link, choose audio/video
-  formats, queue concurrent downloads, and play the library with persistent
-  sessions.
-- **Lyrics everywhere** — LRCLIB synced lyrics, per-song timing offsets, manual
-  lyric search/override, bottom-docked lyrics, and an optional always-on-top
-  floating lyrics window.
-- **Full floating-player controls** — play/pause, previous/next, shuffle,
-  repeat, seek timeline, favourite, add-to-playlist, mute, and an “Open main
-  app” button without creating a second playback engine.
-- **Library organisation** — playlists, membership checkmarks, favourites,
-  track/artist renaming, reordering, custom artwork, and collapsible artist
-  views.
-- **Desktop integration** — MPRIS media controls, cached square artwork in the
-  system media card, keyboard shortcuts, resumable playback, and remembered
-  mute/volume/loop/shuffle/speed state.
-- **Local and resilient** — friendly tool/download errors, atomic yt-dlp
-  updates with checksum verification, cached thumbnails, and no cloud account.
+- Search YouTube or paste a link, pick audio/video quality, and download with a
+  live progress queue
+- Built-in player with a persistent queue, shuffle, repeat, speed, and volume
+- Live streaming: play straight from YouTube before the download finishes
+- Synced lyrics from LRCLIB, a lyrics dock, and an optional always-on-top
+  floating lyrics window
+- Playlists, favourites, artist pages, custom artwork, and track renaming
+- Listening stats: play counts, total listening time, charts per day, week,
+  month, and year, plus top songs and top artists
+- Desktop integration: MPRIS media keys and a desktop media widget, keyboard
+  shortcuts, resumable playback
+- yt-dlp keeps itself updated with checksum-verified downloads; artwork and
+  thumbnails are cached locally
 
-## v0.6.0 release notes
+## Latest release
 
-- Added a live YouTube streaming engine: video can play directly from the
-  network without a completed download, with a buffering-aware playback core,
-  prefetch of the next track, and fullscreen video output.
-- Unified search now runs inside both Home and the Player tab, backed by a
-  reliability pass on the yt-dlp invocation layer (fonts, playback, progress).
-- Floating lyrics got a resilient lookup chain and a track-first search modal;
-  the overlay follows live streams with a buffering state, sizes its lyric deck
-  to the window, and honours the custom Urdu font.
-- Lyrics rendering polish: the lyric deck reserves its height and crossfades
-  between lyric states, and the active caption line gets a wash highlight.
-- The titlebar gained a tool-status chip that reflects honest yt-dlp update
-  states instead of a silent spinner.
-- Library performance: micro-thumbnail placeholders while images load, and
-  stream-only buffering so long media rows stay responsive.
-- Theme tokens, build configuration, and docs were refreshed.
+**v0.7.0** adds the Stats tab: it tracks every listen and shows total listening
+time, plays, per day/week/month/year charts, top songs, and top artists.
 
-### Included from v0.5.1
-
-- The UI no longer runs on WebKitGTK's CPU compositing path: the forced
-  `WEBKIT_DISABLE_DMABUF_RENDERER` workaround was removed, so scrolling and tab
-  switching go back to the GPU (dmabuf) renderer on Linux. Recent WebKitGTK fixed
-  the Wayland black-video bug the workaround guarded, and the app prefers
-  XWayland anyway; if video ever renders black on some system, launch with
-  `WEBKIT_DMABUF_RENDERER_DEVICE=/dev/dri/renderD128` (or, last resort,
-  `WEBKIT_DISABLE_DMABUF_RENDERER=1`). The page renderer stays on the GPU path,
-  but the video pipeline opts out of zero-copy DMABuf sampling
-  (`WEBKIT_GST_DMABUF_SINK_DISABLED=1`, set in `main.rs`): WebKit's GL video
-  sink lets the VA-API decoder recycle a DMABuf that is still being sampled
-  (WebKit bug 253807), which makes old and new frames flicker together after
-  seeks on Intel iGPUs.
-- Tab switches unmount the previous view immediately instead of cross-fading two
-  full view trees.
-- Perpetual animations (CRT wordmark burn, caret, sheen, EQ bars) pause while the
-  window is unfocused or hidden, and stale `will-change` hints were dropped.
-- Removed `content-visibility` estimates from virtualized rows that measured
-  themselves, so row heights can't snap mid-scroll.
-- The scanlines overlay no longer promotes a full-window compositing layer and is
-  skipped under prefers-reduced-motion; thumbnails decode asynchronously.
-
-### Included from v0.5.0
-
-- Removed transparency from the floating lyrics window completely: it is now an
-  opaque, bordered panel filling its window, with no transparent margin or
-  rounded corners. The alpha surface was flickering on XWayland — appearing when
-  the surrounding UI repainted and vanishing otherwise — especially while audio
-  was playing; an opaque window has no alpha surface to blank.
-
-### Included from v0.4.1
-
-- Fixed XWayland workspace switching so the always-on-top floating lyrics
-  window no longer steals focus while remaining interactive and draggable.
-
-### Included from v0.4.0
-
-- Added the floating lyrics control surface with transport, shuffle/repeat,
-  seeking, favourites, playlist membership, mute, and main-window focus.
-- Reworked floating-lyrics timing around an authoritative playback clock and
-  sequence-guarded snapshots to prevent stale lyric rollbacks.
-- Added smooth optimistic seeking so the overlay does not jump back while the
-  main player applies a seek.
-- Removed the translucent edge halo and persistent engine/version line from the
-  search surface; the transient `updating yt-dlp` state remains visible.
-- Persisted mute state in the resume session and fixed focus handling around
-  the floating seek bar.
+Full notes live on the [releases page](https://github.com/SlyHammad18/CRTube/releases).
 
 ## Download
 
-The v0.6.0 release includes:
-
-- **Debian/Ubuntu: `CRTube_0.6.0_amd64.deb`**
-
-AppImage and the Windows installer are not included in this release.
+Grab the `.deb` from the
+[releases page](https://github.com/SlyHammad18/CRTube/releases) for Debian and
+Ubuntu. Windows installers and AppImage are not shipped yet.
 
 ## Build from source
 
 Requirements: Node.js 20+, Rust, and the Tauri 2 system dependencies for your
-platform (WebKitGTK and libsoup on Linux; the WebView2 SDK and Visual Studio
-Build Tools on Windows).
+platform (WebKitGTK and libsoup on Linux; WebView2 SDK and Visual Studio Build
+Tools on Windows).
 
 ```bash
 npm install
@@ -124,7 +56,7 @@ npm run tauri build -- --bundles deb   # Linux
 npm run tauri build -- --bundles nsis  # Windows
 ```
 
-Artifacts are written to `src-tauri/target/release/bundle/{deb,nsis}/`.
+Artifacts land in `src-tauri/target/release/bundle/`.
 
 For development with hot reload:
 
@@ -132,6 +64,11 @@ For development with hot reload:
 npm run tauri dev
 ```
 
+## Contributing
+
+PRs are welcome. Keep them small, run the checks, and see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the details.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
